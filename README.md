@@ -1,2 +1,1 @@
-# course-template
-Шаблон репозитория для создания новых курсов
+https://github.com/users/Kazuki-Stud/projects/2
