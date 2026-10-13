@@ -1,0 +1,17 @@
+{
+  "name": "autooffer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "dependencies": {
+    "dexie": "^4.4.6"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "vite": "^8.3.3",
+    "vite-plugin-web-extension": "^4.5.1"
+  }
+}

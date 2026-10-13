@@ -1,0 +1,14 @@
+{
+  "popupTitle": {
+    "message": "AutoOffer"
+  },
+  "statusInitialized": {
+    "message": "Статус инициализирован"
+  },
+  "testAddVacancy": {
+    "message": "Тест добавления вакансии"
+  },
+  "toggleLanguageButton": {
+    "message": "Сменить язык"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "popupTitle": {
+    "message": "AutoOffer"
+  },
+  "statusInitialized": {
+    "message": "Database initialized"
+  },
+  "testAddVacancy": {
+    "message": "Test adding vacancy"
+  },
+  "toggleLanguageButton": {
+    "message": "Change language"
+  }
+}
