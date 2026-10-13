@@ -10,5 +10,11 @@
   },
   "toggleLanguageButton": {
     "message": "Change language"
+  },
+  "clearDatabase": {
+    "message": "Clear database"
+  },
+  "databaseCleared": {
+    "message": "Database cleared"
   }
 }

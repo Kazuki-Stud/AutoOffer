@@ -20,6 +20,20 @@ async function applyTranslations(lang) {
     });
 }
 
+async function updateVacancyCount() {
+    const statusElement = document.getElementById('status');
+    if (!statusElement) return;
+
+    try {
+        const count = await db.local_vacancies.count();
+        statusElement.innerText = `Vacancies in database: ${count}`;
+    } catch (err) {
+        if (err instanceof Error) {
+            statusElement.innerText = err.message;
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const result = await chrome.storage.local.get('preferred_locale');
     const currentLang = result.preferred_locale || 'en';
@@ -30,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     await applyTranslations(currentLang);
+    await updateVacancyCount();
 });
 
 const selectElement = document.getElementById('lang-select');
@@ -40,36 +55,23 @@ selectElement?.addEventListener('change', async (event) => {
     await applyTranslations(newLang);
 });
 
-const addVacancyButton = document.getElementById('add-vacancy');
-addVacancyButton?.addEventListener('click', async () => {
-    const statusElement = document.getElementById('status');
-    try {
-        await db.local_vacancies.add({
-            id: crypto.randomUUID(),
-            platform_id: crypto.randomUUID(),
-            full_position_name: 'Software Engineer',
-            company_id: crypto.randomUUID(),
-            url: 'https://example.com/vacancy/1',
-            description: 'Test description',
-            synced: false,
-            created_at: new Date().toISOString()
-        });
-
-        const allVacancies = await db.local_vacancies.toArray();
-        console.log(allVacancies);
-
-        const result = await chrome.storage.local.get('preferred_locale');
-        const currentLang = result.preferred_locale || 'en';
-        const url = chrome.runtime.getURL(`_locales/${currentLang}/messages.json`);
-        const response = await fetch(url);
-        const messages = await response.json();
-
-        if (statusElement && messages.statusInitialized) {
-            statusElement.innerText = messages.statusInitialized.message;
-        }
-    } catch (err) {
+db.local_vacancies.hook('deleting', function () {
+    this.onsuccess = async function () {
+        await updateVacancyCount();
+    };
+    this.onerror = function (err) {
+        const statusElement = document.getElementById('status');
         if (statusElement && err instanceof Error) {
             statusElement.innerText = err.message;
         }
+    };
+});
+
+const clearDbButton = document.getElementById('clear-db');
+clearDbButton?.addEventListener('click', async () => {
+    try {
+        await db.local_vacancies.clear();
+    } catch (err) {
+        console.error(err);
     }
 });

@@ -35,8 +35,8 @@ body {
     border-color: #666;
 }
 
-button#add-vacancy {
-    background-color: #007bff;
+button#clear-db {
+    background-color: #dc3545;
     color: white;
     border: none;
     padding: 8px 12px;
@@ -46,8 +46,8 @@ button#add-vacancy {
     width: 100%;
 }
 
-button#add-vacancy:hover {
-    background-color: #0056b3;
+button#clear-db:hover {
+    background-color: #c82333;
 }
 
 #status {
