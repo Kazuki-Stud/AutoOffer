@@ -5,7 +5,8 @@ import { resolve } from 'path';
 export default defineConfig({
     plugins: [
         webExtension({
-            manifest: resolve(__dirname, 'src/manifest.json'),
+            manifest: resolve(__dirname, 'src/client/extension/manifest.json'),
+            additionalInputs: ['src/client/extension/popup/popup.html'],
         })
     ],
     build: {

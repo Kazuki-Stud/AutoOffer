@@ -2,17 +2,17 @@
   "manifest_version": 3,
   "name": "AutoOffer",
   "version": "1.0.0",
-  "default_locale": "ru",
+  "default_locale": "en",
   "permissions": [
     "storage",
     "activeTab",
     "scripting"
   ],
   "background": {
-    "service_worker": "src/background.js",
+    "service_worker": "src/client/extension/background.js",
     "type": "module"
   },
   "action": {
-    "default_popup": "src/popup.html"
+    "default_popup": "src/client/extension/popup/popup.html"
   }
 }

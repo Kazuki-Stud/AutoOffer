@@ -1,4 +1,4 @@
-import { db } from './database.js';
+import { db } from '../database.js';
 
 async function applyTranslations(lang) {
     const url = chrome.runtime.getURL(`_locales/${lang}/messages.json`);
