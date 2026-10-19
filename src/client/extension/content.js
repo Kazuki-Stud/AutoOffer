@@ -95,7 +95,147 @@ function getSanitizedDOMSnippet() {
         wrapper.appendChild(cardClone);
     }
 
-    return wrapper.innerHTML.replace(/\s+/g, ' ').slice(0, 3000);
+    return wrapper.innerHTML.replace(/\s+/g, ' ').trim();
+}
+
+function deriveOptimalSelector(el, scope) {
+    if (!el || el === scope) return '';
+    if (el.id && !/[0-9]{4,}/.test(el.id)) return '#' + CSS.escape(el.id);
+    const testId = el.getAttribute('data-testid');
+    if (testId) return `[data-testid="${testId}"]`;
+
+    const tag = el.tagName.toLowerCase();
+    const validClasses = Array.from(el.classList).filter(c =>
+        !/^css-[a-z0-9]+/i.test(c) &&
+        !/^[a-z][0-9]{3,}/i.test(c) &&
+        !/active|hover|focus|selected|boosted|feature/i.test(c)
+    );
+
+    if (validClasses.length > 0) {
+        return tag + '.' + CSS.escape(validClasses[0]);
+    }
+
+    if (scope && scope.contains(el)) {
+        let parent = el.parentElement;
+        if (parent && parent !== scope) {
+            const parentSel = deriveOptimalSelector(parent, scope);
+            return parentSel ? `${parentSel} > ${tag}` : tag;
+        }
+    }
+    return tag;
+}
+
+function guessSelectorsHeuristically() {
+    const ignoreSelectors = [
+        'script', 'style', 'svg', 'noscript', 'iframe', 'canvas', 'link', 'form', 'button', 'input', 'select',
+        '[class*="dropdown"]', '[class*="filter"]', '[class*="menu"]', '[class*="nav"]', '[class*="banner"]',
+        '[class*="promo"]', '[class*="popup"]', '[class*="modal"]', '[class*="subscribe"]', '[class*="facet"]'
+    ].join(',');
+
+    const urlKeywords = /\/jobs?\/[0-9a-zA-Z_-]+|\/careers?\/|[?&](jk|jobId)=/i;
+    const jobKeywords = /developer|engineer|manager|designer|analyst|remote|specialist|lead|programmer/i;
+
+    const allLinks = Array.from(document.querySelectorAll('a[href]'));
+    const scoredLinks = [];
+
+    for (const a of allLinks) {
+        if (a.closest(ignoreSelectors)) continue;
+        const href = a.getAttribute('href') || '';
+        const text = a.textContent.trim();
+        if (text.length < 3 || text.length > 100) continue;
+
+        let score = 0;
+        if (urlKeywords.test(href)) score += 3;
+        if (jobKeywords.test(text)) score += 3;
+        if (a.closest('h1, h2, h3, h4, strong')) score += 2;
+        if (/[0-9]{4,}/.test(href)) score += 2;
+
+        if (score >= 3) scoredLinks.push({ el: a, score: score });
+    }
+
+    scoredLinks.sort((a, b) => b.score - a.score);
+    if (scoredLinks.length < 2) return null;
+
+    const cards = [];
+    const linkElements = [];
+    for (const item of scoredLinks) {
+        let card = item.el.parentElement;
+        while (card && card !== document.body) {
+            const tag = card.tagName.toLowerCase();
+            const cls = card.className || '';
+            if (tag === 'li' || tag === 'article' || tag === 'tr' || /card|item|job|listing|result/i.test(cls)) {
+                break;
+            }
+            card = card.parentElement;
+        }
+        if (!card || card === document.body) card = item.el.parentElement;
+
+        if (!cards.includes(card)) {
+            cards.push(card);
+            linkElements.push(item.el);
+            if (cards.length >= 2) break;
+        }
+    }
+
+    if (cards.length < 2) return null;
+
+    let containerSel = '';
+    const c1 = cards[0];
+    const c2 = cards[1];
+
+    if (c1.tagName === c2.tagName) {
+        const sharedClasses = Array.from(c1.classList).filter(c =>
+            c2.classList.contains(c) &&
+            !/^css-[a-z0-9]+/i.test(c) &&
+            !/^[a-z][0-9]{3,}/i.test(c) &&
+            !/active|hover|focus|selected/i.test(c)
+        );
+        const tag = c1.tagName.toLowerCase();
+        if (sharedClasses.length > 0) {
+            containerSel = `${tag}.${CSS.escape(sharedClasses[0])}`;
+        } else if (c1.parentElement === c2.parentElement) {
+            const pSel = deriveOptimalSelector(c1.parentElement, document.body);
+            containerSel = pSel ? `${pSel} > ${tag}` : tag;
+        } else {
+            containerSel = tag;
+        }
+    } else {
+        containerSel = deriveOptimalSelector(c1, document.body);
+    }
+
+    const titleEl = linkElements[0].closest('h1, h2, h3, h4') || linkElements[0];
+    const titleSel = deriveOptimalSelector(titleEl, c1);
+    const linkSel = deriveOptimalSelector(linkElements[0], c1);
+
+    let companySel = '';
+    const companyCandidates = Array.from(c1.querySelectorAll('*')).filter(node => {
+        if (node === titleEl || titleEl.contains(node) || node === linkElements[0]) return false;
+        const cls = String(node.className || '');
+        const id = String(node.id || '');
+        const testid = node.getAttribute('data-testid') || '';
+        const attrStr = `${cls} ${id} ${testid}`.toLowerCase();
+        return /company|employer|hiring|org/i.test(attrStr);
+    });
+
+    if (companyCandidates.length > 0) {
+        companySel = deriveOptimalSelector(companyCandidates[0], c1);
+    } else {
+        const fallbackTextNodes = Array.from(c1.querySelectorAll('a, span, p, div')).filter(node => {
+            if (node === titleEl || titleEl.contains(node) || node.children.length > 0) return false;
+            const t = node.textContent.trim();
+            return t.length >= 2 && t.length <= 40;
+        });
+        if (fallbackTextNodes.length > 0) {
+            companySel = deriveOptimalSelector(fallbackTextNodes[0], c1);
+        }
+    }
+
+    return {
+        container: containerSel,
+        title: titleSel || linkSel,
+        link: linkSel,
+        company: companySel
+    };
 }
 
 function validateSelectors(selectors) {
@@ -150,18 +290,25 @@ window.testAiSelectors = function(responseInput) {
     try {
         selectors = typeof responseInput === 'string' ? JSON.parse(responseInput) : responseInput;
     } catch (err) {
-        console.error('❌ AutoOffer: Ошибка разбора JSON:', err.message);
+        console.error('❌ AutoOffer: JSON parse error:', err.message);
         return;
     }
 
     if (!selectors.container || !selectors.title || !selectors.link) {
-        console.error('❌ AutoOffer: Не хватает обязательных полей (container, title, link)');
+        console.error('❌ AutoOffer: Missing required fields (container, title, link)');
         return;
     }
 
-    const cards = document.querySelectorAll(selectors.container);
+    let cards;
+    try {
+        cards = document.querySelectorAll(selectors.container);
+    } catch (e) {
+        console.error('❌ AutoOffer: Invalid container query selector:', selectors.container);
+        return;
+    }
+
     if (cards.length === 0) {
-        console.warn('⚠️ Элементы по данному контейнеру не найдены.');
+        console.warn('⚠️ Elements matching container selector were not found.');
         return;
     }
 
@@ -173,27 +320,27 @@ window.testAiSelectors = function(responseInput) {
 
         if (titleEl && linkEl) {
             const rawUrl = linkEl.getAttribute('href') || '';
-            const absoluteUrl = rawUrl ? new URL(rawUrl, window.location.origin).href : 'Нет ссылки';
+            const absoluteUrl = rawUrl ? new URL(rawUrl, window.location.origin).href : 'No link';
             previewList.push({
-                'Должность': titleEl.textContent.trim(),
-                'Компания': companyEl ? companyEl.textContent.trim() : 'Не указана',
-                'Ссылка': absoluteUrl
+                'Position': titleEl.textContent.trim(),
+                'Company': companyEl ? companyEl.textContent.trim() : 'Not found',
+                'Link': absoluteUrl
             });
             if (previewList.length === 3) break;
         }
     }
 
     if (previewList.length === 0) {
-        console.error('❌ Контейнеры найдены, но внутри них не удалось найти заголовок или ссылку по селекторам:', {
+        console.error('❌ Containers were found, but title or link selectors failed within them:', {
             title: selectors.title,
             link: selectors.link
         });
         return;
     }
 
-    console.log(`✅ Найдено карточек: ${cards.length}. Первые 3 вакансии:\n` +
+    console.log(`✅ Matches found: ${cards.length}. Sample preview:\n` +
         JSON.stringify(previewList, null, 2) +
-        '\n💡 Для сохранения выполните: window.applyAiSelectors(...)');
+        '\n💡 To persist run: window.applyAiSelectors(' + JSON.stringify(selectors) + ')');
 };
 
 window.applyAiSelectors = function(responseInput) {
@@ -289,6 +436,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         console.log(singleLogOutput);
         sendResponse({ success: true, message: 'Prompt output printed to console.' });
+        return true;
+    }
+
+    if (request.action === 'auto_guess_selectors') {
+        const guessed = guessSelectorsHeuristically();
+        if (!guessed) {
+            console.warn('⚠️ AutoOffer: Heuristic detection could not find repeated job cards on this page.');
+            sendResponse({ success: false, message: 'Could not detect job listings automatically.' });
+            return true;
+        }
+
+        console.log('=== AUTOOFFER HEURISTIC GUESS ===');
+        console.log('Guessed selectors:', guessed);
+        window.testAiSelectors(guessed);
+        sendResponse({ success: true, message: 'Selectors guessed and tested in console.' });
         return true;
     }
 

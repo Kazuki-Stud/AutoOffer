@@ -8,6 +8,9 @@
   "addSite": {
     "message": "Pridėti dabartinę svetainę"
   },
+  "autoGuess": {
+    "message": "Atspėti selektorius"
+  },
   "clearDatabase": {
     "message": "Išvalyti duomenų bazę"
   }

@@ -86,6 +86,19 @@ addSiteButton?.addEventListener('click', async () => {
     });
 });
 
+const autoGuessButton = document.getElementById('auto-guess');
+autoGuessButton?.addEventListener('click', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+
+    chrome.tabs.sendMessage(tab.id, { action: 'auto_guess_selectors' }, (response) => {
+        const statusElement = document.getElementById('status');
+        if (statusElement && response) {
+            statusElement.innerText = response.message || (response.success ? 'Heuristic guess printed to console.' : 'Guess failed.');
+        }
+    });
+});
+
 db.local_vacancies.hook('deleting', function () {
     this.onsuccess = async function () {
         await updateVacancyCount();

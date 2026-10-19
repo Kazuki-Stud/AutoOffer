@@ -8,6 +8,9 @@
   "addSite": {
     "message": "Добавить текущий сайт"
   },
+  "autoGuess": {
+    "message": "Угадать селекторы"
+  },
   "clearDatabase": {
     "message": "Очистить базу"
   }

@@ -8,6 +8,9 @@
   "addSite": {
     "message": "Add Current Site"
   },
+  "autoGuess": {
+    "message": "Auto-Guess Selectors"
+  },
   "clearDatabase": {
     "message": "Clear database"
   }
