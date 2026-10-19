@@ -3,18 +3,16 @@ import webExtension from 'vite-plugin-web-extension';
 import { resolve } from 'path';
 
 export default defineConfig({
+    root: resolve(__dirname, 'src/client/extension'),
+    publicDir: resolve(__dirname, 'public'),
     plugins: [
         webExtension({
-            manifest: resolve(__dirname, 'src/client/extension/manifest.json'),
-            additionalInputs: ['src/client/extension/popup/popup.html'],
+            manifest: 'manifest.json'
         })
     ],
     build: {
         target: 'esnext',
-        outDir: 'dist',
-        emptyOutDir: true,
-        modulePreload: {
-            polyfill: false
-        }
+        outDir: resolve(__dirname, 'dist'),
+        emptyOutDir: true
     }
 });

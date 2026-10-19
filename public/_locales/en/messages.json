@@ -2,19 +2,13 @@
   "popupTitle": {
     "message": "AutoOffer"
   },
-  "statusInitialized": {
-    "message": "Database initialized"
+  "runTask": {
+    "message": "Run Parse Task"
   },
-  "testAddVacancy": {
-    "message": "Test adding vacancy"
-  },
-  "toggleLanguageButton": {
-    "message": "Change language"
+  "addSite": {
+    "message": "Add Current Site"
   },
   "clearDatabase": {
     "message": "Clear database"
-  },
-  "databaseCleared": {
-    "message": "Database cleared"
   }
 }

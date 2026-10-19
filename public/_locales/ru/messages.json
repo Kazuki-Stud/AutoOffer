@@ -2,13 +2,13 @@
   "popupTitle": {
     "message": "AutoOffer"
   },
-  "statusInitialized": {
-    "message": "Статус инициализирован"
+  "runTask": {
+    "message": "Запустить парсинг"
   },
-  "testAddVacancy": {
-    "message": "Тест добавления вакансии"
+  "addSite": {
+    "message": "Добавить текущий сайт"
   },
-  "toggleLanguageButton": {
-    "message": "Сменить язык"
+  "clearDatabase": {
+    "message": "Очистить базу"
   }
 }

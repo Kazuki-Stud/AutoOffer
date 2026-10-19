@@ -2,13 +2,13 @@
   "popupTitle": {
     "message": "AutoOffer"
   },
-  "statusInitialized": {
-    "message": "Duomenų bazė inicijuota"
+  "runTask": {
+    "message": "Paleisti užduotį"
   },
-  "testAddVacancy": {
-    "message": "Testuoti vakansijos pridėjimą"
+  "addSite": {
+    "message": "Pridėti dabartinę svetainę"
   },
-  "toggleLanguageButton": {
-    "message": "Сменить язык"
+  "clearDatabase": {
+    "message": "Išvalyti duomenų bazę"
   }
 }

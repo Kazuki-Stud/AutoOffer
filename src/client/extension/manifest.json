@@ -8,11 +8,24 @@
     "activeTab",
     "scripting"
   ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
-    "service_worker": "src/client/extension/background.js",
+    "service_worker": "background.js",
     "type": "module"
   },
   "action": {
-    "default_popup": "src/client/extension/popup/popup.html"
-  }
+    "default_popup": "popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ]
 }
