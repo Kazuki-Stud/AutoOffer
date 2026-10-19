@@ -1,9 +1,11 @@
 function getSanitizedDOMSnippet() {
     const ignoreSelectors = [
         'script', 'style', 'svg', 'noscript', 'iframe', 'canvas', 'link', 'form', 'button', 'input', 'select',
-        '[class*="dropdown"]', '[class*="filter"]', '[class*="menu"]', '[class*="nav"]', '[class*="banner"]',
-        '[class*="promo"]', '[class*="popup"]', '[class*="modal"]', '[class*="subscribe"]', '[class*="facet"]',
-        '[class*="search-panel"]', '#header', '#footer', 'header', 'footer'
+        'img', 'i', '[class*="icon"]', '[class*="tooltip"]', '[class*="badge"]', '[class*="category"]',
+        '[class*="categories"]', '[class*="tag"]', '[class*="highlight"]', '[class*="dropdown"]',
+        '[class*="filter"]', '[class*="menu"]', '[class*="nav"]', '[class*="banner"]', '[class*="promo"]',
+        '[class*="popup"]', '[class*="modal"]', '[class*="subscribe"]', '[class*="facet"]', '[class*="search-panel"]',
+        'header', 'footer'
     ].join(',');
 
     const urlKeywords = /\/jobs?\/[0-9a-zA-Z_-]+|\/careers?\/|[?&](jk|jobId)=/i;
@@ -22,11 +24,9 @@ function getSanitizedDOMSnippet() {
         if (urlKeywords.test(href)) score += 3;
         if (jobKeywords.test(text)) score += 3;
         if (a.closest('h1, h2, h3, h4, strong')) score += 2;
-        if (/[0-9]{5,}/.test(href)) score += 2;
+        if (/[0-9]{4,}/.test(href)) score += 2;
 
-        if (score >= 3) {
-            scoredLinks.push({ el: a, score: score });
-        }
+        if (score >= 3) scoredLinks.push({ el: a, score: score });
     }
 
     scoredLinks.sort((a, b) => b.score - a.score);
@@ -37,7 +37,7 @@ function getSanitizedDOMSnippet() {
         while (card && card !== document.body) {
             const tag = card.tagName.toLowerCase();
             const cls = card.className || '';
-            if (tag === 'li' || tag === 'article' || /card|item|job|result/i.test(cls)) {
+            if (tag === 'li' || tag === 'article' || tag === 'tr' || /card|item|job|listing|result/i.test(cls)) {
                 break;
             }
             card = card.parentElement;
@@ -50,57 +50,49 @@ function getSanitizedDOMSnippet() {
         }
     }
 
-    let wrapper = null;
-    if (candidates.length >= 2) {
-        let p = candidates[0].parentElement;
-        if (p && p.contains(candidates[1])) {
-            wrapper = document.createElement(p.tagName);
-            wrapper.className = p.className || '';
-            wrapper.id = p.id || '';
-            wrapper.appendChild(candidates[0].cloneNode(true));
-            wrapper.appendChild(candidates[1].cloneNode(true));
-        }
-    }
+    if (!candidates.length) return '';
 
-    if (!wrapper && candidates.length >= 1) {
-        wrapper = document.createElement('div');
-        wrapper.appendChild(candidates[0].cloneNode(true));
-    }
+    const parentTag = candidates[0].parentElement ? candidates[0].parentElement.tagName.toLowerCase() : 'div';
+    const wrapper = document.createElement(parentTag === 'ul' || parentTag === 'ol' ? parentTag : 'div');
 
-    if (!wrapper) {
-        const fallback = document.querySelector('#native-search-results, main, .search-content') || document.body;
-        wrapper = fallback.cloneNode(true);
-    }
+    for (const card of candidates) {
+        const cardClone = card.cloneNode(true);
+        cardClone.querySelectorAll(ignoreSelectors).forEach(el => el.remove());
 
-    wrapper.querySelectorAll(ignoreSelectors).forEach(el => el.remove());
-
-    const allowedAttrs = ['class', 'id', 'data-testid', 'href', 'data-id'];
-    const allElements = wrapper.querySelectorAll('*');
-    for (const node of allElements) {
-        if (node.tagName.toLowerCase() === 'a' && node.hasAttribute('href')) {
-            node.setAttribute('href', node.getAttribute('href').split('?')[0]);
-        }
-        for (const attr of Array.from(node.attributes)) {
-            if (!allowedAttrs.includes(attr.name)) {
-                node.removeAttribute(attr.name);
-            } else if (attr.name === 'class') {
-                const stableClasses = attr.value
-                    .split(/\s+/)
-                    .filter(c => !/^css-[a-z0-9]+/i.test(c) && !/^[a-z][0-9]{3,}/i.test(c))
-                    .join(' ');
-                if (stableClasses) node.setAttribute('class', stableClasses);
-                else node.removeAttribute('class');
+        const allowedAttrs = ['class', 'id', 'data-testid', 'href'];
+        const allElements = cardClone.querySelectorAll('*');
+        for (const node of allElements) {
+            if (node.tagName.toLowerCase() === 'a' && node.hasAttribute('href')) {
+                node.setAttribute('href', node.getAttribute('href').split('?')[0]);
+            }
+            for (const attr of Array.from(node.attributes)) {
+                if (!allowedAttrs.includes(attr.name)) {
+                    node.removeAttribute(attr.name);
+                } else if (attr.name === 'class') {
+                    const stableClasses = attr.value
+                        .split(/\s+/)
+                        .filter(c => !/^css-[a-z0-9]+/i.test(c) && !/^[a-z][0-9]{3,}/i.test(c) && !/^(feature|boosted|highlight|hasSection)/i.test(c))
+                        .join(' ');
+                    if (stableClasses) node.setAttribute('class', stableClasses);
+                    else node.removeAttribute('class');
+                }
             }
         }
-    }
 
-    const textNodes = [];
-    const walk = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT, null, false);
-    let n;
-    while (n = walk.nextNode()) textNodes.push(n);
-    for (const t of textNodes) {
-        const text = t.textContent.trim();
-        t.textContent = text.length > 30 ? text.slice(0, 30) + '...' : text;
+        const textNodes = [];
+        const walk = document.createTreeWalker(cardClone, NodeFilter.SHOW_TEXT, null, false);
+        let n;
+        while (n = walk.nextNode()) textNodes.push(n);
+        for (const t of textNodes) {
+            const text = t.textContent.trim();
+            if (!text) {
+                t.textContent = '';
+                continue;
+            }
+            t.textContent = text.length > 25 ? text.slice(0, 25) + '...' : text;
+        }
+
+        wrapper.appendChild(cardClone);
     }
 
     return wrapper.innerHTML.replace(/\s+/g, ' ').slice(0, 3000);
