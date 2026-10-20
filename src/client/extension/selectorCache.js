@@ -7,24 +7,26 @@ class SelectorCache {
     }
 
     async init() {
-        const activeSelectors = await db.selectors
-            .where('is_active')
-            .equals(1)
-            .or('is_active')
-            .equals(true)
-            .toArray();
+        try {
+            const allSelectors = await db.selectors.toArray();
+            const activeSelectors = allSelectors.filter(item => Boolean(item.is_active));
 
-        this.cache.clear();
+            this.cache.clear();
 
-        for (const item of activeSelectors) {
-            const pattern = item.url_pattern || 'default';
-            if (!this.cache.has(pattern)) {
-                this.cache.set(pattern, new Map());
+            for (const item of activeSelectors) {
+                const pattern = item.url_pattern || 'default';
+                if (!this.cache.has(pattern)) {
+                    this.cache.set(pattern, new Map());
+                }
+                this.cache.get(pattern).set(item.element_type_id, item.selector_string);
             }
-            this.cache.get(pattern).set(item.element_type_id, item.selector_string);
-        }
 
-        this.isInitialized = true;
+            this.isInitialized = true;
+            console.log(`[AutoOffer SelectorCache] Initialized with ${activeSelectors.length} active selectors.`);
+        } catch (err) {
+            console.error('[AutoOffer SelectorCache] Failed to initialize:', err);
+            throw err;
+        }
     }
 
     getSelectorsForUrl(url) {
@@ -39,6 +41,7 @@ class SelectorCache {
     invalidate() {
         this.cache.clear();
         this.isInitialized = false;
+        console.log('[AutoOffer SelectorCache] Invalidation completed.');
     }
 }
 

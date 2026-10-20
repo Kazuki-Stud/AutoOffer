@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>AutoOffer Popup</title>
     <link rel="stylesheet" href="popup.css">
+    <script src="../kit.js" defer></script>
 </head>
 <body>
 <div class="header-container">
@@ -16,11 +17,62 @@
         </select>
     </div>
 </div>
+
+<div class="automation-section">
+    <h4>Websites Registry</h4>
+    <div class="form-group">
+        <label>Saved Websites:</label>
+        <select id="saved-websites-dropdown">
+            <option value="">-- Choose or add new --</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label>Website Name:</label>
+        <input type="text" id="platform-name" placeholder="ZipRecruiter IE" />
+    </div>
+    <div class="form-group">
+        <label>Website URL:</label>
+        <input type="text" id="platform-url" placeholder="https://www.ziprecruiter.ie/" />
+    </div>
+    <div class="form-group">
+        <label>Search Input Selector:</label>
+        <input type="text" id="platform-search-selector" placeholder="#search-job-keyword, input[name='search']" />
+    </div>
+    <div class="button-group">
+        <button id="save-platform-btn">Save to Registry</button>
+        <button id="use-selected-btn">Use in Task</button>
+    </div>
+</div>
+
+<div class="automation-section">
+    <h4>Automation Runner</h4>
+    <div class="form-group">
+        <label>Websites (one URL per line):</label>
+        <textarea id="target-websites" rows="2" placeholder="https://www.ziprecruiter.ie/"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Roles (comma-separated):</label>
+        <input type="text" id="target-roles" placeholder="Java, Frontend" />
+    </div>
+    <div class="form-group">
+        <label>Target Page Limit:</label>
+        <input type="number" id="pagination-limit" min="1" max="50" value="2" />
+    </div>
+    <div class="button-group">
+        <button id="start-automation">Start Automation</button>
+        <button id="stop-automation">Stop</button>
+    </div>
+</div>
+
+<button id="open-pwa-btn" class="primary-action-btn">Open PWA Dashboard</button>
 <button id="run-task" data-i18n="runTask">Run Parse Task</button>
 <button id="add-site" data-i18n="addSite">Add Current Site</button>
 <button id="auto-guess" data-i18n="autoGuess">Auto-Guess Selectors</button>
 <button id="clear-db" data-i18n="clearDatabase">Clear database</button>
+
+<div id="automation-status" class="status-box">Ready</div>
 <p id="status"></p>
+
 <script type="module" src="popup.js"></script>
 </body>
 </html>
