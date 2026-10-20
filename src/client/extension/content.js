@@ -8,7 +8,8 @@ function getSanitizedDOMSnippet() {
         'header', 'footer'
     ].join(',');
 
-    const urlKeywords = /\/jobs?\/[0-9a-zA-Z_-]+|\/careers?\/|[?&](jk|jobId)=/i;
+    const urlKeywords = /\/(remote-)?jobs?\/[0-9a-zA-Z_-]+|\/careers?\/|[?&](jk|jobId)=/i;
+    const categoryFilter = /\/(categories|category|tags?|locations?|about|faq|login|signup|pricing)\b/i;
     const jobKeywords = /developer|engineer|manager|designer|analyst|remote|specialist|lead|programmer/i;
 
     const allLinks = Array.from(document.querySelectorAll('a[href]'));
@@ -17,16 +18,17 @@ function getSanitizedDOMSnippet() {
     for (const a of allLinks) {
         if (a.closest(ignoreSelectors)) continue;
         const href = a.getAttribute('href') || '';
-        const text = a.textContent.trim();
-        if (text.length < 3 || text.length > 100) continue;
+        if (categoryFilter.test(href)) continue;
 
+        const text = a.textContent.trim();
         let score = 0;
-        if (urlKeywords.test(href)) score += 3;
-        if (jobKeywords.test(text)) score += 3;
-        if (a.closest('h1, h2, h3, h4, strong')) score += 2;
+
+        if (urlKeywords.test(href)) score += 5;
+        if (jobKeywords.test(text) || jobKeywords.test(href)) score += 3;
+        if (a.closest('h1, h2, h3, h4, strong') || a.querySelector('h1, h2, h3, h4, strong')) score += 2;
         if (/[0-9]{4,}/.test(href)) score += 2;
 
-        if (score >= 3) scoredLinks.push({ el: a, score: score });
+        if (score >= 4) scoredLinks.push({ el: a, score: score });
     }
 
     scoredLinks.sort((a, b) => b.score - a.score);
@@ -37,7 +39,7 @@ function getSanitizedDOMSnippet() {
         while (card && card !== document.body) {
             const tag = card.tagName.toLowerCase();
             const cls = card.className || '';
-            if (tag === 'li' || tag === 'article' || tag === 'tr' || /card|item|job|listing|result/i.test(cls)) {
+            if (tag === 'li' || tag === 'article' || tag === 'tr' || /card|item|listing|result|job/i.test(cls)) {
                 break;
             }
             card = card.parentElement;
@@ -50,52 +52,54 @@ function getSanitizedDOMSnippet() {
         }
     }
 
-    if (!candidates.length) return '';
-
-    const parentTag = candidates[0].parentElement ? candidates[0].parentElement.tagName.toLowerCase() : 'div';
-    const wrapper = document.createElement(parentTag === 'ul' || parentTag === 'ol' ? parentTag : 'div');
-
-    for (const card of candidates) {
-        const cardClone = card.cloneNode(true);
-        cardClone.querySelectorAll(ignoreSelectors).forEach(el => el.remove());
-
-        const allowedAttrs = ['class', 'id', 'data-testid', 'href'];
-        const allElements = cardClone.querySelectorAll('*');
-        for (const node of allElements) {
-            if (node.tagName.toLowerCase() === 'a' && node.hasAttribute('href')) {
-                node.setAttribute('href', node.getAttribute('href').split('?')[0]);
-            }
-            for (const attr of Array.from(node.attributes)) {
-                if (!allowedAttrs.includes(attr.name)) {
-                    node.removeAttribute(attr.name);
-                } else if (attr.name === 'class') {
-                    const stableClasses = attr.value
-                        .split(/\s+/)
-                        .filter(c => !/^css-[a-z0-9]+/i.test(c) && !/^[a-z][0-9]{3,}/i.test(c) && !/^(feature|boosted|highlight|hasSection)/i.test(c))
-                        .join(' ');
-                    if (stableClasses) node.setAttribute('class', stableClasses);
-                    else node.removeAttribute('class');
-                }
-            }
+    let wrapper = null;
+    if (candidates.length > 0) {
+        const parentTag = candidates[0].parentElement ? candidates[0].parentElement.tagName.toLowerCase() : 'div';
+        wrapper = document.createElement(parentTag === 'ul' || parentTag === 'ol' ? parentTag : 'div');
+        for (const card of candidates) {
+            wrapper.appendChild(card.cloneNode(true));
         }
-
-        const textNodes = [];
-        const walk = document.createTreeWalker(cardClone, NodeFilter.SHOW_TEXT, null, false);
-        let n;
-        while (n = walk.nextNode()) textNodes.push(n);
-        for (const t of textNodes) {
-            const text = t.textContent.trim();
-            if (!text) {
-                t.textContent = '';
-                continue;
-            }
-            t.textContent = text.length > 25 ? text.slice(0, 25) + '...' : text;
-        }
-
-        wrapper.appendChild(cardClone);
+    } else {
+        const fallback = document.querySelector('main, article, section, .jobs-container, #jobs') || document.body;
+        wrapper = fallback.cloneNode(true);
     }
 
-    return wrapper.innerHTML.replace(/\s+/g, ' ').trim();
+    wrapper.querySelectorAll(ignoreSelectors).forEach(el => el.remove());
+
+    const allowedAttrs = ['class', 'id', 'data-testid', 'href'];
+    const allElements = wrapper.querySelectorAll('*');
+    for (const node of allElements) {
+        if (node.tagName.toLowerCase() === 'a' && node.hasAttribute('href')) {
+            node.setAttribute('href', node.getAttribute('href').split('?')[0]);
+        }
+        for (const attr of Array.from(node.attributes)) {
+            if (!allowedAttrs.includes(attr.name)) {
+                node.removeAttribute(attr.name);
+            } else if (attr.name === 'class') {
+                const stableClasses = attr.value
+                    .split(/\s+/)
+                    .filter(c => !/^css-[a-z0-9]+/i.test(c) && !/^[a-z][0-9]{3,}/i.test(c) && !/^(feature|boosted|highlight|hasSection)/i.test(c))
+                    .join(' ');
+                if (stableClasses) node.setAttribute('class', stableClasses);
+                else node.removeAttribute('class');
+            }
+        }
+    }
+
+    const textNodes = [];
+    const walk = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT, null, false);
+    let n;
+    while (n = walk.nextNode()) textNodes.push(n);
+    for (const t of textNodes) {
+        const text = t.textContent.trim();
+        if (!text) {
+            t.textContent = '';
+            continue;
+        }
+        t.textContent = text.length > 30 ? text.slice(0, 30) + '...' : text;
+    }
+
+    return wrapper.innerHTML.replace(/\s+/g, ' ').slice(0, 3500);
 }
 
 function deriveOptimalSelector(el, scope) {
@@ -108,7 +112,7 @@ function deriveOptimalSelector(el, scope) {
     const validClasses = Array.from(el.classList).filter(c =>
         !/^css-[a-z0-9]+/i.test(c) &&
         !/^[a-z][0-9]{3,}/i.test(c) &&
-        !/active|hover|focus|selected|boosted|feature/i.test(c)
+        !/active|hover|focus|selected|boosted|feature|paid/i.test(c)
     );
 
     if (validClasses.length > 0) {
@@ -132,7 +136,8 @@ function guessSelectorsHeuristically() {
         '[class*="promo"]', '[class*="popup"]', '[class*="modal"]', '[class*="subscribe"]', '[class*="facet"]'
     ].join(',');
 
-    const urlKeywords = /\/jobs?\/[0-9a-zA-Z_-]+|\/careers?\/|[?&](jk|jobId)=/i;
+    const urlKeywords = /\/(remote-)?jobs?\/[0-9a-zA-Z_-]+|\/careers?\/|[?&](jk|jobId)=/i;
+    const categoryFilter = /\/(categories|category|tags?|locations?|about|faq|login|signup|pricing)\b/i;
     const jobKeywords = /developer|engineer|manager|designer|analyst|remote|specialist|lead|programmer/i;
 
     const allLinks = Array.from(document.querySelectorAll('a[href]'));
@@ -141,16 +146,17 @@ function guessSelectorsHeuristically() {
     for (const a of allLinks) {
         if (a.closest(ignoreSelectors)) continue;
         const href = a.getAttribute('href') || '';
-        const text = a.textContent.trim();
-        if (text.length < 3 || text.length > 100) continue;
+        if (categoryFilter.test(href)) continue;
 
+        const text = a.textContent.trim();
         let score = 0;
-        if (urlKeywords.test(href)) score += 3;
-        if (jobKeywords.test(text)) score += 3;
-        if (a.closest('h1, h2, h3, h4, strong')) score += 2;
+
+        if (urlKeywords.test(href)) score += 5;
+        if (jobKeywords.test(text) || jobKeywords.test(href)) score += 3;
+        if (a.closest('h1, h2, h3, h4, strong') || a.querySelector('h1, h2, h3, h4, strong')) score += 2;
         if (/[0-9]{4,}/.test(href)) score += 2;
 
-        if (score >= 3) scoredLinks.push({ el: a, score: score });
+        if (score >= 4) scoredLinks.push({ el: a, score: score });
     }
 
     scoredLinks.sort((a, b) => b.score - a.score);
@@ -163,7 +169,7 @@ function guessSelectorsHeuristically() {
         while (card && card !== document.body) {
             const tag = card.tagName.toLowerCase();
             const cls = card.className || '';
-            if (tag === 'li' || tag === 'article' || tag === 'tr' || /card|item|job|listing|result/i.test(cls)) {
+            if (tag === 'li' || tag === 'article' || tag === 'tr' || /card|item|listing|result|job/i.test(cls)) {
                 break;
             }
             card = card.parentElement;
@@ -188,14 +194,16 @@ function guessSelectorsHeuristically() {
             c2.classList.contains(c) &&
             !/^css-[a-z0-9]+/i.test(c) &&
             !/^[a-z][0-9]{3,}/i.test(c) &&
-            !/active|hover|focus|selected/i.test(c)
+            !/active|hover|focus|selected|boosted|feature/i.test(c)
         );
         const tag = c1.tagName.toLowerCase();
         if (sharedClasses.length > 0) {
             containerSel = `${tag}.${CSS.escape(sharedClasses[0])}`;
-        } else if (c1.parentElement === c2.parentElement) {
-            const pSel = deriveOptimalSelector(c1.parentElement, document.body);
-            containerSel = pSel ? `${pSel} > ${tag}` : tag;
+        } else if (c1.parentElement && c1.parentElement === c2.parentElement) {
+            const p = c1.parentElement;
+            const pClasses = Array.from(p.classList).filter(c => !/^css-[a-z0-9]+/i.test(c));
+            const pSel = pClasses.length > 0 ? `${p.tagName.toLowerCase()}.${CSS.escape(pClasses[0])}` : p.tagName.toLowerCase();
+            containerSel = `${pSel} > ${tag}`;
         } else {
             containerSel = tag;
         }
@@ -203,7 +211,12 @@ function guessSelectorsHeuristically() {
         containerSel = deriveOptimalSelector(c1, document.body);
     }
 
-    const titleEl = linkElements[0].closest('h1, h2, h3, h4') || linkElements[0];
+    let testMatches = document.querySelectorAll(containerSel);
+    if (testMatches.length < 2) {
+        containerSel = `${c1.tagName.toLowerCase()}`;
+    }
+
+    const titleEl = linkElements[0].querySelector('h1, h2, h3, h4, span') || linkElements[0].closest('h1, h2, h3, h4') || linkElements[0];
     const titleSel = deriveOptimalSelector(titleEl, c1);
     const linkSel = deriveOptimalSelector(linkElements[0], c1);
 
