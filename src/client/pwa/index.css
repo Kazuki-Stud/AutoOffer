@@ -116,7 +116,7 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 120px;
+    min-height: 125px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
@@ -132,7 +132,22 @@ body {
     font-weight: 600;
     color: var(--text-main);
     line-height: 1.4;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
+}
+
+.vacancy-link {
+    display: inline-block;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--primary);
+    text-decoration: none;
+    margin-bottom: 12px;
+    width: fit-content;
+}
+
+.vacancy-link:hover {
+    text-decoration: underline;
+    color: var(--primary-hover);
 }
 
 .vacancy-footer {

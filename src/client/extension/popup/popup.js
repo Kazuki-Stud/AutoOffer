@@ -8,12 +8,11 @@ const STORAGE_KEYS = [
     'preferred_locale',
     'automation_websites',
     'automation_roles',
-    'automation_limit',
-    'field_platform_name',
-    'field_platform_url',
-    'field_platform_search_selector',
-    'field_selected_dropdown'
+    'automation_limit'
 ];
+
+let pendingHostnameToConfigure = '';
+let pendingUrlToConfigure = '';
 
 async function applyTranslations(lang) {
     const url = chrome.runtime.getURL('_locales/' + lang + '/messages.json');
@@ -42,25 +41,99 @@ async function updateVacancyCount() {
     }
 }
 
-async function populateSavedWebsitesDropdown() {
-    const dropdown = document.getElementById('saved-websites-dropdown');
-    if (!dropdown) return;
+async function renderPlatformsRegistryList() {
+    const listEl = document.getElementById('platforms-registry-list');
+    if (!listEl) return;
 
-    dropdown.innerHTML = '<option value="">-- Choose or add new --</option>';
+    listEl.innerHTML = '';
     const platforms = await db.platforms_dict.toArray();
+    const allSelectors = await db.selectors.where('element_type_id').equals(ELEMENT_TYPE_SEARCH).toArray();
+
+    if (!platforms.length) {
+        listEl.innerHTML = '<div style="font-size: 11px; color: #64748b; padding: 4px;">No platforms in registry.</div>';
+        return;
+    }
+
     for (const p of platforms) {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = `${p.name || p.code} (${p.url || p.code})`;
-        dropdown.appendChild(opt);
+        const matchedSelector = allSelectors.find(s => s.platform_id === p.id || s.url_pattern === p.code);
+        const selectorValue = matchedSelector ? matchedSelector.selector_string : '';
+
+        const row = document.createElement('div');
+        row.className = 'platform-row';
+
+        const rowHeader = document.createElement('div');
+        rowHeader.className = 'platform-row-header';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'platform-row-title';
+        titleSpan.textContent = `${p.name || p.code} (${p.code})`;
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'platform-row-actions';
+
+        const useBtn = document.createElement('button');
+        useBtn.className = 'action-btn-sm';
+        useBtn.textContent = 'Use';
+        useBtn.addEventListener('click', () => {
+            const area = document.getElementById('target-websites');
+            const lines = area.value.trim().split('\n').filter(Boolean);
+            const target = p.url || `https://${p.code}`;
+            if (!lines.includes(target)) {
+                lines.push(target);
+                area.value = lines.join('\n');
+                chrome.storage.local.set({ automation_websites: area.value });
+            }
+        });
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'action-btn-sm';
+        saveBtn.textContent = 'Save';
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'action-btn-sm delete-btn';
+        delBtn.textContent = 'Del';
+        delBtn.addEventListener('click', () => {
+            chrome.runtime.sendMessage({ action: 'delete_platform', platformId: p.id, hostname: p.code }, async () => {
+                await renderPlatformsRegistryList();
+            });
+        });
+
+        actionsDiv.appendChild(useBtn);
+        actionsDiv.appendChild(saveBtn);
+        actionsDiv.appendChild(delBtn);
+
+        rowHeader.appendChild(titleSpan);
+        rowHeader.appendChild(actionsDiv);
+
+        const inputEl = document.createElement('input');
+        inputEl.className = 'platform-row-input';
+        inputEl.placeholder = 'Search selector (e.g. input#q)';
+        inputEl.value = selectorValue;
+
+        saveBtn.addEventListener('click', () => {
+            const newSelector = inputEl.value.trim();
+            chrome.runtime.sendMessage({
+                action: 'update_platform_search_selector',
+                platformId: p.id,
+                hostname: p.code,
+                selector: newSelector
+            }, async () => {
+                const autoStatus = document.getElementById('automation-status');
+                if (autoStatus) autoStatus.innerText = `Updated selector for ${p.code}`;
+                await renderPlatformsRegistryList();
+            });
+        });
+
+        row.appendChild(rowHeader);
+        row.appendChild(inputEl);
+        listEl.appendChild(row);
     }
 }
 
 function bindAutoSave(elementId, storageKey) {
     const el = document.getElementById(elementId);
     if (!el) return;
-    const evtName = el.tagName === 'SELECT' ? 'change' : 'input';
-    el.addEventListener(evtName, () => {
+    el.addEventListener('input', () => {
         chrome.storage.local.set({ [storageKey]: el.value });
     });
 }
@@ -81,119 +154,126 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (data.automation_websites) document.getElementById('target-websites').value = data.automation_websites;
     if (data.automation_roles) document.getElementById('target-roles').value = data.automation_roles;
     if (data.automation_limit) document.getElementById('pagination-limit').value = data.automation_limit;
-    if (data.field_platform_name) document.getElementById('platform-name').value = data.field_platform_name;
-    if (data.field_platform_url) document.getElementById('platform-url').value = data.field_platform_url;
-    if (data.field_platform_search_selector) document.getElementById('platform-search-selector').value = data.field_platform_search_selector;
-
-    await populateSavedWebsitesDropdown();
-
-    if (data.field_selected_dropdown) {
-        const dropdown = document.getElementById('saved-websites-dropdown');
-        if (dropdown) dropdown.value = data.field_selected_dropdown;
-    }
 
     bindAutoSave('target-websites', 'automation_websites');
     bindAutoSave('target-roles', 'automation_roles');
     bindAutoSave('pagination-limit', 'automation_limit');
-    bindAutoSave('platform-name', 'field_platform_name');
-    bindAutoSave('platform-url', 'field_platform_url');
-    bindAutoSave('platform-search-selector', 'field_platform_search_selector');
-    bindAutoSave('saved-websites-dropdown', 'field_selected_dropdown');
 
+    await renderPlatformsRegistryList();
     await applyTranslations(currentLang);
     await updateVacancyCount();
 });
 
-const openPwaBtn = document.getElementById('open-pwa-btn');
-openPwaBtn?.addEventListener('click', () => {
-    chrome.tabs.create({ url: PWA_DEFAULT_URL });
+const togglePlatformsBtn = document.getElementById('toggle-platforms-btn');
+togglePlatformsBtn?.addEventListener('click', () => {
+    const listEl = document.getElementById('platforms-registry-list');
+    if (!listEl) return;
+    const isHidden = listEl.style.display === 'none';
+    listEl.style.display = isHidden ? 'flex' : 'none';
+    togglePlatformsBtn.textContent = isHidden ? 'Hide' : 'View All';
 });
 
-const dropdown = document.getElementById('saved-websites-dropdown');
-dropdown?.addEventListener('change', async () => {
-    const platformId = dropdown.value;
-    if (!platformId) {
-        document.getElementById('platform-name').value = '';
-        document.getElementById('platform-url').value = '';
-        document.getElementById('platform-search-selector').value = '';
-        await chrome.storage.local.set({
-            field_platform_name: '',
-            field_platform_url: '',
-            field_platform_search_selector: ''
-        });
+const addWebsiteBtn = document.getElementById('add-website-btn');
+addWebsiteBtn?.addEventListener('click', async () => {
+    const rawUrl = document.getElementById('quick-website-url').value.trim();
+    const fallbackBox = document.getElementById('manual-selector-fallback');
+    const autoStatus = document.getElementById('automation-status');
+
+    if (!rawUrl) {
+        if (autoStatus) autoStatus.innerText = 'Please enter a URL.';
         return;
     }
 
-    const platform = await db.platforms_dict.get(platformId);
-    if (!platform) return;
+    let urlObj;
+    try {
+        urlObj = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
+    } catch (e) {
+        if (autoStatus) autoStatus.innerText = 'Invalid URL format.';
+        return;
+    }
 
-    const nameVal = platform.name || '';
-    const urlVal = platform.url || '';
-    document.getElementById('platform-name').value = nameVal;
-    document.getElementById('platform-url').value = urlVal;
+    const hostname = urlObj.hostname;
+    const formattedUrl = urlObj.href;
 
-    const selectorObj = await db.selectors.where('platform_id').equals(platform.id).and(s => s.element_type_id === ELEMENT_TYPE_SEARCH).first();
-    const selVal = selectorObj ? selectorObj.selector_string : (platform.search_selector || '');
-    document.getElementById('platform-search-selector').value = selVal;
+    const baseName = hostname.replace(/^www\./, '').split('.')[0];
+    const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
 
-    await chrome.storage.local.set({
-        field_platform_name: nameVal,
-        field_platform_url: urlVal,
-        field_platform_search_selector: selVal
+    if (autoStatus) autoStatus.innerText = `Inspecting ${hostname}...`;
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const currentTab = tabs[0];
+        const isCurrentlyOnTab = currentTab?.url && currentTab.url.includes(hostname);
+
+        if (isCurrentlyOnTab && currentTab.id) {
+            chrome.tabs.sendMessage(currentTab.id, { action: 'detect_page_selectors_for_registration' }, (res) => {
+                const detectedInput = res?.detected?.searchInput || '';
+                if (detectedInput) {
+                    fallbackBox.style.display = 'none';
+                    savePlatformAndFinish(platformName, formattedUrl, hostname, detectedInput);
+                } else {
+                    promptManualFallback(hostname, formattedUrl);
+                }
+            });
+        } else {
+            savePlatformAndFinish(platformName, formattedUrl, hostname, '');
+        }
     });
 });
 
-const savePlatformBtn = document.getElementById('save-platform-btn');
-savePlatformBtn?.addEventListener('click', async () => {
-    const name = document.getElementById('platform-name').value.trim();
-    const url = document.getElementById('platform-url').value.trim();
-    const searchSelector = document.getElementById('platform-search-selector').value.trim();
+function promptManualFallback(hostname, url) {
+    pendingHostnameToConfigure = hostname;
+    pendingUrlToConfigure = url;
+    const fallbackBox = document.getElementById('manual-selector-fallback');
+    if (fallbackBox) fallbackBox.style.display = 'block';
     const autoStatus = document.getElementById('automation-status');
+    if (autoStatus) autoStatus.innerText = `Search field not detected for ${hostname}. Please enter selector manually.`;
+}
 
-    if (!url) {
-        if (autoStatus) autoStatus.innerText = 'Website URL is required.';
-        return;
-    }
-
-    let hostname = '';
-    try {
-        hostname = new URL(url).hostname;
-    } catch (e) {
-        hostname = url;
-    }
-
-    const platformName = name || hostname;
-
+function savePlatformAndFinish(name, url, hostname, searchSelector) {
     chrome.runtime.sendMessage({
         action: 'register_platform_data',
         platform: {
-            name: platformName,
+            name: name,
             url: url,
             hostname: hostname,
             searchSelector: searchSelector
         }
     }, async (res) => {
+        const autoStatus = document.getElementById('automation-status');
         if (res && res.success) {
-            if (autoStatus) autoStatus.innerText = `Saved ${platformName} to registry.`;
-            await populateSavedWebsitesDropdown();
+            if (autoStatus) autoStatus.innerText = `Platform ${name} saved.`;
+            document.getElementById('quick-website-url').value = '';
+            document.getElementById('manual-selector-fallback').style.display = 'none';
+
+            const area = document.getElementById('target-websites');
+            const lines = area.value.trim().split('\n').filter(Boolean);
+            if (!lines.includes(url)) {
+                lines.push(url);
+                area.value = lines.join('\n');
+                chrome.storage.local.set({ automation_websites: area.value });
+            }
+            await renderPlatformsRegistryList();
         } else {
             if (autoStatus) autoStatus.innerText = res ? res.error : 'Save failed.';
         }
     });
+}
+
+const saveManualSelectorBtn = document.getElementById('save-manual-selector-btn');
+saveManualSelectorBtn?.addEventListener('click', () => {
+    const selector = document.getElementById('manual-search-selector').value.trim();
+    if (!selector) return;
+
+    const baseName = pendingHostnameToConfigure.replace(/^www\./, '').split('.')[0];
+    const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+
+    savePlatformAndFinish(platformName, pendingUrlToConfigure, pendingHostnameToConfigure, selector);
+    document.getElementById('manual-search-selector').value = '';
 });
 
-const useSelectedBtn = document.getElementById('use-selected-btn');
-useSelectedBtn?.addEventListener('click', async () => {
-    const url = document.getElementById('platform-url').value.trim();
-    if (!url) return;
-
-    const area = document.getElementById('target-websites');
-    const existing = area.value.trim().split('\n').filter(Boolean);
-    if (!existing.includes(url)) {
-        existing.push(url);
-    }
-    area.value = existing.join('\n');
-    await chrome.storage.local.set({ automation_websites: area.value });
+const openPwaBtn = document.getElementById('open-pwa-btn');
+openPwaBtn?.addEventListener('click', () => {
+    chrome.tabs.create({ url: PWA_DEFAULT_URL });
 });
 
 const selectElement = document.getElementById('lang-select');
@@ -265,25 +345,6 @@ chrome.runtime.onMessage.addListener((msg) => {
     }
 });
 
-const runTaskButton = document.getElementById('run-task');
-runTaskButton?.addEventListener('click', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab?.url) return;
-
-    chrome.runtime.sendMessage({
-        action: 'run_parse_task_for_tab',
-        tabId: tab.id,
-        tabUrl: tab.url
-    }, async (response) => {
-        const statusElement = document.getElementById('status');
-        if (response && !response.success && statusElement) {
-            statusElement.innerText = response.error;
-        } else {
-            await updateVacancyCount();
-        }
-    });
-});
-
 const addSiteButton = document.getElementById('add-site');
 addSiteButton?.addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -291,21 +352,19 @@ addSiteButton?.addEventListener('click', async () => {
 
     const autoStatus = document.getElementById('automation-status');
     const hostname = new URL(tab.url).hostname;
+    document.getElementById('quick-website-url').value = tab.url;
 
     chrome.tabs.sendMessage(tab.id, { action: 'detect_page_selectors_for_registration' }, async (response) => {
-        document.getElementById('platform-name').value = hostname;
-        document.getElementById('platform-url').value = tab.url;
-        let searchInputVal = '';
-        if (response && response.detected && response.detected.searchInput) {
-            searchInputVal = response.detected.searchInput;
-            document.getElementById('platform-search-selector').value = searchInputVal;
+        const detectedInput = response?.detected?.searchInput || '';
+        const baseName = hostname.replace(/^www\./, '').split('.')[0];
+        const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+
+        if (detectedInput) {
+            savePlatformAndFinish(platformName, tab.url, hostname, detectedInput);
+            if (autoStatus) autoStatus.innerText = `Auto-registered ${hostname} with detected search field.`;
+        } else {
+            promptManualFallback(hostname, tab.url);
         }
-        await chrome.storage.local.set({
-            field_platform_name: hostname,
-            field_platform_url: tab.url,
-            field_platform_search_selector: searchInputVal
-        });
-        if (autoStatus) autoStatus.innerText = `Detected configuration for ${hostname}.`;
     });
 });
 

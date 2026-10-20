@@ -19,36 +19,37 @@
 </div>
 
 <div class="automation-section">
-    <h4>Websites Registry</h4>
+    <h4>Add Website</h4>
     <div class="form-group">
-        <label>Saved Websites:</label>
-        <select id="saved-websites-dropdown">
-            <option value="">-- Choose or add new --</option>
-        </select>
+        <label>Job Search or Platform URL:</label>
+        <div class="inline-input-group">
+            <input type="text" id="quick-website-url" placeholder="https://example.com/jobs" />
+            <button id="add-website-btn">Add</button>
+        </div>
     </div>
-    <div class="form-group">
-        <label>Website Name:</label>
-        <input type="text" id="platform-name" placeholder="ZipRecruiter IE" />
+    <div id="manual-selector-fallback" class="manual-selector-box" style="display: none;">
+        <label>Search Input Selector Required:</label>
+        <p class="helper-text">Search field was not automatically detected. Please specify its CSS selector:</p>
+        <div class="inline-input-group">
+            <input type="text" id="manual-search-selector" placeholder="input#q, input[name='search']" />
+            <button id="save-manual-selector-btn">Save</button>
+        </div>
     </div>
-    <div class="form-group">
-        <label>Website URL:</label>
-        <input type="text" id="platform-url" placeholder="https://www.ziprecruiter.ie/" />
+</div>
+
+<div class="automation-section">
+    <div class="section-header-toggle">
+        <h4>Saved Platforms</h4>
+        <button id="toggle-platforms-btn" class="text-toggle-btn">View All</button>
     </div>
-    <div class="form-group">
-        <label>Search Input Selector:</label>
-        <input type="text" id="platform-search-selector" placeholder="#search-job-keyword, input[name='search']" />
-    </div>
-    <div class="button-group">
-        <button id="save-platform-btn">Save to Registry</button>
-        <button id="use-selected-btn">Use in Task</button>
-    </div>
+    <div id="platforms-registry-list" class="platforms-list" style="display: none;"></div>
 </div>
 
 <div class="automation-section">
     <h4>Automation Runner</h4>
     <div class="form-group">
         <label>Websites (one URL per line):</label>
-        <textarea id="target-websites" rows="2" placeholder="https://www.ziprecruiter.ie/"></textarea>
+        <textarea id="target-websites" rows="2" placeholder="https://example.com/jobs"></textarea>
     </div>
     <div class="form-group">
         <label>Roles (comma-separated):</label>
@@ -65,7 +66,6 @@
 </div>
 
 <button id="open-pwa-btn" class="primary-action-btn">Open PWA Dashboard</button>
-<button id="run-task" data-i18n="runTask">Run Parse Task</button>
 <button id="add-site" data-i18n="addSite">Add Current Site</button>
 <button id="auto-guess" data-i18n="autoGuess">Auto-Guess Selectors</button>
 <button id="clear-db" data-i18n="clearDatabase">Clear database</button>

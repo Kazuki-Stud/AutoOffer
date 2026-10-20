@@ -83,6 +83,16 @@ function renderList(list) {
         titleEl.className = 'vacancy-title';
         titleEl.textContent = item.full_position_name || 'Untitled Position';
 
+        const linkEl = document.createElement('a');
+        linkEl.className = 'vacancy-link';
+        linkEl.href = item.url || '#';
+        linkEl.target = '_blank';
+        linkEl.rel = 'noopener noreferrer';
+        linkEl.textContent = 'Open original posting ->';
+        linkEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
         const footerEl = document.createElement('div');
         footerEl.className = 'vacancy-footer';
 
@@ -92,6 +102,7 @@ function renderList(list) {
         footerEl.innerHTML = `<span>${dateStr}</span><span class="ao-pill" data-status="${hasDesc ? 'complete' : 'basic'}">${hasDesc ? 'Complete' : 'Basic'}</span>`;
 
         card.appendChild(titleEl);
+        card.appendChild(linkEl);
         card.appendChild(footerEl);
 
         card.addEventListener('click', () => {

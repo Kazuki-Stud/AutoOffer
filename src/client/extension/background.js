@@ -107,7 +107,6 @@ async function getOrRegisterPlatform(hostname, url) {
             url: url || `https://${hostname}`
         };
         await db.platforms_dict.add(platform);
-        console.log(`[AutoOffer Background] Registered platform:`, platform);
     }
     return platform;
 }
@@ -334,7 +333,6 @@ async function runAutomationPipeline(config) {
                     await waitForTabLoad(tabId);
 
                     if (!paginationAdvanceResult || !paginationAdvanceResult.advanced) {
-                        console.log(`[AutoOffer Automation] No further pagination elements available for ${hostname}`);
                         break;
                     }
                 }
@@ -423,6 +421,58 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'delete_platform') {
+        (async () => {
+            const { platformId, hostname } = request;
+            if (platformId) {
+                await db.platforms_dict.delete(platformId);
+            }
+            if (hostname) {
+                await db.selectors.where('url_pattern').equals(hostname).delete();
+            }
+            sendResponse({ success: true });
+        })().catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'update_platform_search_selector') {
+        (async () => {
+            const { platformId, hostname, selector } = request;
+            let platform = await db.platforms_dict.get(platformId);
+            if (!platform && hostname) {
+                platform = await db.platforms_dict.where('code').equals(hostname).first();
+            }
+            if (platform) {
+                const existing = await db.selectors
+                    .where('url_pattern')
+                    .equals(hostname)
+                    .and(s => s.element_type_id === ELEMENT_TYPES.SEARCH_INPUT)
+                    .first();
+
+                if (existing) {
+                    await db.selectors.update(existing.id, {
+                        selector_string: selector,
+                        is_active: 1,
+                        updated_at: new Date().toISOString()
+                    });
+                } else if (selector) {
+                    await db.selectors.add({
+                        id: crypto.randomUUID(),
+                        platform_id: platform.id,
+                        task_id: '33333333-1111-1111-1111-111111111111',
+                        element_type_id: ELEMENT_TYPES.SEARCH_INPUT,
+                        url_pattern: hostname,
+                        selector_string: selector,
+                        is_active: 1,
+                        updated_at: new Date().toISOString()
+                    });
+                }
+            }
+            sendResponse({ success: true });
+        })().catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
     if (request.action === 'start_automation_workflow') {
         if (activeAutomationSession) {
             sendResponse({ success: false, error: 'Automation workflow already running.' });
@@ -463,24 +513,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         saveVacancies(request.hostname, request.vacancies || [])
             .then(() => sendResponse({ success: true }))
             .catch(err => sendResponse({ success: false, error: err.message }));
-        return true;
-    }
-
-    if (request.action === 'run_parse_task_for_tab') {
-        (async () => {
-            const hostname = new URL(request.tabUrl).hostname;
-            const selectors = await getSelectorsForHostname(hostname);
-            if (!selectors) {
-                sendResponse({ success: false, error: 'No configured selectors for host: ' + hostname });
-                return;
-            }
-            chrome.tabs.sendMessage(request.tabId, {
-                action: 'run_task_with_selectors',
-                selectors: selectors
-            }, (tabResponse) => {
-                sendResponse(tabResponse || { success: true });
-            });
-        })().catch(err => sendResponse({ success: false, error: err.message }));
         return true;
     }
 });
