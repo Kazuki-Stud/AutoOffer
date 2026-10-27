@@ -2,66 +2,62 @@
 
 ## Target Audience
 
-**Primary:** active job seekers who apply to many vacancies on several platforms, in particular IT professionals and graduates (junior and middle level), who are comfortable installing a browser extension.
+### Primary Audience
+- **Active Job Seekers:** Individuals who need to apply to dozens of postings across platforms. They need to reduce mechanical form-filling overhead, assess resume fit quickly, and track applications in one place.
+- **Employed** Individuals who selectively explore new positions while employed. They require a broad search across various roles and similar tech stacks to either transition to a more convenient workplace or increase their compensation.
 
-**Secondary:** passive job seekers who want to monitor the market and understand which skills are in demand.
+### Secondary Audience
+- **Career Changers** Individuals transitioning into tech who must understand which tools and frameworks are most in-demand to guide their learning.
+---
 
-**Key characteristics**
+## User Personas
 
-- Use a desktop browser for searching and applying, and a smartphone for monitoring.
-- Care about privacy of personal data and about the safety of their accounts on job platforms.
-- Apply to dozens of vacancies and value tracking and prioritization.
+### Persona 1: Anna — Junior Frontend Developer (Active Job Seeker)
+- **Demographics:** 23 years old, recent computer science graduate, applying to junior/intern roles.
+- **Behavior:** Spends 3–4 hours daily checking Indeed and LinkedIn; manually sends 8–12 applications daily with minimal resume customization.
+- **Frustrations:** Disorganized application tracking; feels overwhelmed reading lengthy job descriptions to spot junior-friendly skill sets; receives low response rates due to generic cover letters.
+- **System Value:**
+    - *Current Core:* Automated vacancy collection for "Frontend Developer" across multiple platforms into a single dashboard.
+    - *Future Enhancements:* AI match score highlighting missing skills; automated generation of personalized cover letters.
 
-## Personas
+### Persona 2: Mikhail — Senior Backend Engineer (Passive Job Seeker)
+- **Demographics:** 34 years old, employed backend engineer with 8 years of Java/Spring experience.
+- **Behavior:** Explores senior positions 2–3 evenings a week; applies only to highly relevant vacancies; maintains distinct resume versions.
+- **Frustrations:** Refuses third-party "auto-apply" tools that require cloud account credentials; lacks time to manually retype personal data into company job portals.
+- **System Value:**
+    - *Current Core:* All data and sessions remain on his local machine; zero external telemetry.
+    - *Future Enhancements:* Semi-automated form filling with mandatory manual confirmation; versioned resume profile selection per vacancy.
 
-### Persona 1: Anna, Junior Developer (primary)
+### Persona 3: Olga — Career Changer (Mobile-First Market Monitor)
+- **Demographics:** 30 years old, transitioning from digital marketing into data analytics.
+- **Behavior:** Reviews market trends and vacancies primarily on her tablet/smartphone during commutes.
+- **Frustrations:** Desktop-bound tools; uncertainty regarding which analytical tools (Python vs. R, PowerBI vs. Tableau) employers demand.
+- **System Value:**
+    - *Current Core:* Responsive PWA dashboard allowing offline browsing of captured listings and status tracking on mobile viewports.
+    - *Future Enhancements:* "Hot words" skills analytics charts displaying relative demand frequencies for targeted job titles.
 
-| | |
-|---|---|
-| **Age / background** | 23, recently graduated in computer science |
-| **Goal** | Get a first job in software development quickly |
-| **Behavior** | Applies to 5–10 vacancies a day across several platforms; sends largely the same cover letter |
-| **Frustrations** | Spends hours on forms, receives few replies, unsure what skills employers want |
-| **What she needs from the system** | Match score to focus on the right vacancies, tailored letters, one place to track applications, skills analytics to guide learning |
+---
 
-### Persona 2: Mikhail, Experienced Specialist (primary)
+## Stakeholder Matrix
 
-| | |
-|---|---|
-| **Age / background** | 35, backend engineer with 10 years of experience, employed |
-| **Goal** | Find a better position without exposing his search to his current employer |
-| **Behavior** | Checks the market in the evening; applies selectively; keeps several resume variants |
-| **Frustrations** | Does not trust third-party services with credentials and data; little time |
-| **What he needs from the system** | Local-only data storage, resume variant choice per application, semi-automated mode with a final manual confirmation |
+| Stakeholder                        | Category              | Primary Interest                                                    | System Impact | Management & Engagement Strategy                                                   |
+|------------------------------------|-----------------------|---------------------------------------------------------------------|---------------|------------------------------------------------------------------------------------|
+| **Job Seekers**                    | Primary User          | Efficiency, privacy, tracking, tailored applications                | High          | Direct user interface design, local-first storage, transparent automation controls |
+| **Artsiom Chyslou**                | Author / Developer    | Complete system implementation and academic degree defense          | High          | Architecture design, iterative implementation of Phase 1 and Phase 2               |
+| **Yuriy Mischeryakov**             | Academic Supervisor   | Methodological rigor, technical quality, documentation completeness | High          | Regular project reviews, formal milestone demonstrations                           |
+| **European Humanities University** | Academic Institution  | Compliance with thesis and informatics program criteria             | High          | Adherence to evaluation criteria, reproducible builds, academic integrity          |
+| **Job Platforms**                  | External Environment  | Platform availability, abuse prevention, terms compliance           | High          | Gentle scraping rates, human-paced tab navigation, client-side session handling    |
+| **AI API Providers**               | Infrastructure Vendor | Model availability, compliance with usage policies                  | Medium        | Abstracted AI proxy interfaces, token caching, local fallback support              |
+| **Web Browser Vendors**            | Platform Host         | Manifest V3 compliance, permission security                         | High          | Strict adherence to least-privilege permissions, declarative data exchange         |
 
-### Persona 3: Olga, Career Changer on Mobile (secondary)
+---
 
-| | |
-|---|---|
-| **Age / background** | 29, moving from marketing to data analysis |
-| **Goal** | Understand the target market and apply to suitable roles |
-| **Behavior** | Reviews vacancies and statuses mostly from her phone during commutes |
-| **Frustrations** | Desktop-only tools, uncertainty about required skills |
-| **What she needs from the system** | Mobile-friendly dashboard, hot-words analytics for her target role, quick approval of prepared applications |
+## Stakeholder Needs vs. Architectural Mapping
 
-## Other Stakeholders
-
-| Stakeholder | Interest | Influence | Notes |
-|---|---|---|---|
-| Project author | Delivers a working system and documentation | High | Artsiom Chyslou |
-| Supervisor | Evaluates the project against the university requirements | High | Yuriy Mischeryakov |
-| European Humanities University | Quality and compliance of the diploma project | Medium | Sets documentation and evaluation rules |
-| Job platforms | Their sites are scraped and applications are submitted to them | High (can change layouts, block automation, change terms) | Not a direct user; the main external risk |
-| Employers| Receive applications | Low | Receive higher-quality, better-targeted applications |
-| Community contributors | Share working selectors and form mappings | Medium | Contributions must be validated before distribution |
-| AI provider | Supplies language-model API used for matching and letters | Medium | Rate limits, cost and availability affect the AI features |
-| Browser vendor| Reviews and distributes the extension | High | Policies constrain what the extension may do |
-
-## Stakeholder Needs Summary
-
-| Stakeholder | Need | Addressed by |
-|---|---|---|
-| Job seekers | Less manual work, better targeting | Scraping, match score, letter generation, auto-fill |
-| Job seekers | Privacy and control | Local storage, anonymous onboarding, user confirmation before sending |
-| Job seekers | Overview and mobile access | PWA dashboard, adaptive UI, status tracking |
-| Platform owners | Not overloaded or abused | Distributed low-rate scraping, user-in-the-loop for captchas |
+| Stakeholder Group           | Identified Need                            | Implemented Architectural Feature (Phase 1 Core)                            | Planned Roadmap Feature (Phase 2 Future)                  |
+|-----------------------------|--------------------------------------------|-----------------------------------------------------------------------------|-----------------------------------------------------------|
+| **Active Job Seekers**      | Unified aggregation across disparate sites | Background tab automation pipeline capturing vacancy lists and detail texts | Centralized vacancy deduplication and ingestion pipeline  |
+| **Active Job Seekers**      | Quick vacancy assessment & tailoring       | PWA detailed modal inspector rendering full description texts               | AI match scoring and tailored cover letter generation     |
+| **Privacy-Conscious Users** | Zero data leaks; account safety            | Local storage via Dexie.js; PWA sync via direct extension messaging bridge  | Device-derived anonymous onboarding; client-side AI proxy |
+| **Mobile Users**            | Monitoring on phones and tablets           | Responsive PWA dashboard with offline Service Worker support                | Synchronized cross-device preferences using anonymous IDs |
+| **Platform Operators**      | No server overload or abusive requests     | Low-frequency, sequential client-side browser tab navigation                | Client rate throttling, manual captcha resolution         |
