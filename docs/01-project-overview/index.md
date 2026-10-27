@@ -2,6 +2,7 @@
 
 ## Executive Summary
 
+AutoOffer is an information system that automates the most repetitive parts of a job search: finding relevant vacancies across several job platforms, judging how well they fit a candidate resume, writing a tailored cover letter, and submitting the application.
 
 The system has three main parts:
 
