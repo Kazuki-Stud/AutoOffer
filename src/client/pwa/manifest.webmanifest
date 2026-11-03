@@ -3,8 +3,8 @@
   "short_name": "AutoOffer",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#2563eb",
+  "background_color": "#030712",
+  "theme_color": "#081329",
   "icons": [
     {
       "src": "icon.png",

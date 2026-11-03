@@ -39,6 +39,18 @@ async function saveVacanciesToLocal(vacancies) {
     });
 }
 
+async function clearStoredVacancies() {
+    const db = await openIndexedDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+
 let cachedVacancies = [];
 
 async function refreshDisplay() {
@@ -88,7 +100,13 @@ function renderList(list) {
         linkEl.href = item.url || '#';
         linkEl.target = '_blank';
         linkEl.rel = 'noopener noreferrer';
-        linkEl.textContent = 'Open original posting ->';
+        linkEl.innerHTML = `
+            <span>Open original</span>
+            <svg class="link-circle-arrow" viewBox="0 0 20 20" fill="currentColor" width="15" height="15">
+                <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
+                <path d="M8.5 7l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+        `;
         linkEl.addEventListener('click', (e) => {
             e.stopPropagation();
         });
@@ -96,10 +114,12 @@ function renderList(list) {
         const footerEl = document.createElement('div');
         footerEl.className = 'vacancy-footer';
 
-        const dateStr = item.created_at ? new Date(item.created_at).toLocaleDateString() : '';
         const hasDesc = Boolean(item.description && item.description.length > 50);
 
-        footerEl.innerHTML = `<span>${dateStr}</span><span class="ao-pill" data-status="${hasDesc ? 'complete' : 'basic'}">${hasDesc ? 'Complete' : 'Basic'}</span>`;
+        footerEl.innerHTML = `
+            <span class="vacancy-date">${dateStr}</span>
+            <span class="ao-pill" data-status="${hasDesc ? 'complete' : 'basic'}">${hasDesc ? 'Complete' : 'Basic'}</span>
+        `;
 
         card.appendChild(titleEl);
         card.appendChild(linkEl);
@@ -118,38 +138,64 @@ function renderList(list) {
     }
 }
 
-async function syncFromExtension() {
-    const extId = document.getElementById('extension-id-input').value.trim();
+function setSyncStatus(text, type = 'normal') {
     const statusEl = document.getElementById('sync-status');
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.className = `sync-status-indicator ${type}`;
+}
+
+async function syncFromExtension() {
+    const extId = document.getElementById('extension-id-input')?.value.trim();
 
     if (!extId) {
-        if (statusEl) statusEl.textContent = 'Please enter Extension ID.';
+        setSyncStatus('Extension ID.', 'error');
         return;
     }
 
     localStorage.setItem('autooffer_extension_id', extId);
-    if (statusEl) statusEl.textContent = 'Contacting extension...';
+    setSyncStatus('Contacting extension', 'active');
 
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-        if (statusEl) statusEl.textContent = 'Chrome extension API not available in this browser context.';
+        setSyncStatus('Chrome extension API not available in this browser context.', 'error');
         return;
     }
 
     chrome.runtime.sendMessage(extId, { action: 'get_vacancies' }, async (response) => {
         if (chrome.runtime.lastError) {
-            if (statusEl) statusEl.textContent = `Sync failed: ${chrome.runtime.lastError.message}`;
+            setSyncStatus(`Sync failed: ${chrome.runtime.lastError.message}`, 'error');
             return;
         }
 
         if (response && response.status === 'success' && Array.isArray(response.data)) {
             await saveVacanciesToLocal(response.data);
             await refreshDisplay();
-            if (statusEl) statusEl.textContent = `Synced ${response.data.length} vacancies.`;
+            setSyncStatus(`Synced ${response.data.length} vacancies.`, 'success');
         } else {
-            if (statusEl) statusEl.textContent = response ? response.message : 'No response from extension.';
+            setSyncStatus(response?.message || 'No response from extension.', 'error');
         }
     });
 }
+
+function updateThemeToggleUI() {
+    const currentTheme = window.AoTheme ? window.AoTheme.getTheme() : (document.documentElement.getAttribute('data-theme') || 'dark');
+    const sunIcon = document.querySelector('.theme-icon.sun-icon');
+    const moonIcon = document.querySelector('.theme-icon.moon-icon');
+
+    if (currentTheme === 'dark') {
+        moonIcon?.classList.add('active');
+        sunIcon?.classList.remove('active');
+    } else {
+        sunIcon?.classList.add('active');
+        moonIcon?.classList.remove('active');
+    }
+}
+
+window.clearVacancies = async function () {
+    await clearStoredVacancies();
+    await refreshDisplay();
+    setSyncStatus('Vacancies cleared.', 'normal');
+};
 
 document.addEventListener('DOMContentLoaded', async () => {
     if ('serviceWorker' in navigator) {
@@ -158,9 +204,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const savedExtId = localStorage.getItem('autooffer_extension_id') || '';
     const extInput = document.getElementById('extension-id-input');
-    if (extInput) extInput.value = savedExtId;
+    if (extInput && savedExtId) extInput.value = savedExtId;
+
+    updateThemeToggleUI();
+
+    document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
+        if (window.AoTheme) {
+            window.AoTheme.toggleTheme();
+            updateThemeToggleUI();
+        }
+    });
+
+    window.addEventListener('ao-theme-changed', () => {
+        updateThemeToggleUI();
+    });
+
+    document.getElementById('extension-toggle-btn')?.addEventListener('click', () => {
+        const input = document.getElementById('extension-id-input');
+        if (input) {
+            input.focus();
+            input.select();
+            setSyncStatus('Enter your Chrome Extension ID here to sync.', 'active');
+        }
+    });
 
     await refreshDisplay();
+
+    document.getElementById('clear-btn')?.addEventListener('click', async () => {
+        await clearStoredVacancies();
+        await refreshDisplay();
+        setSyncStatus('All vacancies cleared.', 'normal');
+    });
+
+    document.getElementById('load-demo-btn')?.addEventListener('click', async () => {
+        await refreshDisplay();
+        setSyncStatus('Loaded vacancies.', 'success');
+    });
 
     document.getElementById('sync-btn')?.addEventListener('click', () => {
         syncFromExtension();
@@ -168,6 +247,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('filter-input')?.addEventListener('input', (e) => {
         const val = e.target.value.toLowerCase().trim();
+        if (!val) {
+            renderList(cachedVacancies);
+            return;
+        }
         const filtered = cachedVacancies.filter(v =>
             (v.full_position_name && v.full_position_name.toLowerCase().includes(val)) ||
             (v.description && v.description.toLowerCase().includes(val))
