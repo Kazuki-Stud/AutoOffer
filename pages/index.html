@@ -1,29 +1,67 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoOffer</title>
-    <link rel="manifest" href="/assets/manifest-CQvfWrVk.webmanifest">
-
-    <script src="kit.js" defer></script>
-  <script type="module" crossorigin src="/assets/index-DyYsixmc.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BMSKLGnC.css">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="index.css">
+    <script src="kit.js"></script>
 </head>
 <body>
 <div class="layout-container">
     <header class="app-header">
-        <div class="header-main">
-            <h2>AutoOffer</h2>
-            <div class="header-controls">
-                <input type="text" id="extension-id-input" placeholder="Extension ID (for sync)" />
-                <button id="sync-btn" class="primary-btn">Sync</button>
+        <div class="header-top-row">
+            <h1 class="header-brand-title">AutoOffer</h1>
+            <div class="header-actions">
+                <button id="extension-toggle-btn" class="header-icon-btn" title="Extension Connection & ID" aria-label="Extension connection">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="6" height="6" rx="1.5"></rect>
+                        <rect x="15" y="3" width="6" height="6" rx="1.5"></rect>
+                        <rect x="15" y="15" width="6" height="6" rx="1.5"></rect>
+                        <rect x="3" y="15" width="6" height="6" rx="1.5"></rect>
+                        <circle cx="12" cy="12" r="2.5"></circle>
+                        <path d="M9 6h6M6 9v6M18 9v6M9 18h6"></path>
+                    </svg>
+                </button>
+                <button id="theme-toggle-btn" class="theme-toggle-pill" aria-label="Toggle theme" title="Switch Theme">
+                    <span class="theme-icon sun-icon">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="4"></circle>
+                            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+                        </svg>
+                    </span>
+                    <span class="theme-icon moon-icon">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+                        </svg>
+                    </span>
+                </button>
             </div>
         </div>
-        <div class="search-filter-bar">
-            <input type="text" id="filter-input" placeholder="Search vacancies or keywords..." />
-            <span id="sync-status" class="sync-status-indicator">Idle</span>
+
+        <div class="header-controls-row">
+            <div class="search-input-wrap">
+                <input type="text" id="filter-input" placeholder="Search vacancies or keywords..." autocomplete="off" />
+                <span class="search-input-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
+                        <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
+                    </svg>
+                </span>
+            </div>
+
+            <div class="header-sync-group">
+                <div id="sync-status-row" class="sync-status-row">
+                    <span id="sync-status" class="sync-status-indicator">Idle</span>
+                </div>
+                <input type="text" id="extension-id-input" placeholder="Extension ID" title="" autocomplete="off" />
+                <button id="sync-btn" class="sync-button">Sync</button>
+                <button id="clear-btn" class="clear-button" title="Clear all vacancies">Clear</button>
+            </div>
         </div>
+
+
     </header>
 
     <div class="stats-wrapper">
@@ -33,13 +71,20 @@
     <main class="content-area">
         <div id="vacancies-grid" class="vacancies-grid"></div>
         <div id="empty-state" class="empty-state" style="display: none;">
-            <p>No vacancies currently synchronized. Enter your Extension ID and click Sync.</p>
+            <div class="empty-icon-box">
+                <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                </svg>
+            </div>
+            <h3>No Vacancies Found</h3>
+            <p>No vacancies currently synchronized. Enter your Extension ID and click Sync</p>
         </div>
     </main>
 
     <ao-modal id="vacancy-modal"></ao-modal>
 </div>
 
-
+<script type="module" src="index.js"></script>
 </body>
 </html>
