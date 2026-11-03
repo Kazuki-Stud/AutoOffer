@@ -6,7 +6,7 @@
     "build": "vite build",
     "watch": "vite build --watch",
     "dev:extension": "vite build --watch",
-    "dev:pwa": "vite src/client/pwa --port 5173",
+    "dev:pwa": "vite src/client/pwa --port 5173 --host",
     "build:pwa": "vite build src/client/pwa"
   },
   "dependencies": {
