@@ -19,3 +19,4 @@ yarn-error.log*
 /dist-pwa
 *.bat
 *.docx
+/docs/old
