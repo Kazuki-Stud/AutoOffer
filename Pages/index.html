@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoOffer Hub</title>
-    <link rel="manifest" href="/assets/manifest-CQvfWrVk.webmanifest">
+    <title>AutoOffer</title>
+    <link rel="manifest" href="/assets/manifest-CQvfWrVk.webmanifest">
+
     <script src="kit.js" defer></script>
   <script type="module" crossorigin src="/assets/index-DyYsixmc.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BMSKLGnC.css">
@@ -13,10 +14,10 @@
 <div class="layout-container">
     <header class="app-header">
         <div class="header-main">
-            <h2>AutoOffer PWA Hub</h2>
+            <h2>AutoOffer</h2>
             <div class="header-controls">
                 <input type="text" id="extension-id-input" placeholder="Extension ID (for sync)" />
-                <button id="sync-btn" class="primary-btn">Sync from Extension</button>
+                <button id="sync-btn" class="primary-btn">Sync</button>
             </div>
         </div>
         <div class="search-filter-bar">
@@ -32,12 +33,13 @@
     <main class="content-area">
         <div id="vacancies-grid" class="vacancies-grid"></div>
         <div id="empty-state" class="empty-state" style="display: none;">
-            <p>No vacancies currently synchronized. Enter your Extension ID and click "Sync from Extension".</p>
+            <p>No vacancies currently synchronized. Enter your Extension ID and click Sync.</p>
         </div>
     </main>
 
     <ao-modal id="vacancy-modal"></ao-modal>
 </div>
-
+
+
 </body>
 </html>
