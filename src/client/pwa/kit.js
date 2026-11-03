@@ -290,7 +290,11 @@
 
     class AoStats extends HTMLElement {
         connectedCallback() {
-            const raw = this.textContent.trim();
+            this.render(this.textContent);
+        }
+
+        render(rawText) {
+            const raw = (rawText !== undefined ? rawText : this.textContent).trim();
             this.innerHTML = '';
             const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
             for (const line of lines) {
@@ -355,6 +359,22 @@
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
     }
+
+    window.AoTheme = {
+        getTheme: () => document.documentElement.getAttribute('data-theme') || 'dark',
+        setTheme: (theme) => {
+            const next = theme === 'light' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('ao_theme', next);
+            window.dispatchEvent(new CustomEvent('ao-theme-changed', { detail: { theme: next } }));
+        },
+        toggleTheme: () => {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            const next = current === 'dark' ? 'light' : 'dark';
+            window.AoTheme.setTheme(next);
+            return next;
+        }
+    };
 
     customElements.define('ao-header', AoHeader);
     customElements.define('ao-stats', AoStats);

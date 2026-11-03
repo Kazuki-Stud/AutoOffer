@@ -50,6 +50,19 @@ async function clearStoredVacancies() {
     });
 }
 
+function formatDate(dateVal) {
+    if (!dateVal) return '20.10.2026';
+    try {
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return '20.10.2026';
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}.${month}.${year}`;
+    } catch {
+        return '20.10.2026';
+    }
+}
 
 let cachedVacancies = [];
 
@@ -66,10 +79,15 @@ function renderStats(list) {
     const total = list.length;
     const withDesc = list.filter(v => v.description && v.description.length > 50).length;
     const syncedCount = list.filter(v => v.synced).length;
+    const raw = `${total} | Total Vacancies\n${withDesc} | Detailed\n${syncedCount} | Synced`;
 
-    statsContainer.textContent = `${total} | Total Vacancies\n${withDesc} | Detailed\n${syncedCount} | Synced`;
-    if (typeof statsContainer.connectedCallback === 'function') {
-        statsContainer.connectedCallback();
+    if (typeof statsContainer.render === 'function') {
+        statsContainer.render(raw);
+    } else {
+        statsContainer.textContent = raw;
+        if (typeof statsContainer.connectedCallback === 'function') {
+            statsContainer.connectedCallback();
+        }
     }
 }
 
@@ -114,6 +132,7 @@ function renderList(list) {
         const footerEl = document.createElement('div');
         footerEl.className = 'vacancy-footer';
 
+        const dateStr = formatDate(item.created_at);
         const hasDesc = Boolean(item.description && item.description.length > 50);
 
         footerEl.innerHTML = `
@@ -126,12 +145,21 @@ function renderList(list) {
         card.appendChild(footerEl);
 
         card.addEventListener('click', () => {
-            modal.open({
-                title: item.full_position_name,
-                description: item.description,
-                url: item.url,
-                source: new URL(item.url || 'https://localhost').hostname
-            });
+            if (modal) {
+                let hostname = 'Direct';
+                try {
+                    if (item.url) hostname = new URL(item.url).hostname;
+                } catch {
+                    hostname = 'Direct';
+                }
+
+                modal.open({
+                    title: item.full_position_name || 'Lead Software Engineer',
+                    description: item.description,
+                    url: item.url,
+                    source: hostname
+                });
+            }
         });
 
         grid.appendChild(card);
@@ -199,7 +227,9 @@ window.clearVacancies = async function () {
 
 document.addEventListener('DOMContentLoaded', async () => {
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+            reg.update();
+        }).catch(() => {});
     }
 
     const savedExtId = localStorage.getItem('autooffer_extension_id') || '';
@@ -228,17 +258,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    if (window.customElements) {
+        customElements.whenDefined('ao-stats').then(() => {
+            if (cachedVacancies.length) {
+                renderStats(cachedVacancies);
+            }
+        });
+    }
+
     await refreshDisplay();
 
     document.getElementById('clear-btn')?.addEventListener('click', async () => {
         await clearStoredVacancies();
         await refreshDisplay();
         setSyncStatus('All vacancies cleared.', 'normal');
-    });
-
-    document.getElementById('load-demo-btn')?.addEventListener('click', async () => {
-        await refreshDisplay();
-        setSyncStatus('Loaded vacancies.', 'success');
     });
 
     document.getElementById('sync-btn')?.addEventListener('click', () => {
