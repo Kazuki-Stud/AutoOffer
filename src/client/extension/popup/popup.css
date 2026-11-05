@@ -10,12 +10,15 @@
     --danger-hover: #dc2626;
     --secondary-bg: #f1f5f9;
     --secondary-hover: #e2e8f0;
+    --warning-bg: #fffbeb;
+    --warning-border: #fef3c7;
+    --warning-text: #b45309;
 }
 
 body {
-    width: 350px;
+    width: 370px;
     margin: 0;
-    padding: 14px;
+    padding: 12px;
     background-color: var(--bg-page);
     color: var(--text-main);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -24,13 +27,17 @@ body {
 }
 
 .header-container {
+    margin-bottom: 10px;
+}
+
+.brand-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 6px;
 }
 
-.header-container h3 {
+.brand-row h3 {
     margin: 0;
     font-size: 16px;
     font-weight: 700;
@@ -45,15 +52,66 @@ body {
     font-size: 11px;
 }
 
-.automation-section {
+.system-metrics-bar {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.metric-pill {
+    font-size: 10px;
+    font-weight: 600;
+    background: #e2e8f0;
+    color: #334155;
+    padding: 2px 7px;
+    border-radius: 10px;
+}
+
+.tab-nav {
+    display: flex;
+    border-bottom: 2px solid var(--border-subtle);
+    margin-bottom: 12px;
+    gap: 4px;
+}
+
+.tab-link {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    padding: 6px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+}
+
+.tab-link:hover {
+    color: var(--primary);
+}
+
+.tab-link.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.tab-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pane-section {
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
     border-radius: 6px;
     padding: 10px;
-    margin-bottom: 10px;
 }
 
-.automation-section h4 {
+.pane-section h4 {
     margin: 0 0 8px 0;
     font-size: 11px;
     font-weight: 700;
@@ -62,14 +120,14 @@ body {
     color: var(--text-muted);
 }
 
-.section-header-toggle {
+.section-title-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
 }
 
-.section-header-toggle h4 {
+.section-title-row h4 {
     margin: 0;
 }
 
@@ -81,12 +139,29 @@ body {
     color: var(--primary);
     cursor: pointer;
     padding: 2px 4px;
-    width: auto;
     margin: 0;
+    width: auto;
 }
 
-.text-toggle-btn:hover {
-    text-decoration: underline;
+.count-tag {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.sub-card-box {
+    background: #f8fafc;
+    border: 1px solid var(--border-subtle);
+    border-radius: 5px;
+    padding: 8px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.sub-card-box h5 {
+    margin: 0 0 6px 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-main);
 }
 
 .form-group {
@@ -98,6 +173,25 @@ body {
     margin-bottom: 3px;
     font-size: 11px;
     color: var(--text-muted);
+}
+
+.form-select,
+.form-group textarea,
+.form-group input,
+.inline-input-group input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-main);
+    background: var(--bg-surface);
+}
+
+.form-group textarea {
+    resize: vertical;
+    font-family: inherit;
 }
 
 .inline-input-group {
@@ -115,22 +209,25 @@ body {
     margin: 0;
 }
 
-.form-group textarea,
-.form-group input,
-.inline-input-group input {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 6px 8px;
-    border: 1px solid var(--border-subtle);
+.warning-box {
+    background: var(--warning-bg);
+    border: 1px solid var(--warning-border);
     border-radius: 4px;
-    font-size: 12px;
-    color: var(--text-main);
-    background: var(--bg-surface);
+    padding: 6px 8px;
+    margin-bottom: 8px;
 }
 
-.form-group textarea {
-    resize: vertical;
-    font-family: inherit;
+.checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--warning-text);
+    cursor: pointer;
+}
+
+.checkbox-label input {
+    margin-top: 2px;
 }
 
 .manual-selector-box {
@@ -154,8 +251,8 @@ body {
 }
 
 .platforms-list {
-    margin-top: 8px;
-    max-height: 160px;
+    margin-top: 4px;
+    max-height: 180px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -187,6 +284,15 @@ body {
 .platform-row-actions {
     display: flex;
     gap: 4px;
+}
+
+.platform-mode-select {
+    font-size: 10px;
+    padding: 2px 4px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    background: #ffffff;
+    color: var(--text-main);
 }
 
 .action-btn-sm {
@@ -221,7 +327,7 @@ body {
 .button-group {
     display: flex;
     gap: 6px;
-    margin-top: 8px;
+    margin-top: 6px;
 }
 
 button {
@@ -237,33 +343,22 @@ button {
     transition: background-color 0.15s ease-in-out;
 }
 
-#start-automation, #add-website-btn, #save-manual-selector-btn, .primary-action-btn {
+.primary-action-btn, #start-automation, #add-website-btn, #save-manual-selector-btn, #btn-save-job, #save-profile-btn {
     background-color: var(--primary);
     color: #ffffff;
 }
 
-#start-automation:hover, #add-website-btn:hover, #save-manual-selector-btn:hover, .primary-action-btn:hover {
+.primary-action-btn:hover, #start-automation:hover, #add-website-btn:hover, #save-manual-selector-btn:hover, #btn-save-job:hover, #save-profile-btn:hover {
     background-color: var(--primary-hover);
 }
 
-#stop-automation {
-    background-color: var(--secondary-bg);
-    color: var(--danger);
-    border-color: var(--border-subtle);
-    margin-bottom: 0;
-}
-
-#stop-automation:hover {
-    background-color: #fee2e2;
-}
-
-#add-site, #auto-guess {
+.secondary-btn, #stop-automation, #add-site, #auto-guess {
     background-color: var(--secondary-bg);
     color: var(--text-main);
     border-color: var(--border-subtle);
 }
 
-#add-site:hover, #auto-guess:hover {
+.secondary-btn:hover, #stop-automation:hover, #add-site:hover, #auto-guess:hover {
     background-color: var(--secondary-hover);
 }
 
@@ -271,6 +366,7 @@ button {
     background-color: transparent;
     color: var(--danger);
     border: 1px dashed var(--danger);
+    margin-bottom: 0;
 }
 
 #clear-db:hover {

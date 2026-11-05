@@ -104,7 +104,8 @@ async function getOrRegisterPlatform(hostname, url) {
             id: newId,
             name: formattedName,
             code: hostname,
-            url: url || `https://${hostname}`
+            url: url || `https://${hostname}`,
+            mode: 'semi'
         };
         await db.platforms_dict.add(platform);
     }
@@ -248,8 +249,37 @@ async function resolveWorkingSelectors(tabId, hostname, targetUrl) {
     return fallbackDefault;
 }
 
+async function calculateStorageWeight() {
+    let totalBytes = 0;
+    const tables = [
+        db.local_vacancies,
+        db.platforms_dict,
+        db.selectors,
+        db.personal_data,
+        db.resumes,
+        db.automation_jobs
+    ];
+
+    for (const table of tables) {
+        try {
+            const records = await table.toArray();
+            const serialized = JSON.stringify(records);
+            totalBytes += new Blob([serialized]).size;
+        } catch (e) {}
+    }
+
+    let formatted = '0 KB';
+    if (totalBytes > 1048576) {
+        formatted = (totalBytes / 1048576).toFixed(2) + ' MB';
+    } else {
+        formatted = Math.max(1, Math.round(totalBytes / 1024)) + ' KB';
+    }
+
+    return { bytes: totalBytes, formatted: formatted };
+}
+
 async function runAutomationPipeline(config) {
-    const { websites, roles, paginationLimit } = config;
+    const { websites, roles, paginationLimit, fieldsMode = 'all', jobTitle = 'Job Execution' } = config;
     let tab = null;
     let tabId = null;
 
@@ -339,32 +369,36 @@ async function runAutomationPipeline(config) {
             }
 
             if (collectedVacanciesForSite.length > 0) {
-                chrome.runtime.sendMessage({
-                    action: 'automation_status_update',
-                    stage: 3,
-                    message: `Status 3: Parsing details for ${collectedVacanciesForSite.length} vacancies`
-                }).catch(() => {});
+                if (fieldsMode === 'all') {
+                    chrome.runtime.sendMessage({
+                        action: 'automation_status_update',
+                        stage: 3,
+                        message: `Status 3: Parsing details for ${collectedVacanciesForSite.length} vacancies`
+                    }).catch(() => {});
 
-                for (let vIndex = 0; vIndex < collectedVacanciesForSite.length; vIndex++) {
-                    if (!activeAutomationSession || activeAutomationSession.abort) break;
+                    for (let vIndex = 0; vIndex < collectedVacanciesForSite.length; vIndex++) {
+                        if (!activeAutomationSession || activeAutomationSession.abort) break;
 
-                    const vacancy = collectedVacanciesForSite[vIndex];
-                    try {
-                        await chrome.tabs.update(tabId, { url: vacancy.url });
-                        await waitForTabLoad(tabId);
+                        const vacancy = collectedVacanciesForSite[vIndex];
+                        try {
+                            await chrome.tabs.update(tabId, { url: vacancy.url });
+                            await waitForTabLoad(tabId);
 
-                        const detailRes = await sendTabMessage(tabId, {
-                            action: 'extract_detail_description'
-                        });
+                            const detailRes = await sendTabMessage(tabId, {
+                                action: 'extract_detail_description'
+                            });
 
-                        if (detailRes && detailRes.description) {
-                            vacancy.description = detailRes.description;
+                            if (detailRes && detailRes.description) {
+                                vacancy.description = detailRes.description;
+                            }
+                        } catch (e) {
+                            vacancy.description = '';
                         }
-                    } catch (e) {
-                        vacancy.description = '';
-                    }
 
-                    await saveVacancies(hostname, [vacancy]);
+                        await saveVacancies(hostname, [vacancy]);
+                    }
+                } else {
+                    await saveVacancies(hostname, collectedVacanciesForSite);
                 }
             }
 
@@ -392,9 +426,102 @@ async function runAutomationPipeline(config) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'get_background_status') {
+        calculateStorageWeight().then((weightInfo) => {
+            sendResponse({
+                success: true,
+                isRunning: Boolean(activeAutomationSession),
+                activeJobTitle: activeAutomationSession ? activeAutomationSession.config?.jobTitle || 'Active Job' : null,
+                storageWeight: weightInfo.formatted,
+                storageBytes: weightInfo.bytes
+            });
+        }).catch((err) => {
+            sendResponse({
+                success: false,
+                isRunning: Boolean(activeAutomationSession),
+                error: err.message
+            });
+        });
+        return true;
+    }
+
+    if (request.action === 'get_storage_weight') {
+        calculateStorageWeight().then((weightInfo) => {
+            sendResponse({ success: true, weight: weightInfo.formatted, bytes: weightInfo.bytes });
+        }).catch((err) => {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'get_jobs') {
+        db.automation_jobs.toArray().then((jobs) => {
+            sendResponse({ success: true, jobs: jobs });
+        }).catch((err) => {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'save_job') {
+        (async () => {
+            const jobData = request.job;
+            if (!jobData.id) {
+                jobData.id = crypto.randomUUID();
+                jobData.created_at = new Date().toISOString();
+                jobData.status = 'ready';
+                await db.automation_jobs.add(jobData);
+            } else {
+                await db.automation_jobs.put(jobData);
+            }
+            sendResponse({ success: true, job: jobData });
+        })().catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'delete_job') {
+        db.automation_jobs.delete(request.id).then(() => {
+            sendResponse({ success: true });
+        }).catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_profile_data') {
+        db.personal_data.toArray().then(items => {
+            const profile = items.length ? items[0] : null;
+            sendResponse({ success: true, profile: profile });
+        }).catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'save_profile_data') {
+        (async () => {
+            const profileData = request.profile;
+            const existing = await db.personal_data.toArray();
+            if (existing.length) {
+                await db.personal_data.update(existing[0].id, profileData);
+            } else {
+                profileData.id = crypto.randomUUID();
+                profileData.profile_id = 'default';
+                await db.personal_data.add(profileData);
+            }
+            sendResponse({ success: true });
+        })().catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'update_platform_mode') {
+        (async () => {
+            const { platformId, mode } = request;
+            await db.platforms_dict.update(platformId, { mode: mode });
+            sendResponse({ success: true });
+        })().catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
     if (request.action === 'register_platform_data') {
         (async () => {
-            const { name, url, hostname, searchSelector } = request.platform;
+            const { name, url, hostname, searchSelector, mode } = request.platform;
             let platform = await db.platforms_dict.where('code').equals(hostname).first();
             let platformId = platform ? platform.id : crypto.randomUUID();
 
@@ -403,12 +530,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     id: platformId,
                     name: name,
                     code: hostname,
-                    url: url
+                    url: url,
+                    mode: mode || 'semi'
                 });
             } else {
                 await db.platforms_dict.update(platform.id, {
                     name: name,
-                    url: url
+                    url: url,
+                    mode: mode || platform.mode || 'semi'
                 });
             }
 
@@ -520,7 +649,68 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
     if (request.action === 'get_vacancies') {
         db.local_vacancies.toArray().then(vacancies => {
-            sendResponse({ status: 'success', data: vacancies });
+            let filtered = vacancies;
+            if (request.role && request.role !== 'all') {
+                const targetRole = request.role.toLowerCase();
+                filtered = filtered.filter(v =>
+                    v.full_position_name && v.full_position_name.toLowerCase().includes(targetRole)
+                );
+            }
+            if (request.dateRange && request.dateRange !== 'all') {
+                const now = new Date().getTime();
+                const days = request.dateRange === 'today' ? 1 : request.dateRange === '7days' ? 7 : 30;
+                const cutoff = now - days * 86400000;
+                filtered = filtered.filter(v => {
+                    const t = new Date(v.created_at).getTime();
+                    return !isNaN(t) && t >= cutoff;
+                });
+            }
+            if (request.fieldsMode === 'minimum') {
+                filtered = filtered.map(v => ({
+                    id: v.id,
+                    full_position_name: v.full_position_name,
+                    url: v.url,
+                    created_at: v.created_at,
+                    synced: v.synced
+                }));
+            }
+            sendResponse({ status: 'success', data: filtered });
+        }).catch(error => {
+            sendResponse({ status: 'error', message: error.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'get_profile') {
+        db.personal_data.toArray().then(items => {
+            sendResponse({ status: 'success', data: items.length ? items[0] : null });
+        }).catch(error => {
+            sendResponse({ status: 'error', message: error.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'save_profile') {
+        (async () => {
+            const profileData = request.profile;
+            const existing = await db.personal_data.toArray();
+            if (existing.length) {
+                await db.personal_data.update(existing[0].id, profileData);
+            } else {
+                profileData.id = crypto.randomUUID();
+                profileData.profile_id = 'default';
+                await db.personal_data.add(profileData);
+            }
+            sendResponse({ status: 'success' });
+        })().catch(error => {
+            sendResponse({ status: 'error', message: error.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'get_storage_weight') {
+        calculateStorageWeight().then(weightInfo => {
+            sendResponse({ status: 'success', data: weightInfo });
         }).catch(error => {
             sendResponse({ status: 'error', message: error.message });
         });

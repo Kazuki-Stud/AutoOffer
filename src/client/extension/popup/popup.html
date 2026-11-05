@@ -4,74 +4,189 @@
     <meta charset="UTF-8">
     <title>AutoOffer Popup</title>
     <link rel="stylesheet" href="popup.css">
-    <script src="../kit.js" defer></script>
+    <script src="kit.js" defer></script>
 </head>
 <body>
 <div class="header-container">
-    <h3 data-i18n="popupTitle">AutoOffer</h3>
-    <div class="lang-container">
-        <select id="lang-select">
-            <option value="en">EN</option>
-            <option value="lt">LT</option>
-            <option value="ru">RU</option>
-        </select>
-    </div>
-</div>
-
-<div class="automation-section">
-    <h4>Add Website</h4>
-    <div class="form-group">
-        <label>Job Search or Platform URL:</label>
-        <div class="inline-input-group">
-            <input type="text" id="quick-website-url" placeholder="https://example.com/jobs" />
-            <button id="add-website-btn">Add</button>
+    <div class="brand-row">
+        <h3 data-i18n="popupTitle">AutoOffer</h3>
+        <div class="lang-container">
+            <select id="lang-select">
+                <option value="en">EN</option>
+                <option value="lt">LT</option>
+                <option value="ru">RU</option>
+            </select>
         </div>
     </div>
-    <div id="manual-selector-fallback" class="manual-selector-box" style="display: none;">
-        <label>Search Input Selector Required:</label>
-        <p class="helper-text">Search field was not automatically detected. Please specify its CSS selector:</p>
-        <div class="inline-input-group">
-            <input type="text" id="manual-search-selector" placeholder="input#q, input[name='search']" />
-            <button id="save-manual-selector-btn">Save</button>
+    <div class="system-metrics-bar">
+        <span id="badge-weight" class="metric-pill">Weight: 0 KB</span>
+        <span id="badge-job-status" class="metric-pill">Jobs: Idle</span>
+    </div>
+</div>
+
+<nav class="tab-nav">
+    <button id="tab-btn-jobs" class="tab-link active" data-tab="tab-jobs">Jobs</button>
+    <button id="tab-btn-websites" class="tab-link" data-tab="tab-websites">Websites & Settings</button>
+    <button id="tab-btn-profile" class="tab-link" data-tab="tab-profile">Profile</button>
+</nav>
+
+<div id="tab-jobs" class="tab-pane active">
+    <div class="pane-section">
+        <div class="section-title-row">
+            <h4>Select Job</h4>
+            <button id="btn-toggle-job-form" class="text-toggle-btn">+ Create Job</button>
+        </div>
+        <div class="form-group">
+            <select id="job-select" class="form-select">
+                <option value="">Default Quick Run</option>
+            </select>
+        </div>
+
+        <div id="job-editor-box" class="sub-card-box" style="display: none;">
+            <h5 id="editor-heading">New Job Configuration</h5>
+            <div class="form-group">
+                <label>Job Title:</label>
+                <input type="text" id="job-form-title" placeholder="e.g. Senior Frontend Search" />
+            </div>
+            <div class="form-group">
+                <label>Websites (one URL per line):</label>
+                <textarea id="job-form-websites" rows="2" placeholder="https://example.com/jobs"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Target Roles (comma-separated):</label>
+                <input type="text" id="job-form-roles" placeholder="React, Frontend, TypeScript" />
+            </div>
+            <div class="form-group">
+                <label>Submission Mode:</label>
+                <select id="job-form-mode" class="form-select">
+                    <option value="semi">Semi-Automated (Human in charge)</option>
+                    <option value="autonomous">Full Autonomous (Auto-submit)</option>
+                </select>
+            </div>
+            <div id="job-autonomous-warning" class="warning-box" style="display: none;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="job-confirm-autonomous" />
+                    <span>Confirm autonomous submission on target platforms without manual review</span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label>Fields Extraction:</label>
+                <select id="job-form-fields" class="form-select">
+                    <option value="all">All Fields (Title, URL, Details)</option>
+                    <option value="minimum">Minimum Fields (Title, URL)</option>
+                    <option value="custom">Custom Fields (Basic + Description)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Page Limit:</label>
+                <input type="number" id="job-form-limit" min="1" max="50" value="2" />
+            </div>
+            <div class="button-group">
+                <button id="btn-save-job" class="primary-action-btn">Save Job</button>
+                <button id="btn-cancel-job" class="secondary-btn">Cancel</button>
+            </div>
         </div>
     </div>
-</div>
 
-<div class="automation-section">
-    <div class="section-header-toggle">
-        <h4>Saved Platforms</h4>
-        <button id="toggle-platforms-btn" class="text-toggle-btn">View All</button>
-    </div>
-    <div id="platforms-registry-list" class="platforms-list" style="display: none;"></div>
-</div>
-
-<div class="automation-section">
-    <h4>Automation Runner</h4>
-    <div class="form-group">
-        <label>Websites (one URL per line):</label>
-        <textarea id="target-websites" rows="2" placeholder="https://example.com/jobs"></textarea>
-    </div>
-    <div class="form-group">
-        <label>Roles (comma-separated):</label>
-        <input type="text" id="target-roles" placeholder="Java, Frontend" />
-    </div>
-    <div class="form-group">
-        <label>Target Page Limit:</label>
-        <input type="number" id="pagination-limit" min="1" max="50" value="2" />
-    </div>
-    <div class="button-group">
-        <button id="start-automation">Start Automation</button>
-        <button id="stop-automation">Stop</button>
+    <div class="pane-section">
+        <h4>Automation Runner</h4>
+        <div class="form-group">
+            <label>Target Websites:</label>
+            <textarea id="target-websites" rows="2" placeholder="https://example.com/jobs"></textarea>
+        </div>
+        <div class="form-group">
+            <label>Roles (comma-separated):</label>
+            <input type="text" id="target-roles" placeholder="Java, Frontend" />
+        </div>
+        <div class="form-group">
+            <label>Page Limit:</label>
+            <input type="number" id="pagination-limit" min="1" max="50" value="2" />
+        </div>
+        <div class="button-group">
+            <button id="start-automation" class="primary-action-btn">Start Automation</button>
+            <button id="stop-automation">Stop</button>
+        </div>
+        <div id="automation-status" class="status-box">Ready</div>
+        <p id="status"></p>
     </div>
 </div>
 
-<button id="open-pwa-btn" class="primary-action-btn">Open PWA Dashboard</button>
-<button id="add-site" data-i18n="addSite">Add Current Site</button>
-<button id="auto-guess" data-i18n="autoGuess">Auto-Guess Selectors</button>
-<button id="clear-db" data-i18n="clearDatabase">Clear database</button>
+<div id="tab-websites" class="tab-pane" style="display: none;">
+    <div class="pane-section">
+        <h4>Add Platform</h4>
+        <div class="form-group">
+            <label>Platform URL:</label>
+            <div class="inline-input-group">
+                <input type="text" id="quick-website-url" placeholder="https://example.com/jobs" />
+                <button id="add-website-btn">Add</button>
+            </div>
+        </div>
+        <div id="manual-selector-fallback" class="manual-selector-box" style="display: none;">
+            <label>Search Input Selector Required:</label>
+            <p class="helper-text">Search field was not detected automatically. Specify selector:</p>
+            <div class="inline-input-group">
+                <input type="text" id="manual-search-selector" placeholder="input#q, input[name='search']" />
+                <button id="save-manual-selector-btn">Save</button>
+            </div>
+        </div>
+        <button id="add-site" data-i18n="addSite">Add Current Open Tab</button>
+        <button id="auto-guess" data-i18n="autoGuess">Auto-Guess Selectors</button>
+    </div>
 
-<div id="automation-status" class="status-box">Ready</div>
-<p id="status"></p>
+    <div class="pane-section">
+        <div class="section-title-row">
+            <h4>Saved Platforms</h4>
+            <span id="platform-count-badge" class="count-tag">0 platforms</span>
+        </div>
+        <div id="platforms-registry-list" class="platforms-list"></div>
+    </div>
+
+    <div class="pane-section">
+        <h4>System & Dashboard</h4>
+        <button id="open-pwa-btn" class="primary-action-btn">Open PWA Dashboard</button>
+        <button id="clear-db" data-i18n="clearDatabase">Clear Vacancies Database</button>
+    </div>
+</div>
+
+<div id="tab-profile" class="tab-pane" style="display: none;">
+    <div class="pane-section">
+        <h4>User Profile</h4>
+        <div class="form-group">
+            <label>First Name:</label>
+            <input type="text" id="prof-firstname" placeholder="First Name" />
+        </div>
+        <div class="form-group">
+            <label>Last Name:</label>
+            <input type="text" id="prof-lastname" placeholder="Last Name" />
+        </div>
+        <div class="form-group">
+            <label>Email Address:</label>
+            <input type="email" id="prof-email" placeholder="user@example.com" />
+        </div>
+        <div class="form-group">
+            <label>Phone Number:</label>
+            <input type="tel" id="prof-phone" placeholder="+1 234 567 890" />
+        </div>
+        <div class="form-group">
+            <label>Location (City, Country):</label>
+            <input type="text" id="prof-location" placeholder="Vilnius, Lithuania" />
+        </div>
+        <div class="form-group">
+            <label>Primary Role / Headline:</label>
+            <input type="text" id="prof-headline" placeholder="Senior Software Engineer" />
+        </div>
+        <div class="form-group">
+            <label>Portfolio / LinkedIn Links:</label>
+            <textarea id="prof-links" rows="2" placeholder="https://linkedin.com/in/..."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Key Skills (comma-separated):</label>
+            <input type="text" id="prof-skills" placeholder="JavaScript, Node.js, Docker, React" />
+        </div>
+        <button id="save-profile-btn" class="primary-action-btn">Save Profile</button>
+        <div id="profile-save-status" class="status-box" style="display: none;"></div>
+    </div>
+</div>
 
 <script type="module" src="popup.js"></script>
 </body>

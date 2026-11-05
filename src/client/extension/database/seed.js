@@ -5,7 +5,10 @@ export async function seedDatabase() {
         const platformCount = await db.platforms_dict.count();
         if (platformCount > 0) return;
 
-        const platformId = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
+        const platformIndeedId = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
+        const platformZipId = 'f67ac10b-58cc-4372-a567-0e02b2c3d480';
+        const platformWwrId = 'f77ac10b-58cc-4372-a567-0e02b2c3d481';
+
         const taskListId = '11111111-1111-1111-1111-111111111111';
         const taskDetailId = '22222222-2222-2222-2222-222222222222';
         const taskSearchId = '33333333-1111-1111-1111-111111111111';
@@ -19,8 +22,9 @@ export async function seedDatabase() {
         const elDescriptionId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
         await db.platforms_dict.bulkAdd([
-            { id: platformId, name: 'Indeed', code: 'indeed' },
-            { id: 'f58bc21c-69dd-4483-b678-1f13c3d4e580', name: 'LinkedIn', code: 'linkedin' }
+            { id: platformIndeedId, name: 'Indeed', code: 'indeed.com', url: 'https://www.indeed.com' },
+            { id: platformZipId, name: 'ZipRecruiter', code: 'ziprecruiter.com', url: 'https://www.ziprecruiter.com' },
+            { id: platformWwrId, name: 'We Work Remotely', code: 'weworkremotely.com', url: 'https://weworkremotely.com' }
         ]);
 
         await db.selector_tasks_dict.bulkAdd([
@@ -92,17 +96,17 @@ export async function seedDatabase() {
         await db.selectors.bulkAdd([
             {
                 id: 's1111111-1111-1111-1111-111111111111',
-                platform_id: platformId,
+                platform_id: platformIndeedId,
                 task_id: taskListId,
                 element_type_id: elContainerId,
                 url_pattern: 'indeed.com',
-                selector_string: 'ul.css-pygyny.eu4oa1w0 li, .mosaic-provider-jobcards-1ppyh6m',
+                selector_string: 'ul.css-pygyny.eu4oa1w0 li, .mosaic-provider-jobcards-1ppyh6m, div.job_seen_beacon',
                 is_active: 1,
                 updated_at: new Date().toISOString()
             },
             {
                 id: 's2222222-2222-2222-2222-222222222222',
-                platform_id: platformId,
+                platform_id: platformIndeedId,
                 task_id: taskListId,
                 element_type_id: elTitleId,
                 url_pattern: 'indeed.com',
@@ -112,7 +116,7 @@ export async function seedDatabase() {
             },
             {
                 id: 's3333333-3333-3333-3333-333333333333',
-                platform_id: platformId,
+                platform_id: platformIndeedId,
                 task_id: taskListId,
                 element_type_id: elLinkId,
                 url_pattern: 'indeed.com',
@@ -122,7 +126,7 @@ export async function seedDatabase() {
             },
             {
                 id: 's5555555-5555-5555-5555-555555555555',
-                platform_id: platformId,
+                platform_id: platformIndeedId,
                 task_id: taskSearchId,
                 element_type_id: elSearchInputId,
                 url_pattern: 'indeed.com',
@@ -132,7 +136,7 @@ export async function seedDatabase() {
             },
             {
                 id: 's6666666-6666-6666-6666-666666666666',
-                platform_id: platformId,
+                platform_id: platformIndeedId,
                 task_id: taskSearchId,
                 element_type_id: elSearchButtonId,
                 url_pattern: 'indeed.com',
@@ -142,7 +146,7 @@ export async function seedDatabase() {
             },
             {
                 id: 's7777777-7777-7777-7777-777777777777',
-                platform_id: platformId,
+                platform_id: platformIndeedId,
                 task_id: taskListId,
                 element_type_id: elPaginationId,
                 url_pattern: 'indeed.com',
@@ -152,11 +156,151 @@ export async function seedDatabase() {
             },
             {
                 id: 's8888888-8888-8888-8888-888888888888',
-                platform_id: platformId,
+                platform_id: platformIndeedId,
                 task_id: taskDetailId,
                 element_type_id: elDescriptionId,
                 url_pattern: 'indeed.com',
                 selector_string: '#jobDescriptionText',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sz11111-1111-1111-1111-111111111111',
+                platform_id: platformZipId,
+                task_id: taskListId,
+                element_type_id: elContainerId,
+                url_pattern: 'ziprecruiter.com',
+                selector_string: 'article.job_result, div.job_content, [data-testid="job-card"]',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sz22222-2222-2222-2222-222222222222',
+                platform_id: platformZipId,
+                task_id: taskListId,
+                element_type_id: elTitleId,
+                url_pattern: 'ziprecruiter.com',
+                selector_string: 'h2.job_title, a.job_link, [data-testid="job-title"]',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sz33333-3333-3333-3333-333333333333',
+                platform_id: platformZipId,
+                task_id: taskListId,
+                element_type_id: elLinkId,
+                url_pattern: 'ziprecruiter.com',
+                selector_string: 'a.job_link, a[data-testid="job-card-title"]',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sz44444-4444-4444-4444-444444444444',
+                platform_id: platformZipId,
+                task_id: taskSearchId,
+                element_type_id: elSearchInputId,
+                url_pattern: 'ziprecruiter.com',
+                selector_string: 'input#search-job-keyword, input[name="search"]',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sz55555-5555-5555-5555-555555555555',
+                platform_id: platformZipId,
+                task_id: taskSearchId,
+                element_type_id: elSearchButtonId,
+                url_pattern: 'ziprecruiter.com',
+                selector_string: 'button.search_form_submit, button[type="submit"]',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sz66666-6666-6666-6666-666666666666',
+                platform_id: platformZipId,
+                task_id: taskListId,
+                element_type_id: elPaginationId,
+                url_pattern: 'ziprecruiter.com',
+                selector_string: 'a.pagination_link[rel="next"], a[aria-label="Next Page"]',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sz77777-7777-7777-7777-777777777777',
+                platform_id: platformZipId,
+                task_id: taskDetailId,
+                element_type_id: elDescriptionId,
+                url_pattern: 'ziprecruiter.com',
+                selector_string: 'div.job_description, [data-testid="job-description"]',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sw11111-1111-1111-1111-111111111111',
+                platform_id: platformWwrId,
+                task_id: taskListId,
+                element_type_id: elContainerId,
+                url_pattern: 'weworkremotely.com',
+                selector_string: 'section.jobs article ul li:not(.view-all), li.feature',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sw22222-2222-2222-2222-222222222222',
+                platform_id: platformWwrId,
+                task_id: taskListId,
+                element_type_id: elTitleId,
+                url_pattern: 'weworkremotely.com',
+                selector_string: 'span.title',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sw33333-3333-3333-3333-333333333333',
+                platform_id: platformWwrId,
+                task_id: taskListId,
+                element_type_id: elLinkId,
+                url_pattern: 'weworkremotely.com',
+                selector_string: 'a[href*="/remote-jobs/"]',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sw44444-4444-4444-4444-444444444444',
+                platform_id: platformWwrId,
+                task_id: taskSearchId,
+                element_type_id: elSearchInputId,
+                url_pattern: 'weworkremotely.com',
+                selector_string: 'input#search',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sw55555-5555-5555-5555-555555555555',
+                platform_id: platformWwrId,
+                task_id: taskSearchId,
+                element_type_id: elSearchButtonId,
+                url_pattern: 'weworkremotely.com',
+                selector_string: 'button#search-button',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sw66666-6666-6666-6666-666666666666',
+                platform_id: platformWwrId,
+                task_id: taskListId,
+                element_type_id: elPaginationId,
+                url_pattern: 'weworkremotely.com',
+                selector_string: 'span.next a',
+                is_active: 1,
+                updated_at: new Date().toISOString()
+            },
+            {
+                id: 'sw77777-7777-7777-7777-777777777777',
+                platform_id: platformWwrId,
+                task_id: taskDetailId,
+                element_type_id: elDescriptionId,
+                url_pattern: 'weworkremotely.com',
+                selector_string: 'div#job-details, div.listing-container',
                 is_active: 1,
                 updated_at: new Date().toISOString()
             }
