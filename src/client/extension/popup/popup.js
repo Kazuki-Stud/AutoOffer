@@ -30,7 +30,9 @@ async function applyTranslations(lang) {
 
 async function updateVacancyCount() {
     const statusElement = document.getElementById('status');
-    if (!statusElement) return;
+    if (!statusElement) {
+        return;
+    }
 
     try {
         const count = await db.local_vacancies.count();
@@ -44,22 +46,29 @@ async function updateVacancyCount() {
 
 async function updateSystemMetrics() {
     chrome.runtime.sendMessage({ action: 'get_background_status' }, (response) => {
-        if (response && response.success) {
-            const weightPill = document.getElementById('badge-weight');
-            const jobPill = document.getElementById('badge-job-status');
-            if (weightPill) {
-                weightPill.textContent = 'Weight: ' + response.storageWeight;
-            }
-            if (jobPill) {
-                if (response.isRunning) {
-                    jobPill.textContent = 'Jobs: ' + (response.activeJobTitle || 'Running');
-                    jobPill.style.background = '#dcfce7';
-                    jobPill.style.color = '#166534';
-                } else {
-                    jobPill.textContent = 'Jobs: Idle';
-                    jobPill.style.background = '#e2e8f0';
-                    jobPill.style.color = '#334155';
-                }
+        if (!response) {
+            return;
+        }
+        if (!response.success) {
+            return;
+        }
+
+        const weightPill = document.getElementById('badge-weight');
+        const jobPill = document.getElementById('badge-job-status');
+
+        if (weightPill) {
+            weightPill.textContent = 'Weight: ' + response.storageWeight;
+        }
+
+        if (jobPill) {
+            if (response.isRunning) {
+                jobPill.textContent = 'Jobs: ' + (response.activeJobTitle || 'Running');
+                jobPill.style.background = '#dcfce7';
+                jobPill.style.color = '#166534';
+            } else {
+                jobPill.textContent = 'Jobs: Idle';
+                jobPill.style.background = '#e2e8f0';
+                jobPill.style.color = '#334155';
             }
         }
     });
@@ -69,8 +78,12 @@ function initTabs() {
     const tabLinks = document.querySelectorAll('.tab-link');
     tabLinks.forEach(btn => {
         btn.addEventListener('click', () => {
-            tabLinks.forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+            tabLinks.forEach(b => {
+                b.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-pane').forEach(p => {
+                p.style.display = 'none';
+            });
 
             btn.classList.add('active');
             const targetId = btn.getAttribute('data-tab');
@@ -86,13 +99,19 @@ async function loadCustomJobs() {
     try {
         currentCustomJobs = await db.automation_jobs.toArray();
         const selectEl = document.getElementById('job-select');
-        if (!selectEl) return;
+        if (!selectEl) {
+            return;
+        }
 
         selectEl.innerHTML = '<option value="">Default Quick Run</option>';
         for (const j of currentCustomJobs) {
             const opt = document.createElement('option');
             opt.value = j.id;
-            opt.textContent = j.title + (j.mode === 'autonomous' ? ' [Autonomous]' : ' [Semi]');
+            let modeSuffix = ' [Semi]';
+            if (j.mode === 'autonomous') {
+                modeSuffix = ' [Autonomous]';
+            }
+            opt.textContent = j.title + modeSuffix;
             selectEl.appendChild(opt);
         }
     } catch (e) {
@@ -110,75 +129,94 @@ function initJobManagement() {
     const saveJobBtn = document.getElementById('btn-save-job');
     const cancelJobBtn = document.getElementById('btn-cancel-job');
 
-    toggleBtn?.addEventListener('click', () => {
-        const isHidden = editorBox.style.display === 'none';
-        editorBox.style.display = isHidden ? 'block' : 'none';
-        toggleBtn.textContent = isHidden ? '- Close Form' : '+ Create Job';
-    });
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            const isHidden = editorBox.style.display === 'none';
+            if (isHidden) {
+                editorBox.style.display = 'block';
+                toggleBtn.textContent = '- Close Form';
+            } else {
+                editorBox.style.display = 'none';
+                toggleBtn.textContent = '+ Create Job';
+            }
+        });
+    }
 
-    cancelJobBtn?.addEventListener('click', () => {
-        editorBox.style.display = 'none';
-        toggleBtn.textContent = '+ Create Job';
-    });
+    if (cancelJobBtn) {
+        cancelJobBtn.addEventListener('click', () => {
+            editorBox.style.display = 'none';
+            if (toggleBtn) {
+                toggleBtn.textContent = '+ Create Job';
+            }
+        });
+    }
 
-    modeSelect?.addEventListener('change', () => {
-        if (modeSelect.value === 'autonomous') {
-            warningBox.style.display = 'block';
-        } else {
-            warningBox.style.display = 'none';
-            confirmCheck.checked = false;
-        }
-    });
+    if (modeSelect) {
+        modeSelect.addEventListener('change', () => {
+            if (modeSelect.value === 'autonomous') {
+                warningBox.style.display = 'block';
+            } else {
+                warningBox.style.display = 'none';
+                confirmCheck.checked = false;
+            }
+        });
+    }
 
-    saveJobBtn?.addEventListener('click', async () => {
-        const title = document.getElementById('job-form-title').value.trim();
-        const websites = document.getElementById('job-form-websites').value.trim();
-        const roles = document.getElementById('job-form-roles').value.trim();
-        const mode = modeSelect.value;
-        const fields = document.getElementById('job-form-fields').value;
-        const limit = parseInt(document.getElementById('job-form-limit').value, 10) || 2;
+    if (saveJobBtn) {
+        saveJobBtn.addEventListener('click', async () => {
+            const title = document.getElementById('job-form-title').value.trim();
+            const websites = document.getElementById('job-form-websites').value.trim();
+            const roles = document.getElementById('job-form-roles').value.trim();
+            const mode = modeSelect.value;
+            const fields = document.getElementById('job-form-fields').value;
+            const limit = parseInt(document.getElementById('job-form-limit').value, 10) || 2;
 
-        if (!title || !websites || !roles) {
-            alert('Please specify job title, websites, and target roles.');
-            return;
-        }
+            if (!title || !websites || !roles) {
+                alert('Please specify job title, websites, and target roles.');
+                return;
+            }
 
-        if (mode === 'autonomous' && !confirmCheck.checked) {
-            alert('Please confirm that you authorize autonomous submission without manual verification.');
-            return;
-        }
+            if (mode === 'autonomous' && !confirmCheck.checked) {
+                alert('Please confirm that you authorize autonomous submission without manual verification.');
+                return;
+            }
 
-        const newJob = {
-            id: crypto.randomUUID(),
-            title: title,
-            websites: websites,
-            roles: roles,
-            mode: mode,
-            fields_mode: fields,
-            limit: limit,
-            status: 'ready',
-            created_at: new Date().toISOString()
-        };
+            const newJob = {
+                id: crypto.randomUUID(),
+                title: title,
+                websites: websites,
+                roles: roles,
+                mode: mode,
+                fields_mode: fields,
+                limit: limit,
+                status: 'ready',
+                created_at: new Date().toISOString()
+            };
 
-        await db.automation_jobs.add(newJob);
-        await loadCustomJobs();
+            await db.automation_jobs.add(newJob);
+            await loadCustomJobs();
 
-        editorBox.style.display = 'none';
-        toggleBtn.textContent = '+ Create Job';
-        jobSelect.value = newJob.id;
-        applySelectedJob(newJob);
-    });
+            editorBox.style.display = 'none';
+            if (toggleBtn) {
+                toggleBtn.textContent = '+ Create Job';
+            }
+            jobSelect.value = newJob.id;
+            applySelectedJob(newJob);
+        });
+    }
 
-    jobSelect?.addEventListener('change', () => {
-        const selectedId = jobSelect.value;
-        if (!selectedId) {
-            return;
-        }
-        const job = currentCustomJobs.find(j => j.id === selectedId);
-        if (job) {
-            applySelectedJob(job);
-        }
-    });
+    if (jobSelect) {
+        jobSelect.addEventListener('change', () => {
+            const selectedId = jobSelect.value;
+            if (!selectedId) {
+                return;
+            }
+            const job = currentCustomJobs.find(j => j.id === selectedId);
+            if (job) {
+                applySelectedJob(job);
+            }
+        });
+    }
 }
 
 function applySelectedJob(job) {
@@ -186,20 +224,32 @@ function applySelectedJob(job) {
     const rolesInput = document.getElementById('target-roles');
     const limitInput = document.getElementById('pagination-limit');
 
-    if (websitesArea) websitesArea.value = job.websites || '';
-    if (rolesInput) rolesInput.value = job.roles || '';
-    if (limitInput) limitInput.value = job.limit || 2;
+    if (websitesArea) {
+        websitesArea.value = job.websites || '';
+    }
+    if (rolesInput) {
+        rolesInput.value = job.roles || '';
+    }
+    if (limitInput) {
+        limitInput.value = job.limit || 2;
+    }
 
     const autoStatus = document.getElementById('automation-status');
     if (autoStatus) {
-        autoStatus.innerText = 'Loaded job: ' + job.title + ' (' + (job.mode === 'autonomous' ? 'Autonomous Mode' : 'Semi Mode') + ')';
+        let modeLabel = 'Semi Mode';
+        if (job.mode === 'autonomous') {
+            modeLabel = 'Autonomous Mode';
+        }
+        autoStatus.innerText = 'Loaded job: ' + job.title + ' (' + modeLabel + ')';
     }
 }
 
 async function renderPlatformsRegistryList() {
     const listEl = document.getElementById('platforms-registry-list');
     const countBadge = document.getElementById('platform-count-badge');
-    if (!listEl) return;
+    if (!listEl) {
+        return;
+    }
 
     listEl.innerHTML = '';
     const platforms = await db.platforms_dict.toArray();
@@ -216,7 +266,10 @@ async function renderPlatformsRegistryList() {
 
     for (const p of platforms) {
         const matchedSelector = allSelectors.find(s => s.platform_id === p.id || s.url_pattern === p.code);
-        const selectorValue = matchedSelector ? matchedSelector.selector_string : '';
+        let selectorValue = '';
+        if (matchedSelector) {
+            selectorValue = matchedSelector.selector_string;
+        }
 
         const row = document.createElement('div');
         row.className = 'platform-row';
@@ -226,7 +279,7 @@ async function renderPlatformsRegistryList() {
 
         const titleSpan = document.createElement('span');
         titleSpan.className = 'platform-row-title';
-        titleSpan.textContent = `${p.name || p.code}`;
+        titleSpan.textContent = p.name || p.code;
 
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'platform-row-actions';
@@ -261,14 +314,16 @@ async function renderPlatformsRegistryList() {
         useBtn.addEventListener('click', () => {
             const area = document.getElementById('target-websites');
             const lines = area.value.trim().split('\n').filter(Boolean);
-            const target = p.url || `https://${p.code}`;
+            const target = p.url || ('https://' + p.code);
             if (!lines.includes(target)) {
                 lines.push(target);
                 area.value = lines.join('\n');
                 chrome.storage.local.set({ automation_websites: area.value });
             }
             const tabJobs = document.getElementById('tab-btn-jobs');
-            tabJobs?.click();
+            if (tabJobs) {
+                tabJobs.click();
+            }
         });
 
         const saveBtn = document.createElement('button');
@@ -307,7 +362,9 @@ async function renderPlatformsRegistryList() {
                 selector: newSelector
             }, async () => {
                 const autoStatus = document.getElementById('automation-status');
-                if (autoStatus) autoStatus.innerText = `Updated selector for ${p.code}`;
+                if (autoStatus) {
+                    autoStatus.innerText = 'Updated selector for ' + p.code;
+                }
                 await renderPlatformsRegistryList();
                 await updateSystemMetrics();
             });
@@ -322,17 +379,35 @@ async function renderPlatformsRegistryList() {
 async function loadUserProfile() {
     try {
         const items = await db.personal_data.toArray();
-        if (!items.length) return;
+        if (!items.length) {
+            return;
+        }
         const profile = items[0];
 
-        if (profile.first_name) document.getElementById('prof-firstname').value = profile.first_name;
-        if (profile.last_name) document.getElementById('prof-lastname').value = profile.last_name;
-        if (profile.email) document.getElementById('prof-email').value = profile.email;
-        if (profile.phone) document.getElementById('prof-phone').value = profile.phone;
-        if (profile.location) document.getElementById('prof-location').value = profile.location;
-        if (profile.headline) document.getElementById('prof-headline').value = profile.headline;
-        if (profile.links) document.getElementById('prof-links').value = profile.links;
-        if (profile.skills) document.getElementById('prof-skills').value = profile.skills;
+        if (profile.first_name) {
+            document.getElementById('prof-firstname').value = profile.first_name;
+        }
+        if (profile.last_name) {
+            document.getElementById('prof-lastname').value = profile.last_name;
+        }
+        if (profile.email) {
+            document.getElementById('prof-email').value = profile.email;
+        }
+        if (profile.phone) {
+            document.getElementById('prof-phone').value = profile.phone;
+        }
+        if (profile.location) {
+            document.getElementById('prof-location').value = profile.location;
+        }
+        if (profile.headline) {
+            document.getElementById('prof-headline').value = profile.headline;
+        }
+        if (profile.links) {
+            document.getElementById('prof-links').value = profile.links;
+        }
+        if (profile.skills) {
+            document.getElementById('prof-skills').value = profile.skills;
+        }
     } catch (e) {
         console.error(e);
     }
@@ -342,43 +417,58 @@ function initProfileManagement() {
     const saveBtn = document.getElementById('save-profile-btn');
     const statusBox = document.getElementById('profile-save-status');
 
-    saveBtn?.addEventListener('click', async () => {
-        const profileData = {
-            first_name: document.getElementById('prof-firstname').value.trim(),
-            last_name: document.getElementById('prof-lastname').value.trim(),
-            email: document.getElementById('prof-email').value.trim(),
-            phone: document.getElementById('prof-phone').value.trim(),
-            location: document.getElementById('prof-location').value.trim(),
-            headline: document.getElementById('prof-headline').value.trim(),
-            links: document.getElementById('prof-links').value.trim(),
-            skills: document.getElementById('prof-skills').value.trim(),
-            updated_at: new Date().toISOString()
-        };
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const profileData = {
+                first_name: document.getElementById('prof-firstname').value.trim(),
+                last_name: document.getElementById('prof-lastname').value.trim(),
+                email: document.getElementById('prof-email').value.trim(),
+                phone: document.getElementById('prof-phone').value.trim(),
+                location: document.getElementById('prof-location').value.trim(),
+                headline: document.getElementById('prof-headline').value.trim(),
+                links: document.getElementById('prof-links').value.trim(),
+                skills: document.getElementById('prof-skills').value.trim(),
+                updated_at: new Date().toISOString()
+            };
 
-        chrome.runtime.sendMessage({ action: 'save_profile_data', profile: profileData }, (res) => {
-            if (statusBox) {
-                statusBox.style.display = 'block';
-                if (res && res.success) {
-                    statusBox.textContent = 'Profile saved successfully.';
-                    statusBox.style.color = '#166534';
-                } else {
-                    statusBox.textContent = 'Failed to save profile.';
-                    statusBox.style.color = '#dc2626';
+            chrome.runtime.sendMessage({ action: 'save_profile_data', profile: profileData }, (res) => {
+                if (statusBox) {
+                    statusBox.style.display = 'block';
+                    if (res && res.success) {
+                        statusBox.textContent = 'Profile saved successfully.';
+                        statusBox.style.color = '#166534';
+                    } else {
+                        statusBox.textContent = 'Failed to save profile.';
+                        statusBox.style.color = '#dc2626';
+                    }
+                    setTimeout(() => {
+                        statusBox.style.display = 'none';
+                    }, 3000);
                 }
-                setTimeout(() => {
-                    statusBox.style.display = 'none';
-                }, 3000);
-            }
-            updateSystemMetrics();
+                updateSystemMetrics();
+            });
         });
-    });
+    }
 }
 
-function bindAutoSave(elementId, storageKey) {
-    const el = document.getElementById(elementId);
-    if (!el) return;
+function bindAutoSave(selector, storageKey, delay = 300) {
+    const el = document.querySelector(selector);
+    if (!el) {
+        return;
+    }
+
+    chrome.storage.local.get(storageKey, (data) => {
+        if (data[storageKey] !== undefined) {
+            el.value = data[storageKey];
+        }
+    });
+
+    let timer;
     el.addEventListener('input', () => {
-        chrome.storage.local.set({ [storageKey]: el.value });
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            chrome.storage.local.set({ [storageKey]: el.value });
+        }, delay);
     });
 }
 
@@ -394,14 +484,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const data = await chrome.storage.local.get(STORAGE_KEYS);
-    const currentLang = data.preferred_locale || 'en';
+    let currentLang = 'en';
+    if (data.preferred_locale) {
+        currentLang = data.preferred_locale;
+    }
 
     const langSelect = document.getElementById('lang-select');
-    if (langSelect) langSelect.value = currentLang;
+    if (langSelect) {
+        langSelect.value = currentLang;
+    }
 
-    if (data.automation_websites) document.getElementById('target-websites').value = data.automation_websites;
-    if (data.automation_roles) document.getElementById('target-roles').value = data.automation_roles;
-    if (data.automation_limit) document.getElementById('pagination-limit').value = data.automation_limit;
+    if (data.automation_websites) {
+        document.getElementById('target-websites').value = data.automation_websites;
+    }
+    if (data.automation_roles) {
+        document.getElementById('target-roles').value = data.automation_roles;
+    }
+    if (data.automation_limit) {
+        document.getElementById('pagination-limit').value = data.automation_limit;
+    }
 
     bindAutoSave('target-websites', 'automation_websites');
     bindAutoSave('target-roles', 'automation_roles');
@@ -416,59 +517,86 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 const addWebsiteBtn = document.getElementById('add-website-btn');
-addWebsiteBtn?.addEventListener('click', async () => {
-    const rawUrl = document.getElementById('quick-website-url').value.trim();
-    const fallbackBox = document.getElementById('manual-selector-fallback');
-    const autoStatus = document.getElementById('automation-status');
+if (addWebsiteBtn) {
+    addWebsiteBtn.addEventListener('click', async () => {
+        const rawUrl = document.getElementById('quick-website-url').value.trim();
+        const fallbackBox = document.getElementById('manual-selector-fallback');
+        const autoStatus = document.getElementById('automation-status');
 
-    if (!rawUrl) {
-        if (autoStatus) autoStatus.innerText = 'Please enter a URL.';
-        return;
-    }
-
-    let urlObj;
-    try {
-        urlObj = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
-    } catch (e) {
-        if (autoStatus) autoStatus.innerText = 'Invalid URL format.';
-        return;
-    }
-
-    const hostname = urlObj.hostname;
-    const formattedUrl = urlObj.href;
-
-    const baseName = hostname.replace(/^www\./, '').split('.')[0];
-    const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-
-    if (autoStatus) autoStatus.innerText = `Inspecting ${hostname}...`;
-
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const currentTab = tabs[0];
-        const isCurrentlyOnTab = currentTab?.url && currentTab.url.includes(hostname);
-
-        if (isCurrentlyOnTab && currentTab.id) {
-            chrome.tabs.sendMessage(currentTab.id, { action: 'detect_page_selectors_for_registration' }, (res) => {
-                const detectedInput = res?.detected?.searchInput || '';
-                if (detectedInput) {
-                    fallbackBox.style.display = 'none';
-                    savePlatformAndFinish(platformName, formattedUrl, hostname, detectedInput);
-                } else {
-                    promptManualFallback(hostname, formattedUrl);
-                }
-            });
-        } else {
-            savePlatformAndFinish(platformName, formattedUrl, hostname, '');
+        if (!rawUrl) {
+            if (autoStatus) {
+                autoStatus.innerText = 'Please enter a URL.';
+            }
+            return;
         }
+
+        let formattedInputUrl = rawUrl;
+        if (!rawUrl.startsWith('http')) {
+            formattedInputUrl = 'https://' + rawUrl;
+        }
+
+        let urlObj;
+        try {
+            urlObj = new URL(formattedInputUrl);
+        } catch (e) {
+            if (autoStatus) {
+                autoStatus.innerText = 'Invalid URL format.';
+            }
+            return;
+        }
+
+        const hostname = urlObj.hostname;
+        const formattedUrl = urlObj.href;
+
+        const baseName = hostname.replace(/^www\./, '').split('.')[0];
+        const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+
+        if (autoStatus) {
+            autoStatus.innerText = 'Inspecting ' + hostname + '...';
+        }
+
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            const currentTab = tabs[0];
+            let isCurrentlyOnTab = false;
+            if (currentTab && currentTab.url) {
+                if (currentTab.url.includes(hostname)) {
+                    isCurrentlyOnTab = true;
+                }
+            }
+
+            if (isCurrentlyOnTab && currentTab.id) {
+                chrome.tabs.sendMessage(currentTab.id, { action: 'detect_page_selectors_for_registration' }, (res) => {
+                    let detectedInput = '';
+                    if (res && res.detected) {
+                        detectedInput = res.detected.searchInput || '';
+                    }
+                    if (detectedInput) {
+                        if (fallbackBox) {
+                            fallbackBox.style.display = 'none';
+                        }
+                        savePlatformAndFinish(platformName, formattedUrl, hostname, detectedInput);
+                    } else {
+                        promptManualFallback(hostname, formattedUrl);
+                    }
+                });
+            } else {
+                savePlatformAndFinish(platformName, formattedUrl, hostname, '');
+            }
+        });
     });
-});
+}
 
 function promptManualFallback(hostname, url) {
     pendingHostnameToConfigure = hostname;
     pendingUrlToConfigure = url;
     const fallbackBox = document.getElementById('manual-selector-fallback');
-    if (fallbackBox) fallbackBox.style.display = 'block';
+    if (fallbackBox) {
+        fallbackBox.style.display = 'block';
+    }
     const autoStatus = document.getElementById('automation-status');
-    if (autoStatus) autoStatus.innerText = `Search field not detected for ${hostname}. Please enter selector manually.`;
+    if (autoStatus) {
+        autoStatus.innerText = 'Search field not detected for ' + hostname + '. Please enter selector manually.';
+    }
 }
 
 function savePlatformAndFinish(name, url, hostname, searchSelector) {
@@ -484,9 +612,14 @@ function savePlatformAndFinish(name, url, hostname, searchSelector) {
     }, async (res) => {
         const autoStatus = document.getElementById('automation-status');
         if (res && res.success) {
-            if (autoStatus) autoStatus.innerText = `Platform ${name} saved.`;
+            if (autoStatus) {
+                autoStatus.innerText = 'Platform ' + name + ' saved.';
+            }
             document.getElementById('quick-website-url').value = '';
-            document.getElementById('manual-selector-fallback').style.display = 'none';
+            const fallbackBox = document.getElementById('manual-selector-fallback');
+            if (fallbackBox) {
+                fallbackBox.style.display = 'none';
+            }
 
             const area = document.getElementById('target-websites');
             const lines = area.value.trim().split('\n').filter(Boolean);
@@ -498,94 +631,132 @@ function savePlatformAndFinish(name, url, hostname, searchSelector) {
             await renderPlatformsRegistryList();
             await updateSystemMetrics();
         } else {
-            if (autoStatus) autoStatus.innerText = res ? res.error : 'Save failed.';
+            if (autoStatus) {
+                if (res) {
+                    autoStatus.innerText = res.error;
+                } else {
+                    autoStatus.innerText = 'Save failed.';
+                }
+            }
         }
     });
 }
 
 const saveManualSelectorBtn = document.getElementById('save-manual-selector-btn');
-saveManualSelectorBtn?.addEventListener('click', () => {
-    const selector = document.getElementById('manual-search-selector').value.trim();
-    if (!selector) return;
+if (saveManualSelectorBtn) {
+    saveManualSelectorBtn.addEventListener('click', () => {
+        const selector = document.getElementById('manual-search-selector').value.trim();
+        if (!selector) {
+            return;
+        }
 
-    const baseName = pendingHostnameToConfigure.replace(/^www\./, '').split('.')[0];
-    const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+        const baseName = pendingHostnameToConfigure.replace(/^www\./, '').split('.')[0];
+        const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
 
-    savePlatformAndFinish(platformName, pendingUrlToConfigure, pendingHostnameToConfigure, selector);
-    document.getElementById('manual-search-selector').value = '';
-});
+        savePlatformAndFinish(platformName, pendingUrlToConfigure, pendingHostnameToConfigure, selector);
+        document.getElementById('manual-search-selector').value = '';
+    });
+}
 
 const openPwaBtn = document.getElementById('open-pwa-btn');
-openPwaBtn?.addEventListener('click', () => {
-    chrome.tabs.create({ url: PWA_DEFAULT_URL });
-});
+if (openPwaBtn) {
+    openPwaBtn.addEventListener('click', () => {
+        chrome.tabs.create({ url: PWA_DEFAULT_URL });
+    });
+}
 
 const selectElement = document.getElementById('lang-select');
-selectElement?.addEventListener('change', async (event) => {
-    const target = event.target;
-    const newLang = target.value;
-    await chrome.storage.local.set({ preferred_locale: newLang });
-    await applyTranslations(newLang);
-});
+if (selectElement) {
+    selectElement.addEventListener('change', async (event) => {
+        const target = event.target;
+        const newLang = target.value;
+        await chrome.storage.local.set({ preferred_locale: newLang });
+        await applyTranslations(newLang);
+    });
+}
 
 const startAutomationBtn = document.getElementById('start-automation');
-startAutomationBtn?.addEventListener('click', async () => {
-    const websitesText = document.getElementById('target-websites').value.trim();
-    const rolesText = document.getElementById('target-roles').value.trim();
-    const limit = parseInt(document.getElementById('pagination-limit').value, 10) || 1;
+if (startAutomationBtn) {
+    startAutomationBtn.addEventListener('click', async () => {
+        const websitesText = document.getElementById('target-websites').value.trim();
+        const rolesText = document.getElementById('target-roles').value.trim();
+        const limit = parseInt(document.getElementById('pagination-limit').value, 10) || 1;
 
-    const websites = websitesText.split('\n').map(s => s.trim()).filter(Boolean);
-    const roles = rolesText.split(',').map(s => s.trim()).filter(Boolean);
+        const websites = websitesText.split('\n').map(s => s.trim()).filter(Boolean);
+        const roles = rolesText.split(',').map(s => s.trim()).filter(Boolean);
 
-    const autoStatus = document.getElementById('automation-status');
+        const autoStatus = document.getElementById('automation-status');
 
-    if (!websites.length || !roles.length) {
-        if (autoStatus) autoStatus.innerText = 'Provide at least one website and role.';
-        return;
-    }
-
-    const selectedJobId = document.getElementById('job-select').value;
-    const activeJob = currentCustomJobs.find(j => j.id === selectedJobId);
-    const fieldsMode = activeJob ? activeJob.fields_mode : 'all';
-    const jobTitle = activeJob ? activeJob.title : 'Quick Automation';
-
-    await chrome.storage.local.set({
-        automation_websites: websitesText,
-        automation_roles: rolesText,
-        automation_limit: limit
-    });
-
-    if (autoStatus) autoStatus.innerText = 'Starting automation workflow...';
-
-    chrome.runtime.sendMessage({
-        action: 'start_automation_workflow',
-        config: {
-            websites,
-            roles,
-            paginationLimit: limit,
-            fieldsMode: fieldsMode,
-            jobTitle: jobTitle
+        if (!websites.length || !roles.length) {
+            if (autoStatus) {
+                autoStatus.innerText = 'Provide at least one website and role.';
+            }
+            return;
         }
-    }, (res) => {
-        if (res && !res.success && autoStatus) {
-            autoStatus.innerText = 'Error: ' + res.error;
+
+        const selectedJobId = document.getElementById('job-select').value;
+        const activeJob = currentCustomJobs.find(j => j.id === selectedJobId);
+
+        let fieldsMode = 'all';
+        if (activeJob) {
+            fieldsMode = activeJob.fields_mode;
         }
-        updateSystemMetrics();
+
+        let jobTitle = 'Quick Automation';
+        if (activeJob) {
+            jobTitle = activeJob.title;
+        }
+
+        await chrome.storage.local.set({
+            automation_websites: websitesText,
+            automation_roles: rolesText,
+            automation_limit: limit
+        });
+
+        if (autoStatus) {
+            autoStatus.innerText = 'Starting automation workflow...';
+        }
+
+        chrome.runtime.sendMessage({
+            action: 'start_automation_workflow',
+            config: {
+                websites: websites,
+                roles: roles,
+                paginationLimit: limit,
+                fieldsMode: fieldsMode,
+                jobTitle: jobTitle
+            }
+        }, (res) => {
+            if (res) {
+                if (!res.success) {
+                    if (autoStatus) {
+                        autoStatus.innerText = 'Error: ' + res.error;
+                    }
+                }
+            }
+            updateSystemMetrics();
+        });
     });
-});
+}
 
 const stopAutomationBtn = document.getElementById('stop-automation');
-stopAutomationBtn?.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ action: 'stop_automation_workflow' }, () => {
-        const autoStatus = document.getElementById('automation-status');
-        if (autoStatus) autoStatus.innerText = 'Automation stopped.';
-        updateSystemMetrics();
+if (stopAutomationBtn) {
+    stopAutomationBtn.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'stop_automation_workflow' }, () => {
+            const autoStatus = document.getElementById('automation-status');
+            if (autoStatus) {
+                autoStatus.innerText = 'Automation stopped.';
+            }
+            updateSystemMetrics();
+        });
     });
-});
+}
 
 chrome.runtime.onMessage.addListener((msg) => {
     const autoStatus = document.getElementById('automation-status');
-    if (!autoStatus) return;
+    if (!autoStatus) {
+        return;
+    }
 
     if (msg.action === 'automation_status_update') {
         autoStatus.innerText = msg.message;
@@ -602,40 +773,74 @@ chrome.runtime.onMessage.addListener((msg) => {
 });
 
 const addSiteButton = document.getElementById('add-site');
-addSiteButton?.addEventListener('click', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab?.url) return;
+if (addSiteButton) {
+    addSiteButton.addEventListener('click', async () => {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tab = tabs[0];
 
-    const autoStatus = document.getElementById('automation-status');
-    const hostname = new URL(tab.url).hostname;
-    document.getElementById('quick-website-url').value = tab.url;
-
-    chrome.tabs.sendMessage(tab.id, { action: 'detect_page_selectors_for_registration' }, async (response) => {
-        const detectedInput = response?.detected?.searchInput || '';
-        const baseName = hostname.replace(/^www\./, '').split('.')[0];
-        const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-
-        if (detectedInput) {
-            savePlatformAndFinish(platformName, tab.url, hostname, detectedInput);
-            if (autoStatus) autoStatus.innerText = `Auto-registered ${hostname} with detected search field.`;
-        } else {
-            promptManualFallback(hostname, tab.url);
+        if (!tab) {
+            return;
         }
+        if (!tab.id || !tab.url) {
+            return;
+        }
+
+        const autoStatus = document.getElementById('automation-status');
+        const hostname = new URL(tab.url).hostname;
+        document.getElementById('quick-website-url').value = tab.url;
+
+        chrome.tabs.sendMessage(tab.id, { action: 'detect_page_selectors_for_registration' }, async (response) => {
+            let detectedInput = '';
+            if (response && response.detected) {
+                detectedInput = response.detected.searchInput || '';
+            }
+
+            const baseName = hostname.replace(/^www\./, '').split('.')[0];
+            const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+
+            if (detectedInput) {
+                savePlatformAndFinish(platformName, tab.url, hostname, detectedInput);
+                if (autoStatus) {
+                    autoStatus.innerText = 'Auto-registered ' + hostname + ' with detected search field.';
+                }
+            } else {
+                promptManualFallback(hostname, tab.url);
+            }
+        });
     });
-});
+}
 
 const autoGuessButton = document.getElementById('auto-guess');
-autoGuessButton?.addEventListener('click', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return;
+if (autoGuessButton) {
+    autoGuessButton.addEventListener('click', async () => {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tab = tabs[0];
 
-    chrome.tabs.sendMessage(tab.id, { action: 'auto_guess_selectors' }, (response) => {
-        const statusElement = document.getElementById('status');
-        if (statusElement && response) {
-            statusElement.innerText = response.message || (response.success ? 'Heuristic guess evaluated.' : 'Guess failed.');
+        if (!tab) {
+            return;
         }
+        if (!tab.id) {
+            return;
+        }
+
+        chrome.tabs.sendMessage(tab.id, { action: 'auto_guess_selectors' }, (response) => {
+            const statusElement = document.getElementById('status');
+            if (statusElement) {
+                if (response) {
+                    let messageText = response.message;
+                    if (!messageText) {
+                        if (response.success) {
+                            messageText = 'Heuristic guess evaluated.';
+                        } else {
+                            messageText = 'Guess failed.';
+                        }
+                    }
+                    statusElement.innerText = messageText;
+                }
+            }
+        });
     });
-});
+}
 
 db.local_vacancies.hook('deleting', function () {
     this.onsuccess = async function () {
@@ -645,12 +850,14 @@ db.local_vacancies.hook('deleting', function () {
 });
 
 const clearDbButton = document.getElementById('clear-db');
-clearDbButton?.addEventListener('click', async () => {
-    try {
-        await db.local_vacancies.clear();
-        await updateVacancyCount();
-        await updateSystemMetrics();
-    } catch (err) {
-        console.error(err);
-    }
-});
+if (clearDbButton) {
+    clearDbButton.addEventListener('click', async () => {
+        try {
+            await db.local_vacancies.clear();
+            await updateVacancyCount();
+            await updateSystemMetrics();
+        } catch (err) {
+            console.error(err);
+        }
+    });
+}
