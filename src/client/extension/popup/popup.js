@@ -314,9 +314,19 @@ async function renderPlatformsRegistryList() {
         const summaryEl = document.createElement('summary');
         summaryEl.className = 'accordion-summary';
 
+        const titleWrapper = document.createElement('div');
+        titleWrapper.className = 'accordion-title-wrapper';
+
+        const arrowSpan = document.createElement('span');
+        arrowSpan.className = 'accordion-arrow';
+        arrowSpan.textContent = '▶';
+
         const titleSpan = document.createElement('span');
         titleSpan.className = 'platform-row-title';
         titleSpan.textContent = p.name || p.code;
+
+        titleWrapper.appendChild(arrowSpan);
+        titleWrapper.appendChild(titleSpan);
 
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'platform-row-actions';
@@ -396,7 +406,7 @@ async function renderPlatformsRegistryList() {
         actionsDiv.appendChild(useBtn);
         actionsDiv.appendChild(autoFixBtn);
 
-        summaryEl.appendChild(titleSpan);
+        summaryEl.appendChild(titleWrapper);
         summaryEl.appendChild(actionsDiv);
         detailsEl.appendChild(summaryEl);
 
