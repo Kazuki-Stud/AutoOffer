@@ -218,6 +218,33 @@ body {
     color: var(--text-main);
 }
 
+.profile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.profile-field-box {
+    background: #f8fafc;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
+.profile-field-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+    font-weight: 600;
+}
+
+.profile-field-value {
+    color: var(--text-main);
+    word-break: break-word;
+}
+
 .inline-input-group {
     display: flex;
     gap: 6px;

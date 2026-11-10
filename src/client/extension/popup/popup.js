@@ -7,7 +7,8 @@ const STORAGE_KEYS = [
     'preferred_locale',
     'automation_websites',
     'automation_roles',
-    'automation_limit'
+    'automation_limit',
+    'automation_profile_id'
 ];
 
 let currentCustomJobs = [];
@@ -97,19 +98,23 @@ function initTabs() {
 }
 
 async function loadProfileDropdowns() {
-    const profileSelect = document.getElementById('job-form-profile');
-    if (!profileSelect) {
-        return;
-    }
+    const profileSelects = [document.getElementById('job-form-profile'), document.getElementById('runner-profile-select')];
 
-    profileSelect.innerHTML = '<option value="">Default Profile</option>';
     try {
         const profiles = await db.personal_data.toArray();
-        for (const p of profiles) {
-            const opt = document.createElement('option');
-            opt.value = p.id || p.email || 'profile';
-            opt.textContent = (p.first_name || p.last_name) ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : (p.email || 'Profile');
-            profileSelect.appendChild(opt);
+        for (const selectEl of profileSelects) {
+            if (!selectEl) continue;
+            const currentVal = selectEl.value;
+            selectEl.innerHTML = '<option value="">Default Profile</option>';
+            for (const p of profiles) {
+                const opt = document.createElement('option');
+                opt.value = p.id || p.email || 'profile';
+                opt.textContent = (p.first_name || p.last_name) ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : (p.email || 'Profile');
+                selectEl.appendChild(opt);
+            }
+            if (currentVal) {
+                selectEl.value = currentVal;
+            }
         }
     } catch (e) {
         console.error(e);
@@ -238,7 +243,6 @@ function initJobManagement() {
     const editSummaryBtn = document.getElementById('btn-edit-summary');
     const saveSummaryBtn = document.getElementById('btn-save-summary');
     const cancelSummaryBtn = document.getElementById('btn-cancel-summary');
-    const summaryActions = document.getElementById('summary-edit-actions');
 
     if (toggleBtn) {
         toggleBtn.addEventListener('click', async () => {
@@ -276,13 +280,37 @@ function initJobManagement() {
         editSummaryBtn.addEventListener('click', async () => {
             isSummaryEditing = true;
             editSummaryBtn.style.display = 'none';
-            if (summaryActions) summaryActions.style.display = 'flex';
+            if (saveSummaryBtn) saveSummaryBtn.style.display = 'inline-block';
+            if (cancelSummaryBtn) cancelSummaryBtn.style.display = 'inline-block';
 
             const websitesArea = document.getElementById('target-websites');
             summarySelectedWebsites.clear();
             websitesArea.value.split('\n').map(s => s.trim()).filter(Boolean).forEach(w => summarySelectedWebsites.add(w));
 
             await renderSummaryWebsitesPicker();
+            await loadProfileDropdowns();
+
+            const profileSelect = document.getElementById('runner-profile-select');
+            const storedProfileId = profileSelect.value;
+            if (storedProfileId) {
+                try {
+                    const profiles = await db.personal_data.toArray();
+                    const p = profiles.find(item => item.id === storedProfileId || item.email === storedProfileId);
+                    if (p) {
+                        document.getElementById('sum-prof-firstname').value = p.first_name || '';
+                        document.getElementById('sum-prof-lastname').value = p.last_name || '';
+                        document.getElementById('sum-prof-email').value = p.email || '';
+                        document.getElementById('sum-prof-phone').value = p.phone || '';
+                        document.getElementById('sum-prof-location').value = p.location || '';
+                        document.getElementById('sum-prof-headline').value = p.headline || '';
+                        document.getElementById('sum-prof-roles').value = p.roles || '';
+                        document.getElementById('sum-prof-links').value = p.links || '';
+                        document.getElementById('sum-prof-skills').value = p.skills || '';
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
 
             document.getElementById('runner-websites-picker').style.display = 'flex';
             document.getElementById('runner-websites-display').style.display = 'none';
@@ -292,14 +320,21 @@ function initJobManagement() {
 
             document.getElementById('pagination-limit').style.display = 'block';
             document.getElementById('runner-limit-display').style.display = 'none';
+
+            profileSelect.style.display = 'block';
+            document.getElementById('runner-profile-display').style.display = 'none';
+
+            document.getElementById('runner-profile-details-container').style.display = 'block';
+            document.getElementById('runner-profile-details-display').style.display = 'none';
         });
     }
 
     if (cancelSummaryBtn) {
-        cancelSummaryBtn.addEventListener('click', () => {
+        cancelSummaryBtn.addEventListener('click', async () => {
             isSummaryEditing = false;
-            editSummaryBtn.style.display = 'inline-block';
-            if (summaryActions) summaryActions.style.display = 'none';
+            if (editSummaryBtn) editSummaryBtn.style.display = 'inline-block';
+            if (saveSummaryBtn) saveSummaryBtn.style.display = 'none';
+            if (cancelSummaryBtn) cancelSummaryBtn.style.display = 'none';
 
             document.getElementById('runner-websites-picker').style.display = 'none';
             document.getElementById('runner-websites-display').style.display = 'flex';
@@ -310,10 +345,23 @@ function initJobManagement() {
             document.getElementById('pagination-limit').style.display = 'none';
             document.getElementById('runner-limit-display').style.display = 'block';
 
+            document.getElementById('runner-profile-select').style.display = 'none';
+            document.getElementById('runner-profile-display').style.display = 'block';
+
+            document.getElementById('runner-profile-details-container').style.display = 'none';
+            document.getElementById('runner-profile-details-display').style.display = 'grid';
+
             const websitesArea = document.getElementById('target-websites');
             const rolesInput = document.getElementById('target-roles');
             const limitInput = document.getElementById('pagination-limit');
-            renderRunnerSummary(websitesArea.value, rolesInput.value, limitInput.value);
+            const profileSelect = document.getElementById('runner-profile-select');
+
+            const data = await chrome.storage.local.get(['automation_profile_id']);
+            if (data.automation_profile_id) {
+                profileSelect.value = data.automation_profile_id;
+            }
+
+            renderRunnerSummary(websitesArea.value, rolesInput.value, limitInput.value, profileSelect.value);
         });
     }
 
@@ -323,20 +371,51 @@ function initJobManagement() {
             const rolesInput = document.getElementById('target-roles');
             const limitInput = document.getElementById('pagination-limit');
             const websitesArea = document.getElementById('target-websites');
+            const profileSelect = document.getElementById('runner-profile-select');
 
             websitesArea.value = websitesVal;
             const rolesVal = rolesInput.value.trim();
             const limitVal = parseInt(limitInput.value, 10) || 2;
+            const profileIdVal = profileSelect.value;
+
+            if (profileIdVal) {
+                const profileData = {
+                    first_name: document.getElementById('sum-prof-firstname').value.trim(),
+                    last_name: document.getElementById('sum-prof-lastname').value.trim(),
+                    email: document.getElementById('sum-prof-email').value.trim(),
+                    phone: document.getElementById('sum-prof-phone').value.trim(),
+                    location: document.getElementById('sum-prof-location').value.trim(),
+                    headline: document.getElementById('sum-prof-headline').value.trim(),
+                    roles: document.getElementById('sum-prof-roles').value.trim(),
+                    links: document.getElementById('sum-prof-links').value.trim(),
+                    skills: document.getElementById('sum-prof-skills').value.trim(),
+                    updated_at: new Date().toISOString()
+                };
+                try {
+                    const profiles = await db.personal_data.toArray();
+                    const existing = profiles.find(item => item.id === profileIdVal || item.email === profileIdVal);
+                    if (existing && existing.id) {
+                        await db.personal_data.update(existing.id, profileData);
+                    } else {
+                        profileData.id = profileIdVal;
+                        await db.personal_data.add(profileData);
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
 
             await chrome.storage.local.set({
                 automation_websites: websitesVal,
                 automation_roles: rolesVal,
-                automation_limit: limitVal
+                automation_limit: limitVal,
+                automation_profile_id: profileIdVal
             });
 
             isSummaryEditing = false;
-            editSummaryBtn.style.display = 'inline-block';
-            if (summaryActions) summaryActions.style.display = 'none';
+            if (editSummaryBtn) editSummaryBtn.style.display = 'inline-block';
+            if (saveSummaryBtn) saveSummaryBtn.style.display = 'none';
+            if (cancelSummaryBtn) cancelSummaryBtn.style.display = 'none';
 
             document.getElementById('runner-websites-picker').style.display = 'none';
             document.getElementById('runner-websites-display').style.display = 'flex';
@@ -347,22 +426,13 @@ function initJobManagement() {
             limitInput.style.display = 'none';
             document.getElementById('runner-limit-display').style.display = 'block';
 
-            renderRunnerSummary(websitesVal, rolesVal, limitVal);
+            profileSelect.style.display = 'none';
+            document.getElementById('runner-profile-display').style.display = 'block';
 
-            const selectedId = jobSelect.value;
-            if (selectedId) {
-                const job = currentCustomJobs.find(j => j.id === selectedId);
-                if (job) {
-                    job.websites = websitesVal;
-                    job.roles = rolesVal;
-                    job.limit = limitVal;
-                    await db.automation_jobs.update(selectedId, {
-                        websites: websitesVal,
-                        roles: rolesVal,
-                        limit: limitVal
-                    });
-                }
-            }
+            document.getElementById('runner-profile-details-container').style.display = 'none';
+            document.getElementById('runner-profile-details-display').style.display = 'grid';
+
+            renderRunnerSummary(websitesVal, rolesVal, limitVal, profileIdVal);
         });
     }
 
@@ -502,13 +572,12 @@ function initJobManagement() {
     if (jobSelect) {
         jobSelect.addEventListener('change', async () => {
             const selectedId = jobSelect.value;
-            const editSummaryBtnEl = document.getElementById('btn-edit-summary');
             if (!selectedId) {
                 document.getElementById('target-websites').value = '';
                 document.getElementById('target-roles').value = '';
                 document.getElementById('pagination-limit').value = 2;
-                renderRunnerSummary('', '', 2);
-                if (editSummaryBtnEl) editSummaryBtnEl.style.display = 'none';
+                document.getElementById('runner-profile-select').value = '';
+                renderRunnerSummary('', '', 2, '');
                 const autoStatus = document.getElementById('automation-status');
                 if (autoStatus) {
                     autoStatus.innerText = 'Ready (Default Quick Run)';
@@ -521,7 +590,6 @@ function initJobManagement() {
             }
             const job = currentCustomJobs.find(j => j.id === selectedId);
             if (job) {
-                if (editSummaryBtnEl) editSummaryBtnEl.style.display = 'inline-block';
                 applySelectedJob(job);
                 if (editorBox.style.display === 'block') {
                     editingJobId = job.id;
@@ -544,12 +612,50 @@ function initJobManagement() {
             }
         });
     }
+
+    const runnerProfileSelect = document.getElementById('runner-profile-select');
+    if (runnerProfileSelect) {
+        runnerProfileSelect.addEventListener('change', async () => {
+            const profileId = runnerProfileSelect.value;
+            if (!profileId) {
+                document.getElementById('sum-prof-firstname').value = '';
+                document.getElementById('sum-prof-lastname').value = '';
+                document.getElementById('sum-prof-email').value = '';
+                document.getElementById('sum-prof-phone').value = '';
+                document.getElementById('sum-prof-location').value = '';
+                document.getElementById('sum-prof-headline').value = '';
+                document.getElementById('sum-prof-roles').value = '';
+                document.getElementById('sum-prof-links').value = '';
+                document.getElementById('sum-prof-skills').value = '';
+                return;
+            }
+            try {
+                const profiles = await db.personal_data.toArray();
+                const p = profiles.find(item => item.id === profileId || item.email === profileId);
+                if (p) {
+                    document.getElementById('sum-prof-firstname').value = p.first_name || '';
+                    document.getElementById('sum-prof-lastname').value = p.last_name || '';
+                    document.getElementById('sum-prof-email').value = p.email || '';
+                    document.getElementById('sum-prof-phone').value = p.phone || '';
+                    document.getElementById('sum-prof-location').value = p.location || '';
+                    document.getElementById('sum-prof-headline').value = p.headline || '';
+                    document.getElementById('sum-prof-roles').value = p.roles || '';
+                    document.getElementById('sum-prof-links').value = p.links || '';
+                    document.getElementById('sum-prof-skills').value = p.skills || '';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        });
+    }
 }
 
-async function renderRunnerSummary(websitesStr, rolesStr, limitVal) {
+async function renderRunnerSummary(websitesStr, rolesStr, limitVal, profileId) {
     const websitesDisplay = document.getElementById('runner-websites-display');
     const rolesDisplay = document.getElementById('runner-roles-display');
     const limitDisplay = document.getElementById('runner-limit-display');
+    const profileDisplay = document.getElementById('runner-profile-display');
+    const profileDetailsDisplay = document.getElementById('runner-profile-details-display');
 
     if (websitesDisplay) {
         websitesDisplay.innerHTML = '';
@@ -587,16 +693,71 @@ async function renderRunnerSummary(websitesStr, rolesStr, limitVal) {
     if (limitDisplay) {
         limitDisplay.textContent = limitVal || '2';
     }
+
+    let profileName = 'Default Profile';
+    let pObj = null;
+    try {
+        const profiles = await db.personal_data.toArray();
+        if (profileId) {
+            pObj = profiles.find(item => item.id === profileId || item.email === profileId);
+        }
+        if (!pObj && profiles.length > 0) {
+            pObj = profiles[0];
+        }
+        if (pObj) {
+            profileName = (pObj.first_name || pObj.last_name) ? `${pObj.first_name || ''} ${pObj.last_name || ''}`.trim() : (pObj.email || 'Profile');
+        }
+    } catch (e) {
+        console.error(e);
+    }
+
+    if (profileDisplay) {
+        profileDisplay.textContent = profileName;
+    }
+
+    if (profileDetailsDisplay) {
+        profileDetailsDisplay.innerHTML = '';
+        const fieldsData = [
+            { label: 'First Name', val: pObj?.first_name || '' },
+            { label: 'Last Name', val: pObj?.last_name || '' },
+            { label: 'Email', val: pObj?.email || '' },
+            { label: 'Phone', val: pObj?.phone || '' },
+            { label: 'Location', val: pObj?.location || '' },
+            { label: 'Headline', val: pObj?.headline || '' },
+            { label: 'Roles', val: pObj?.roles || '' },
+            { label: 'Links', val: pObj?.links || '' },
+            { label: 'Skills', val: pObj?.skills || '' }
+        ];
+
+        for (const f of fieldsData) {
+            const box = document.createElement('div');
+            box.className = 'profile-field-box';
+
+            const lbl = document.createElement('div');
+            lbl.className = 'profile-field-label';
+            lbl.textContent = f.label;
+
+            const val = document.createElement('div');
+            val.className = 'profile-field-value';
+            val.textContent = f.val || '—';
+
+            box.appendChild(lbl);
+            box.appendChild(val);
+            profileDetailsDisplay.appendChild(box);
+        }
+    }
 }
 
-function applySelectedJob(job) {
+async function applySelectedJob(job) {
     const websitesArea = document.getElementById('target-websites');
     const rolesInput = document.getElementById('target-roles');
     const limitInput = document.getElementById('pagination-limit');
+    const profileSelect = document.getElementById('runner-profile-select');
 
     const websites = job.websites || '';
     const roles = job.roles || '';
     const limit = job.limit || 2;
+    const profileId = job.profile_id || '';
 
     if (websitesArea) {
         websitesArea.value = websites;
@@ -607,8 +768,18 @@ function applySelectedJob(job) {
     if (limitInput) {
         limitInput.value = limit;
     }
+    if (profileSelect) {
+        profileSelect.value = profileId;
+    }
 
-    renderRunnerSummary(websites, roles, limit);
+    await chrome.storage.local.set({
+        automation_websites: websites,
+        automation_roles: roles,
+        automation_limit: limit,
+        automation_profile_id: profileId
+    });
+
+    renderRunnerSummary(websites, roles, limit, profileId);
 
     const autoStatus = document.getElementById('automation-status');
     if (autoStatus) {
@@ -712,7 +883,7 @@ async function renderPlatformsRegistryList() {
                 lines.push(target);
                 area.value = lines.join('\n');
                 chrome.storage.local.set({ automation_websites: area.value });
-                renderRunnerSummary(area.value, document.getElementById('target-roles').value, document.getElementById('pagination-limit').value);
+                renderRunnerSummary(area.value, document.getElementById('target-roles').value, document.getElementById('pagination-limit').value, document.getElementById('runner-profile-select').value);
             }
             const tabJobs = document.getElementById('tab-btn-jobs');
             if (tabJobs) {
@@ -944,11 +1115,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (data.automation_limit) {
         document.getElementById('pagination-limit').value = data.automation_limit;
     }
+    if (data.automation_profile_id) {
+        document.getElementById('runner-profile-select').value = data.automation_profile_id;
+    }
+
+    await loadProfileDropdowns();
 
     renderRunnerSummary(
         document.getElementById('target-websites').value,
         document.getElementById('target-roles').value,
-        document.getElementById('pagination-limit').value
+        document.getElementById('pagination-limit').value,
+        document.getElementById('runner-profile-select').value
     );
 
     bindAutoSave('target-websites', 'automation_websites');
@@ -987,6 +1164,7 @@ if (startAutomationBtn) {
         const websitesText = document.getElementById('target-websites').value.trim();
         const rolesText = document.getElementById('target-roles').value.trim();
         const limit = parseInt(document.getElementById('pagination-limit').value, 10) || 1;
+        const profileId = document.getElementById('runner-profile-select').value;
 
         const websites = websitesText.split('\n').map(s => s.trim()).filter(Boolean);
         const roles = rolesText.split(',').map(s => s.trim()).filter(Boolean);
@@ -1004,10 +1182,8 @@ if (startAutomationBtn) {
         const activeJob = currentCustomJobs.find(j => j.id === selectedJobId);
 
         let fieldsMode = 'all';
-        let profileId = '';
         if (activeJob) {
             fieldsMode = activeJob.fields_mode;
-            profileId = activeJob.profile_id;
         }
 
         let jobTitle = 'Quick Automation';
@@ -1018,7 +1194,8 @@ if (startAutomationBtn) {
         await chrome.storage.local.set({
             automation_websites: websitesText,
             automation_roles: rolesText,
-            automation_limit: limit
+            automation_limit: limit,
+            automation_profile_id: profileId
         });
 
         if (autoStatus) {
