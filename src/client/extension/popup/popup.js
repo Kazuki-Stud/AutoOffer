@@ -6,7 +6,6 @@ const PWA_DEFAULT_URL = 'http://localhost:5173';
 const STORAGE_KEYS = [
     'preferred_locale',
     'automation_websites',
-    'automation_roles',
     'automation_limit',
     'automation_profile_id'
 ];
@@ -315,9 +314,6 @@ function initJobManagement() {
             document.getElementById('runner-websites-picker').style.display = 'flex';
             document.getElementById('runner-websites-display').style.display = 'none';
 
-            document.getElementById('target-roles').style.display = 'block';
-            document.getElementById('runner-roles-display').style.display = 'none';
-
             document.getElementById('pagination-limit').style.display = 'block';
             document.getElementById('runner-limit-display').style.display = 'none';
 
@@ -339,9 +335,6 @@ function initJobManagement() {
             document.getElementById('runner-websites-picker').style.display = 'none';
             document.getElementById('runner-websites-display').style.display = 'flex';
 
-            document.getElementById('target-roles').style.display = 'none';
-            document.getElementById('runner-roles-display').style.display = 'block';
-
             document.getElementById('pagination-limit').style.display = 'none';
             document.getElementById('runner-limit-display').style.display = 'block';
 
@@ -352,7 +345,6 @@ function initJobManagement() {
             document.getElementById('runner-profile-details-display').style.display = 'grid';
 
             const websitesArea = document.getElementById('target-websites');
-            const rolesInput = document.getElementById('target-roles');
             const limitInput = document.getElementById('pagination-limit');
             const profileSelect = document.getElementById('runner-profile-select');
 
@@ -361,20 +353,18 @@ function initJobManagement() {
                 profileSelect.value = data.automation_profile_id;
             }
 
-            renderRunnerSummary(websitesArea.value, rolesInput.value, limitInput.value, profileSelect.value);
+            renderRunnerSummary(websitesArea.value, limitInput.value, profileSelect.value);
         });
     }
 
     if (saveSummaryBtn) {
         saveSummaryBtn.addEventListener('click', async () => {
             const websitesVal = Array.from(summarySelectedWebsites).join('\n');
-            const rolesInput = document.getElementById('target-roles');
             const limitInput = document.getElementById('pagination-limit');
             const websitesArea = document.getElementById('target-websites');
             const profileSelect = document.getElementById('runner-profile-select');
 
             websitesArea.value = websitesVal;
-            const rolesVal = rolesInput.value.trim();
             const limitVal = parseInt(limitInput.value, 10) || 2;
             const profileIdVal = profileSelect.value;
 
@@ -407,7 +397,6 @@ function initJobManagement() {
 
             await chrome.storage.local.set({
                 automation_websites: websitesVal,
-                automation_roles: rolesVal,
                 automation_limit: limitVal,
                 automation_profile_id: profileIdVal
             });
@@ -420,9 +409,6 @@ function initJobManagement() {
             document.getElementById('runner-websites-picker').style.display = 'none';
             document.getElementById('runner-websites-display').style.display = 'flex';
 
-            rolesInput.style.display = 'none';
-            document.getElementById('runner-roles-display').style.display = 'block';
-
             limitInput.style.display = 'none';
             document.getElementById('runner-limit-display').style.display = 'block';
 
@@ -432,7 +418,7 @@ function initJobManagement() {
             document.getElementById('runner-profile-details-container').style.display = 'none';
             document.getElementById('runner-profile-details-display').style.display = 'grid';
 
-            renderRunnerSummary(websitesVal, rolesVal, limitVal, profileIdVal);
+            renderRunnerSummary(websitesVal, limitVal, profileIdVal);
         });
     }
 
@@ -574,10 +560,9 @@ function initJobManagement() {
             const selectedId = jobSelect.value;
             if (!selectedId) {
                 document.getElementById('target-websites').value = '';
-                document.getElementById('target-roles').value = '';
                 document.getElementById('pagination-limit').value = 2;
                 document.getElementById('runner-profile-select').value = '';
-                renderRunnerSummary('', '', 2, '');
+                renderRunnerSummary('', 2, '');
                 const autoStatus = document.getElementById('automation-status');
                 if (autoStatus) {
                     autoStatus.innerText = 'Ready (Default Quick Run)';
@@ -650,9 +635,8 @@ function initJobManagement() {
     }
 }
 
-async function renderRunnerSummary(websitesStr, rolesStr, limitVal, profileId) {
+async function renderRunnerSummary(websitesStr, limitVal, profileId) {
     const websitesDisplay = document.getElementById('runner-websites-display');
-    const rolesDisplay = document.getElementById('runner-roles-display');
     const limitDisplay = document.getElementById('runner-limit-display');
     const profileDisplay = document.getElementById('runner-profile-display');
     const profileDetailsDisplay = document.getElementById('runner-profile-details-display');
@@ -684,10 +668,6 @@ async function renderRunnerSummary(websitesStr, rolesStr, limitVal, profileId) {
                 websitesDisplay.appendChild(chip);
             }
         }
-    }
-
-    if (rolesDisplay) {
-        rolesDisplay.textContent = rolesStr || 'None';
     }
 
     if (limitDisplay) {
@@ -723,7 +703,7 @@ async function renderRunnerSummary(websitesStr, rolesStr, limitVal, profileId) {
             { label: 'Email', val: pObj?.email || '' },
             { label: 'Phone', val: pObj?.phone || '' },
             { label: 'Location', val: pObj?.location || '' },
-            { label: 'Headline', val: pObj?.headline || '' },
+            { label: 'Job Title', val: pObj?.headline || '' },
             { label: 'Roles', val: pObj?.roles || '' },
             { label: 'Links', val: pObj?.links || '' },
             { label: 'Skills', val: pObj?.skills || '' }
@@ -750,20 +730,15 @@ async function renderRunnerSummary(websitesStr, rolesStr, limitVal, profileId) {
 
 async function applySelectedJob(job) {
     const websitesArea = document.getElementById('target-websites');
-    const rolesInput = document.getElementById('target-roles');
     const limitInput = document.getElementById('pagination-limit');
     const profileSelect = document.getElementById('runner-profile-select');
 
     const websites = job.websites || '';
-    const roles = job.roles || '';
     const limit = job.limit || 2;
     const profileId = job.profile_id || '';
 
     if (websitesArea) {
         websitesArea.value = websites;
-    }
-    if (rolesInput) {
-        rolesInput.value = roles;
     }
     if (limitInput) {
         limitInput.value = limit;
@@ -774,12 +749,11 @@ async function applySelectedJob(job) {
 
     await chrome.storage.local.set({
         automation_websites: websites,
-        automation_roles: roles,
         automation_limit: limit,
         automation_profile_id: profileId
     });
 
-    renderRunnerSummary(websites, roles, limit, profileId);
+    renderRunnerSummary(websites, limit, profileId);
 
     const autoStatus = document.getElementById('automation-status');
     if (autoStatus) {
@@ -883,7 +857,7 @@ async function renderPlatformsRegistryList() {
                 lines.push(target);
                 area.value = lines.join('\n');
                 chrome.storage.local.set({ automation_websites: area.value });
-                renderRunnerSummary(area.value, document.getElementById('target-roles').value, document.getElementById('pagination-limit').value, document.getElementById('runner-profile-select').value);
+                renderRunnerSummary(area.value, document.getElementById('pagination-limit').value, document.getElementById('runner-profile-select').value);
             }
             const tabJobs = document.getElementById('tab-btn-jobs');
             if (tabJobs) {
@@ -1109,9 +1083,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (data.automation_websites) {
         document.getElementById('target-websites').value = data.automation_websites;
     }
-    if (data.automation_roles) {
-        document.getElementById('target-roles').value = data.automation_roles;
-    }
     if (data.automation_limit) {
         document.getElementById('pagination-limit').value = data.automation_limit;
     }
@@ -1123,13 +1094,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     renderRunnerSummary(
         document.getElementById('target-websites').value,
-        document.getElementById('target-roles').value,
         document.getElementById('pagination-limit').value,
         document.getElementById('runner-profile-select').value
     );
 
     bindAutoSave('target-websites', 'automation_websites');
-    bindAutoSave('target-roles', 'automation_roles');
     bindAutoSave('pagination-limit', 'pagination-limit');
 
     await loadCustomJobs();
@@ -1162,7 +1131,7 @@ const startAutomationBtn = document.getElementById('start-automation');
 if (startAutomationBtn) {
     startAutomationBtn.addEventListener('click', async () => {
         const websitesText = document.getElementById('target-websites').value.trim();
-        const rolesText = document.getElementById('target-roles').value.trim();
+        const rolesText = document.getElementById('sum-prof-roles').value.trim();
         const limit = parseInt(document.getElementById('pagination-limit').value, 10) || 1;
         const profileId = document.getElementById('runner-profile-select').value;
 
@@ -1193,7 +1162,6 @@ if (startAutomationBtn) {
 
         await chrome.storage.local.set({
             automation_websites: websitesText,
-            automation_roles: rolesText,
             automation_limit: limit,
             automation_profile_id: profileId
         });
