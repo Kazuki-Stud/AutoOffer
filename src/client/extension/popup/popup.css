@@ -114,6 +114,8 @@ body {
     gap: 10px;
     padding-right: 4px;
     min-height: 0;
+    transform: translateZ(0);
+    will-change: scroll-position;
 }
 
 .pane-section {
