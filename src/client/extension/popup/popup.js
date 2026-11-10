@@ -1,7 +1,6 @@
 import { db } from '../database.js';
 import { seedDatabase } from '../database/seed.js';
 
-const ELEMENT_TYPE_SEARCH = '77777777-7777-7777-7777-777777777777';
 const PWA_DEFAULT_URL = 'http://localhost:5173';
 
 const STORAGE_KEYS = [
@@ -11,8 +10,6 @@ const STORAGE_KEYS = [
     'automation_limit'
 ];
 
-let pendingHostnameToConfigure = '';
-let pendingUrlToConfigure = '';
 let currentCustomJobs = [];
 
 async function applyTranslations(lang) {
@@ -253,7 +250,8 @@ async function renderPlatformsRegistryList() {
 
     listEl.innerHTML = '';
     const platforms = await db.platforms_dict.toArray();
-    const allSelectors = await db.selectors.where('element_type_id').equals(ELEMENT_TYPE_SEARCH).toArray();
+    const allSelectors = await db.selectors.toArray();
+    const elementTypes = await db.selector_element_types_dict.toArray();
 
     if (countBadge) {
         countBadge.textContent = platforms.length + ' platforms';
@@ -265,12 +263,6 @@ async function renderPlatformsRegistryList() {
     }
 
     for (const p of platforms) {
-        const matchedSelector = allSelectors.find(s => s.platform_id === p.id || s.url_pattern === p.code);
-        let selectorValue = '';
-        if (matchedSelector) {
-            selectorValue = matchedSelector.selector_string;
-        }
-
         const row = document.createElement('div');
         row.className = 'platform-row';
 
@@ -326,15 +318,27 @@ async function renderPlatformsRegistryList() {
             }
         });
 
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'action-btn-sm';
-        saveBtn.textContent = 'Save';
-
-        const delBtn = document.createElement('button');
-        delBtn.className = 'action-btn-sm delete-btn';
-        delBtn.textContent = 'Del';
-        delBtn.addEventListener('click', () => {
-            chrome.runtime.sendMessage({ action: 'delete_platform', platformId: p.id, hostname: p.code }, async () => {
+        const autoFixBtn = document.createElement('button');
+        autoFixBtn.className = 'action-btn-sm magic-btn';
+        autoFixBtn.textContent = 'AutoFix';
+        autoFixBtn.addEventListener('click', () => {
+            const autoStatus = document.getElementById('automation-status');
+            if (autoStatus) {
+                autoStatus.innerText = 'Running auto-fix on ' + p.code + '...';
+            }
+            chrome.runtime.sendMessage({
+                action: 'auto_fix_platform_selectors',
+                platformId: p.id,
+                hostname: p.code,
+                url: p.url || ('https://' + p.code)
+            }, async (res) => {
+                if (autoStatus) {
+                    if (res && res.success) {
+                        autoStatus.innerText = 'Auto-fix completed successfully for ' + p.code;
+                    } else {
+                        autoStatus.innerText = 'Auto-fix failed: ' + (res?.error || 'unknown error');
+                    }
+                }
                 await renderPlatformsRegistryList();
                 await updateSystemMetrics();
             });
@@ -342,36 +346,66 @@ async function renderPlatformsRegistryList() {
 
         actionsDiv.appendChild(modeSelect);
         actionsDiv.appendChild(useBtn);
-        actionsDiv.appendChild(saveBtn);
-        actionsDiv.appendChild(delBtn);
+        actionsDiv.appendChild(autoFixBtn);
 
         rowHeader.appendChild(titleSpan);
         rowHeader.appendChild(actionsDiv);
-
-        const inputEl = document.createElement('input');
-        inputEl.className = 'platform-row-input';
-        inputEl.placeholder = 'Search selector (e.g. input#q)';
-        inputEl.value = selectorValue;
-
-        saveBtn.addEventListener('click', () => {
-            const newSelector = inputEl.value.trim();
-            chrome.runtime.sendMessage({
-                action: 'update_platform_search_selector',
-                platformId: p.id,
-                hostname: p.code,
-                selector: newSelector
-            }, async () => {
-                const autoStatus = document.getElementById('automation-status');
-                if (autoStatus) {
-                    autoStatus.innerText = 'Updated selector for ' + p.code;
-                }
-                await renderPlatformsRegistryList();
-                await updateSystemMetrics();
-            });
-        });
-
         row.appendChild(rowHeader);
-        row.appendChild(inputEl);
+
+        const selectorsContainer = document.createElement('div');
+        selectorsContainer.className = 'selectors-box';
+
+        const platformSelectors = allSelectors.filter(s => s.platform_id === p.id || s.url_pattern === p.code);
+
+        for (const et of elementTypes) {
+            const matched = platformSelectors.find(s => s.element_type_id === et.id);
+            const selectorGroup = document.createElement('div');
+            selectorGroup.className = 'form-group';
+
+            const label = document.createElement('label');
+            label.textContent = et.name + ':';
+
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'inline-input-group';
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = matched ? matched.selector_string : '';
+            input.placeholder = 'Selector for ' + et.name;
+
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'action-btn-sm';
+            saveBtn.textContent = 'Save';
+
+            saveBtn.addEventListener('click', () => {
+                const newString = input.value.trim();
+                chrome.runtime.sendMessage({
+                    action: 'update_specific_selector',
+                    platformId: p.id,
+                    hostname: p.code,
+                    elementTypeId: et.id,
+                    selectorString: newString
+                }, (res) => {
+                    const autoStatus = document.getElementById('automation-status');
+                    if (autoStatus) {
+                        if (res && res.success) {
+                            autoStatus.innerText = 'Updated ' + et.name + ' selector for ' + p.code;
+                        } else {
+                            autoStatus.innerText = 'Failed to update selector.';
+                        }
+                    }
+                    updateSystemMetrics();
+                });
+            });
+
+            inputGroup.appendChild(input);
+            inputGroup.appendChild(saveBtn);
+            selectorGroup.appendChild(label);
+            selectorGroup.appendChild(inputGroup);
+            selectorsContainer.appendChild(selectorGroup);
+        }
+
+        row.appendChild(selectorsContainer);
         listEl.appendChild(row);
     }
 }
@@ -506,7 +540,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     bindAutoSave('target-websites', 'automation_websites');
     bindAutoSave('target-roles', 'automation_roles');
-    bindAutoSave('pagination-limit', 'automation_limit');
+    bindAutoSave('pagination-limit', 'pagination-limit');
 
     await loadCustomJobs();
     await renderPlatformsRegistryList();
@@ -515,148 +549,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await updateVacancyCount();
     await updateSystemMetrics();
 });
-
-const addWebsiteBtn = document.getElementById('add-website-btn');
-if (addWebsiteBtn) {
-    addWebsiteBtn.addEventListener('click', async () => {
-        const rawUrl = document.getElementById('quick-website-url').value.trim();
-        const fallbackBox = document.getElementById('manual-selector-fallback');
-        const autoStatus = document.getElementById('automation-status');
-
-        if (!rawUrl) {
-            if (autoStatus) {
-                autoStatus.innerText = 'Please enter a URL.';
-            }
-            return;
-        }
-
-        let formattedInputUrl = rawUrl;
-        if (!rawUrl.startsWith('http')) {
-            formattedInputUrl = 'https://' + rawUrl;
-        }
-
-        let urlObj;
-        try {
-            urlObj = new URL(formattedInputUrl);
-        } catch (e) {
-            if (autoStatus) {
-                autoStatus.innerText = 'Invalid URL format.';
-            }
-            return;
-        }
-
-        const hostname = urlObj.hostname;
-        const formattedUrl = urlObj.href;
-
-        const baseName = hostname.replace(/^www\./, '').split('.')[0];
-        const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-
-        if (autoStatus) {
-            autoStatus.innerText = 'Inspecting ' + hostname + '...';
-        }
-
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            const currentTab = tabs[0];
-            let isCurrentlyOnTab = false;
-            if (currentTab && currentTab.url) {
-                if (currentTab.url.includes(hostname)) {
-                    isCurrentlyOnTab = true;
-                }
-            }
-
-            if (isCurrentlyOnTab && currentTab.id) {
-                chrome.tabs.sendMessage(currentTab.id, { action: 'detect_page_selectors_for_registration' }, (res) => {
-                    let detectedInput = '';
-                    if (res && res.detected) {
-                        detectedInput = res.detected.searchInput || '';
-                    }
-                    if (detectedInput) {
-                        if (fallbackBox) {
-                            fallbackBox.style.display = 'none';
-                        }
-                        savePlatformAndFinish(platformName, formattedUrl, hostname, detectedInput);
-                    } else {
-                        promptManualFallback(hostname, formattedUrl);
-                    }
-                });
-            } else {
-                savePlatformAndFinish(platformName, formattedUrl, hostname, '');
-            }
-        });
-    });
-}
-
-function promptManualFallback(hostname, url) {
-    pendingHostnameToConfigure = hostname;
-    pendingUrlToConfigure = url;
-    const fallbackBox = document.getElementById('manual-selector-fallback');
-    if (fallbackBox) {
-        fallbackBox.style.display = 'block';
-    }
-    const autoStatus = document.getElementById('automation-status');
-    if (autoStatus) {
-        autoStatus.innerText = 'Search field not detected for ' + hostname + '. Please enter selector manually.';
-    }
-}
-
-function savePlatformAndFinish(name, url, hostname, searchSelector) {
-    chrome.runtime.sendMessage({
-        action: 'register_platform_data',
-        platform: {
-            name: name,
-            url: url,
-            hostname: hostname,
-            searchSelector: searchSelector,
-            mode: 'semi'
-        }
-    }, async (res) => {
-        const autoStatus = document.getElementById('automation-status');
-        if (res && res.success) {
-            if (autoStatus) {
-                autoStatus.innerText = 'Platform ' + name + ' saved.';
-            }
-            document.getElementById('quick-website-url').value = '';
-            const fallbackBox = document.getElementById('manual-selector-fallback');
-            if (fallbackBox) {
-                fallbackBox.style.display = 'none';
-            }
-
-            const area = document.getElementById('target-websites');
-            const lines = area.value.trim().split('\n').filter(Boolean);
-            if (!lines.includes(url)) {
-                lines.push(url);
-                area.value = lines.join('\n');
-                chrome.storage.local.set({ automation_websites: area.value });
-            }
-            await renderPlatformsRegistryList();
-            await updateSystemMetrics();
-        } else {
-            if (autoStatus) {
-                if (res) {
-                    autoStatus.innerText = res.error;
-                } else {
-                    autoStatus.innerText = 'Save failed.';
-                }
-            }
-        }
-    });
-}
-
-const saveManualSelectorBtn = document.getElementById('save-manual-selector-btn');
-if (saveManualSelectorBtn) {
-    saveManualSelectorBtn.addEventListener('click', () => {
-        const selector = document.getElementById('manual-search-selector').value.trim();
-        if (!selector) {
-            return;
-        }
-
-        const baseName = pendingHostnameToConfigure.replace(/^www\./, '').split('.')[0];
-        const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-
-        savePlatformAndFinish(platformName, pendingUrlToConfigure, pendingHostnameToConfigure, selector);
-        document.getElementById('manual-search-selector').value = '';
-    });
-}
 
 const openPwaBtn = document.getElementById('open-pwa-btn');
 if (openPwaBtn) {
@@ -771,76 +663,6 @@ chrome.runtime.onMessage.addListener((msg) => {
         updateSystemMetrics();
     }
 });
-
-const addSiteButton = document.getElementById('add-site');
-if (addSiteButton) {
-    addSiteButton.addEventListener('click', async () => {
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        const tab = tabs[0];
-
-        if (!tab) {
-            return;
-        }
-        if (!tab.id || !tab.url) {
-            return;
-        }
-
-        const autoStatus = document.getElementById('automation-status');
-        const hostname = new URL(tab.url).hostname;
-        document.getElementById('quick-website-url').value = tab.url;
-
-        chrome.tabs.sendMessage(tab.id, { action: 'detect_page_selectors_for_registration' }, async (response) => {
-            let detectedInput = '';
-            if (response && response.detected) {
-                detectedInput = response.detected.searchInput || '';
-            }
-
-            const baseName = hostname.replace(/^www\./, '').split('.')[0];
-            const platformName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-
-            if (detectedInput) {
-                savePlatformAndFinish(platformName, tab.url, hostname, detectedInput);
-                if (autoStatus) {
-                    autoStatus.innerText = 'Auto-registered ' + hostname + ' with detected search field.';
-                }
-            } else {
-                promptManualFallback(hostname, tab.url);
-            }
-        });
-    });
-}
-
-const autoGuessButton = document.getElementById('auto-guess');
-if (autoGuessButton) {
-    autoGuessButton.addEventListener('click', async () => {
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        const tab = tabs[0];
-
-        if (!tab) {
-            return;
-        }
-        if (!tab.id) {
-            return;
-        }
-
-        chrome.tabs.sendMessage(tab.id, { action: 'auto_guess_selectors' }, (response) => {
-            const statusElement = document.getElementById('status');
-            if (statusElement) {
-                if (response) {
-                    let messageText = response.message;
-                    if (!messageText) {
-                        if (response.success) {
-                            messageText = 'Heuristic guess evaluated.';
-                        } else {
-                            messageText = 'Guess failed.';
-                        }
-                    }
-                    statusElement.innerText = messageText;
-                }
-            }
-        });
-    });
-}
 
 db.local_vacancies.hook('deleting', function () {
     this.onsuccess = async function () {
