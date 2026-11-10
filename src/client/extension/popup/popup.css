@@ -209,6 +209,15 @@ body {
     font-family: inherit;
 }
 
+.summary-value-box {
+    padding: 6px 8px;
+    background: #f8fafc;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-main);
+}
+
 .inline-input-group {
     display: flex;
     gap: 6px;
@@ -397,12 +406,12 @@ button {
     transition: background-color 0.15s ease-in-out;
 }
 
-.primary-action-btn, #start-automation, #add-website-btn, #save-manual-selector-btn, #btn-save-job, #save-profile-btn {
+.primary-action-btn, #start-automation, #add-website-btn, #save-manual-selector-btn, #btn-save-job, #btn-update-job, #save-profile-btn {
     background-color: var(--primary);
     color: #ffffff;
 }
 
-.primary-action-btn:hover, #start-automation:hover, #add-website-btn:hover, #save-manual-selector-btn:hover, #btn-save-job:hover, #save-profile-btn:hover {
+.primary-action-btn:hover, #start-automation:hover, #add-website-btn:hover, #save-manual-selector-btn:hover, #btn-save-job:hover, #btn-update-job:hover, #save-profile-btn:hover {
     background-color: var(--primary-hover);
 }
 

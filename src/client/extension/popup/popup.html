@@ -57,6 +57,12 @@
                 <input type="text" id="job-form-roles" placeholder="React, Frontend, TypeScript" />
             </div>
             <div class="form-group">
+                <label>Profile to Use:</label>
+                <select id="job-form-profile" class="form-select">
+                    <option value="">Default Profile</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Submission Mode:</label>
                 <select id="job-form-mode" class="form-select">
                     <option value="semi">Semi-Automated</option>
@@ -83,6 +89,7 @@
             </div>
             <div class="button-group">
                 <button id="btn-save-job" class="primary-action-btn">Save Job</button>
+                <button id="btn-update-job" class="primary-action-btn" style="display: none;">Save Changes</button>
                 <button id="btn-cancel-job" class="secondary-btn">Cancel</button>
             </div>
         </div>
@@ -92,15 +99,18 @@
         <h4>Automation Runner</h4>
         <div class="form-group">
             <label>Target Websites:</label>
-            <textarea id="target-websites" rows="2" placeholder="https://example.com/jobs"></textarea>
+            <div id="runner-websites-display" class="websites-picker-grid"></div>
+            <textarea id="target-websites" rows="2" style="display: none;" placeholder="https://example.com/jobs"></textarea>
         </div>
         <div class="form-group">
-            <label>Roles (comma-separated):</label>
-            <input type="text" id="target-roles" placeholder="Java, Frontend" />
+            <label>Roles:</label>
+            <div id="runner-roles-display" class="summary-value-box"></div>
+            <input type="text" id="target-roles" style="display: none;" placeholder="Java, Frontend" />
         </div>
         <div class="form-group">
             <label>Page Limit:</label>
-            <input type="number" id="pagination-limit" min="1" max="50" value="2" />
+            <div id="runner-limit-display" class="summary-value-box"></div>
+            <input type="number" id="pagination-limit" style="display: none;" min="1" max="50" value="2" />
         </div>
         <div class="button-group">
             <button id="start-automation" class="primary-action-btn">Start Automation</button>
