@@ -45,16 +45,8 @@
         <div id="job-editor-box" class="sub-card-box" style="display: none;">
             <h5 id="editor-heading">New Job Configuration</h5>
             <div class="form-group">
-                <label>Job Title:</label>
-                <input type="text" id="job-form-title" placeholder="e.g. Senior Frontend Search" />
-            </div>
-            <div class="form-group">
                 <label>Target Websites</label>
                 <div id="job-websites-picker" class="websites-picker-grid"></div>
-            </div>
-            <div class="form-group">
-                <label>Target Roles:</label>
-                <input type="text" id="job-form-roles" placeholder="React, Frontend, TypeScript" />
             </div>
             <div class="form-group">
                 <label>Profile to Use:</label>
@@ -96,14 +88,18 @@
     </div>
 
     <div class="pane-section">
-        <h4>Automation Runner</h4>
+        <div class="section-title-row">
+            <h4>Automation Runner</h4>
+            <button id="btn-edit-summary" class="text-toggle-btn" style="display: none;">Edit Summary</button>
+        </div>
         <div class="form-group">
             <label>Target Websites:</label>
             <div id="runner-websites-display" class="websites-picker-grid"></div>
+            <div id="runner-websites-picker" class="websites-picker-grid" style="display: none;"></div>
             <textarea id="target-websites" rows="2" style="display: none;" placeholder="https://example.com/jobs"></textarea>
         </div>
         <div class="form-group">
-            <label>Roles:</label>
+            <label>Job Title / Roles:</label>
             <div id="runner-roles-display" class="summary-value-box"></div>
             <input type="text" id="target-roles" style="display: none;" placeholder="Java, Frontend" />
         </div>
@@ -111,6 +107,10 @@
             <label>Page Limit:</label>
             <div id="runner-limit-display" class="summary-value-box"></div>
             <input type="number" id="pagination-limit" style="display: none;" min="1" max="50" value="2" />
+        </div>
+        <div id="summary-edit-actions" class="button-group" style="display: none;">
+            <button id="btn-save-summary" class="primary-action-btn">Save Summary Changes</button>
+            <button id="btn-cancel-summary" class="secondary-btn">Cancel</button>
         </div>
         <div class="button-group">
             <button id="start-automation" class="primary-action-btn">Start Automation</button>
@@ -161,8 +161,12 @@
             <input type="text" id="prof-location" placeholder="Vilnius, Lithuania" />
         </div>
         <div class="form-group">
-            <label>Primary Role / Headline:</label>
+            <label>Job Title / Primary Role / Headline:</label>
             <input type="text" id="prof-headline" placeholder="Senior Software Engineer" />
+        </div>
+        <div class="form-group">
+            <label>Target Roles (comma-separated):</label>
+            <input type="text" id="prof-roles" placeholder="React, Frontend, TypeScript" />
         </div>
         <div class="form-group">
             <label>Portfolio</label>

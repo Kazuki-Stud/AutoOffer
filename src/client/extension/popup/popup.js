@@ -12,7 +12,9 @@ const STORAGE_KEYS = [
 
 let currentCustomJobs = [];
 let selectedJobWebsites = new Set();
+let summarySelectedWebsites = new Set();
 let editingJobId = null;
+let isSummaryEditing = false;
 
 async function applyTranslations(lang) {
     const url = chrome.runtime.getURL('_locales/' + lang + '/messages.json');
@@ -156,6 +158,48 @@ async function renderJobWebsitesPicker() {
     }
 }
 
+async function renderSummaryWebsitesPicker() {
+    const pickerContainer = document.getElementById('runner-websites-picker');
+    if (!pickerContainer) {
+        return;
+    }
+
+    pickerContainer.innerHTML = '';
+    const platforms = await db.platforms_dict.toArray();
+
+    for (const p of platforms) {
+        const url = p.url || ('https://' + p.code);
+        const iconBtn = document.createElement('div');
+        iconBtn.className = 'website-icon-chip';
+        if (summarySelectedWebsites.has(url)) {
+            iconBtn.classList.add('selected');
+        }
+
+        const iconSymbol = document.createElement('span');
+        iconSymbol.className = 'website-icon-symbol';
+        iconSymbol.textContent = (p.name || p.code).charAt(0).toUpperCase();
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'website-icon-name';
+        nameSpan.textContent = p.name || p.code;
+
+        iconBtn.appendChild(iconSymbol);
+        iconBtn.appendChild(nameSpan);
+
+        iconBtn.addEventListener('click', () => {
+            if (summarySelectedWebsites.has(url)) {
+                summarySelectedWebsites.delete(url);
+                iconBtn.classList.remove('selected');
+            } else {
+                summarySelectedWebsites.add(url);
+                iconBtn.classList.add('selected');
+            }
+        });
+
+        pickerContainer.appendChild(iconBtn);
+    }
+}
+
 async function loadCustomJobs() {
     try {
         currentCustomJobs = await db.automation_jobs.toArray();
@@ -191,14 +235,17 @@ function initJobManagement() {
     const updateJobBtn = document.getElementById('btn-update-job');
     const cancelJobBtn = document.getElementById('btn-cancel-job');
 
+    const editSummaryBtn = document.getElementById('btn-edit-summary');
+    const saveSummaryBtn = document.getElementById('btn-save-summary');
+    const cancelSummaryBtn = document.getElementById('btn-cancel-summary');
+    const summaryActions = document.getElementById('summary-edit-actions');
+
     if (toggleBtn) {
         toggleBtn.addEventListener('click', async () => {
             const isHidden = editorBox.style.display === 'none';
             if (isHidden) {
                 editingJobId = null;
                 document.getElementById('editor-heading').textContent = 'New Job Configuration';
-                document.getElementById('job-form-title').value = '';
-                document.getElementById('job-form-roles').value = '';
                 document.getElementById('job-form-limit').value = 2;
                 if (saveJobBtn) saveJobBtn.style.display = 'block';
                 if (updateJobBtn) updateJobBtn.style.display = 'none';
@@ -225,6 +272,100 @@ function initJobManagement() {
         });
     }
 
+    if (editSummaryBtn) {
+        editSummaryBtn.addEventListener('click', async () => {
+            isSummaryEditing = true;
+            editSummaryBtn.style.display = 'none';
+            if (summaryActions) summaryActions.style.display = 'flex';
+
+            const websitesArea = document.getElementById('target-websites');
+            summarySelectedWebsites.clear();
+            websitesArea.value.split('\n').map(s => s.trim()).filter(Boolean).forEach(w => summarySelectedWebsites.add(w));
+
+            await renderSummaryWebsitesPicker();
+
+            document.getElementById('runner-websites-picker').style.display = 'flex';
+            document.getElementById('runner-websites-display').style.display = 'none';
+
+            document.getElementById('target-roles').style.display = 'block';
+            document.getElementById('runner-roles-display').style.display = 'none';
+
+            document.getElementById('pagination-limit').style.display = 'block';
+            document.getElementById('runner-limit-display').style.display = 'none';
+        });
+    }
+
+    if (cancelSummaryBtn) {
+        cancelSummaryBtn.addEventListener('click', () => {
+            isSummaryEditing = false;
+            editSummaryBtn.style.display = 'inline-block';
+            if (summaryActions) summaryActions.style.display = 'none';
+
+            document.getElementById('runner-websites-picker').style.display = 'none';
+            document.getElementById('runner-websites-display').style.display = 'flex';
+
+            document.getElementById('target-roles').style.display = 'none';
+            document.getElementById('runner-roles-display').style.display = 'block';
+
+            document.getElementById('pagination-limit').style.display = 'none';
+            document.getElementById('runner-limit-display').style.display = 'block';
+
+            const websitesArea = document.getElementById('target-websites');
+            const rolesInput = document.getElementById('target-roles');
+            const limitInput = document.getElementById('pagination-limit');
+            renderRunnerSummary(websitesArea.value, rolesInput.value, limitInput.value);
+        });
+    }
+
+    if (saveSummaryBtn) {
+        saveSummaryBtn.addEventListener('click', async () => {
+            const websitesVal = Array.from(summarySelectedWebsites).join('\n');
+            const rolesInput = document.getElementById('target-roles');
+            const limitInput = document.getElementById('pagination-limit');
+            const websitesArea = document.getElementById('target-websites');
+
+            websitesArea.value = websitesVal;
+            const rolesVal = rolesInput.value.trim();
+            const limitVal = parseInt(limitInput.value, 10) || 2;
+
+            await chrome.storage.local.set({
+                automation_websites: websitesVal,
+                automation_roles: rolesVal,
+                automation_limit: limitVal
+            });
+
+            isSummaryEditing = false;
+            editSummaryBtn.style.display = 'inline-block';
+            if (summaryActions) summaryActions.style.display = 'none';
+
+            document.getElementById('runner-websites-picker').style.display = 'none';
+            document.getElementById('runner-websites-display').style.display = 'flex';
+
+            rolesInput.style.display = 'none';
+            document.getElementById('runner-roles-display').style.display = 'block';
+
+            limitInput.style.display = 'none';
+            document.getElementById('runner-limit-display').style.display = 'block';
+
+            renderRunnerSummary(websitesVal, rolesVal, limitVal);
+
+            const selectedId = jobSelect.value;
+            if (selectedId) {
+                const job = currentCustomJobs.find(j => j.id === selectedId);
+                if (job) {
+                    job.websites = websitesVal;
+                    job.roles = rolesVal;
+                    job.limit = limitVal;
+                    await db.automation_jobs.update(selectedId, {
+                        websites: websitesVal,
+                        roles: rolesVal,
+                        limit: limitVal
+                    });
+                }
+            }
+        });
+    }
+
     if (modeSelect) {
         modeSelect.addEventListener('change', () => {
             if (modeSelect.value === 'autonomous') {
@@ -238,16 +379,32 @@ function initJobManagement() {
 
     if (saveJobBtn) {
         saveJobBtn.addEventListener('click', async () => {
-            const title = document.getElementById('job-form-title').value.trim();
             const websites = Array.from(selectedJobWebsites).join('\n');
-            const roles = document.getElementById('job-form-roles').value.trim();
             const mode = modeSelect.value;
             const profileId = document.getElementById('job-form-profile').value;
             const fields = document.getElementById('job-form-fields').value;
             const limit = parseInt(document.getElementById('job-form-limit').value, 10) || 2;
 
-            if (!title || !websites || !roles) {
-                alert('Please specify job title, select at least one website, and enter target roles.');
+            let resolvedTitle = 'Custom Job';
+            let resolvedRoles = '';
+            if (profileId) {
+                const profiles = await db.personal_data.toArray();
+                const p = profiles.find(item => (item.id === profileId || item.email === profileId));
+                if (p) {
+                    resolvedTitle = p.headline || p.first_name || 'Profile Job';
+                    resolvedRoles = p.roles || p.skills || '';
+                }
+            } else {
+                const profiles = await db.personal_data.toArray();
+                if (profiles.length > 0) {
+                    const p = profiles[0];
+                    resolvedTitle = p.headline || p.first_name || 'Default Job';
+                    resolvedRoles = p.roles || p.skills || '';
+                }
+            }
+
+            if (!websites) {
+                alert('Please select at least one website.');
                 return;
             }
 
@@ -258,9 +415,9 @@ function initJobManagement() {
 
             const newJob = {
                 id: crypto.randomUUID(),
-                title: title,
+                title: resolvedTitle,
                 websites: websites,
-                roles: roles,
+                roles: resolvedRoles,
                 mode: mode,
                 profile_id: profileId,
                 fields_mode: fields,
@@ -284,16 +441,32 @@ function initJobManagement() {
     if (updateJobBtn) {
         updateJobBtn.addEventListener('click', async () => {
             if (!editingJobId) return;
-            const title = document.getElementById('job-form-title').value.trim();
             const websites = Array.from(selectedJobWebsites).join('\n');
-            const roles = document.getElementById('job-form-roles').value.trim();
             const mode = modeSelect.value;
             const profileId = document.getElementById('job-form-profile').value;
             const fields = document.getElementById('job-form-fields').value;
             const limit = parseInt(document.getElementById('job-form-limit').value, 10) || 2;
 
-            if (!title || !websites || !roles) {
-                alert('Please specify job title, select at least one website, and enter target roles.');
+            let resolvedTitle = 'Custom Job';
+            let resolvedRoles = '';
+            if (profileId) {
+                const profiles = await db.personal_data.toArray();
+                const p = profiles.find(item => (item.id === profileId || item.email === profileId));
+                if (p) {
+                    resolvedTitle = p.headline || p.first_name || 'Profile Job';
+                    resolvedRoles = p.roles || p.skills || '';
+                }
+            } else {
+                const profiles = await db.personal_data.toArray();
+                if (profiles.length > 0) {
+                    const p = profiles[0];
+                    resolvedTitle = p.headline || p.first_name || 'Default Job';
+                    resolvedRoles = p.roles || p.skills || '';
+                }
+            }
+
+            if (!websites) {
+                alert('Please select at least one website.');
                 return;
             }
 
@@ -303,9 +476,9 @@ function initJobManagement() {
             }
 
             const updatedJob = {
-                title: title,
+                title: resolvedTitle,
                 websites: websites,
-                roles: roles,
+                roles: resolvedRoles,
                 mode: mode,
                 profile_id: profileId,
                 fields_mode: fields,
@@ -320,7 +493,7 @@ function initJobManagement() {
             if (toggleBtn) {
                 toggleBtn.textContent = '+ Create Job';
             }
-            jobSelect.value = updatedJob.id;
+            jobSelect.value = updatedJob.id || editingJobId;
             const job = currentCustomJobs.find(j => j.id === jobSelect.value) || { ...updatedJob, id: jobSelect.value };
             applySelectedJob(job);
         });
@@ -329,11 +502,13 @@ function initJobManagement() {
     if (jobSelect) {
         jobSelect.addEventListener('change', async () => {
             const selectedId = jobSelect.value;
+            const editSummaryBtnEl = document.getElementById('btn-edit-summary');
             if (!selectedId) {
                 document.getElementById('target-websites').value = '';
                 document.getElementById('target-roles').value = '';
                 document.getElementById('pagination-limit').value = 2;
                 renderRunnerSummary('', '', 2);
+                if (editSummaryBtnEl) editSummaryBtnEl.style.display = 'none';
                 const autoStatus = document.getElementById('automation-status');
                 if (autoStatus) {
                     autoStatus.innerText = 'Ready (Default Quick Run)';
@@ -346,12 +521,11 @@ function initJobManagement() {
             }
             const job = currentCustomJobs.find(j => j.id === selectedId);
             if (job) {
+                if (editSummaryBtnEl) editSummaryBtnEl.style.display = 'inline-block';
                 applySelectedJob(job);
                 if (editorBox.style.display === 'block') {
                     editingJobId = job.id;
                     document.getElementById('editor-heading').textContent = 'Edit Job Template: ' + job.title;
-                    document.getElementById('job-form-title').value = job.title || '';
-                    document.getElementById('job-form-roles').value = job.roles || '';
                     document.getElementById('job-form-limit').value = job.limit || 2;
                     modeSelect.value = job.mode || 'semi';
                     document.getElementById('job-form-fields').value = job.fields_mode || 'all';
@@ -665,6 +839,9 @@ async function loadUserProfile() {
         if (profile.headline) {
             document.getElementById('prof-headline').value = profile.headline;
         }
+        if (profile.roles) {
+            document.getElementById('prof-roles').value = profile.roles;
+        }
         if (profile.links) {
             document.getElementById('prof-links').value = profile.links;
         }
@@ -689,6 +866,7 @@ function initProfileManagement() {
                 phone: document.getElementById('prof-phone').value.trim(),
                 location: document.getElementById('prof-location').value.trim(),
                 headline: document.getElementById('prof-headline').value.trim(),
+                roles: document.getElementById('prof-roles').value.trim(),
                 links: document.getElementById('prof-links').value.trim(),
                 skills: document.getElementById('prof-skills').value.trim(),
                 updated_at: new Date().toISOString()

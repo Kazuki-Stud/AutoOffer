@@ -406,22 +406,22 @@ button {
     transition: background-color 0.15s ease-in-out;
 }
 
-.primary-action-btn, #start-automation, #add-website-btn, #save-manual-selector-btn, #btn-save-job, #btn-update-job, #save-profile-btn {
+.primary-action-btn, #start-automation, #add-website-btn, #save-manual-selector-btn, #btn-save-job, #btn-update-job, #btn-save-summary, #save-profile-btn {
     background-color: var(--primary);
     color: #ffffff;
 }
 
-.primary-action-btn:hover, #start-automation:hover, #add-website-btn:hover, #save-manual-selector-btn:hover, #btn-save-job:hover, #btn-update-job:hover, #save-profile-btn:hover {
+.primary-action-btn:hover, #start-automation:hover, #add-website-btn:hover, #save-manual-selector-btn:hover, #btn-save-job:hover, #btn-update-job:hover, #btn-save-summary:hover, #save-profile-btn:hover {
     background-color: var(--primary-hover);
 }
 
-.secondary-btn, #stop-automation, #add-site, #auto-guess {
+.secondary-btn, #stop-automation, #btn-cancel-summary, #add-site, #auto-guess {
     background-color: var(--secondary-bg);
     color: var(--text-main);
     border-color: var(--border-subtle);
 }
 
-.secondary-btn:hover, #stop-automation:hover, #add-site:hover, #auto-guess:hover {
+.secondary-btn:hover, #stop-automation:hover, #btn-cancel-summary:hover, #add-site:hover, #auto-guess:hover {
     background-color: var(--secondary-hover);
 }
 
