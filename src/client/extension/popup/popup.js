@@ -223,8 +223,332 @@ async function loadCustomJobs() {
             opt.textContent = j.title + modeSuffix;
             selectEl.appendChild(opt);
         }
+        await renderJobsRegistryList();
     } catch (e) {
         console.error(e);
+    }
+}
+
+async function renderJobsRegistryList() {
+    const listEl = document.getElementById('jobs-registry-list');
+    const countBadge = document.getElementById('jobs-count-badge');
+    if (!listEl) {
+        return;
+    }
+
+    listEl.innerHTML = '';
+    const jobs = await db.automation_jobs.toArray();
+    const platforms = await db.platforms_dict.toArray();
+
+    if (countBadge) {
+        countBadge.textContent = jobs.length + ' jobs';
+    }
+
+    if (!jobs.length) {
+        listEl.innerHTML = '<div style="font-size: 11px; color: #64748b; padding: 4px;">No saved jobs.</div>';
+        return;
+    }
+
+    for (const j of jobs) {
+        const detailsEl = document.createElement('details');
+        detailsEl.className = 'accordion-item';
+
+        detailsEl.addEventListener('toggle', () => {
+            const activeTabPane = detailsEl.closest('.tab-pane');
+            if (activeTabPane) {
+                requestAnimationFrame(() => {
+                    activeTabPane.scrollTop += 1;
+                    activeTabPane.scrollTop -= 1;
+                });
+            }
+        });
+
+        const summaryEl = document.createElement('summary');
+        summaryEl.className = 'accordion-summary';
+
+        const titleWrapper = document.createElement('div');
+        titleWrapper.className = 'accordion-title-wrapper';
+
+        const arrowSpan = document.createElement('span');
+        arrowSpan.className = 'accordion-arrow';
+        arrowSpan.textContent = '▶';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'platform-row-title';
+        titleSpan.textContent = j.title || 'Untitled Job';
+
+        titleWrapper.appendChild(arrowSpan);
+        titleWrapper.appendChild(titleSpan);
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'platform-row-actions';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'action-btn-sm primary-action-btn';
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = true;
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'action-btn-sm';
+        deleteBtn.style.color = 'var(--danger)';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm('Delete job "' + j.title + '"?')) {
+                await db.automation_jobs.delete(j.id);
+                await loadCustomJobs();
+            }
+        });
+
+        actionsDiv.appendChild(saveBtn);
+        actionsDiv.appendChild(deleteBtn);
+        summaryEl.appendChild(titleWrapper);
+        summaryEl.appendChild(actionsDiv);
+        detailsEl.appendChild(summaryEl);
+
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'selectors-box accordion-content';
+
+        const group1 = document.createElement('div');
+        group1.className = 'form-group';
+        group1.innerHTML = `<label>Job Title:</label><input type="text" id="reg-job-title-${j.id}" value="${j.title || ''}" />`;
+
+        const groupWebsites = document.createElement('div');
+        groupWebsites.className = 'form-group';
+        groupWebsites.innerHTML = `<label>Target Websites:</label>`;
+        const pickerGrid = document.createElement('div');
+        pickerGrid.className = 'websites-picker-grid';
+
+        const currentJobWebsites = new Set();
+        if (j.websites) {
+            j.websites.split('\n').map(s => s.trim()).filter(Boolean).forEach(w => currentJobWebsites.add(w));
+        }
+
+        for (const p of platforms) {
+            const url = p.url || ('https://' + p.code);
+            const iconBtn = document.createElement('div');
+            iconBtn.className = 'website-icon-chip';
+            if (currentJobWebsites.has(url)) {
+                iconBtn.classList.add('selected');
+            }
+
+            const iconSymbol = document.createElement('span');
+            iconSymbol.className = 'website-icon-symbol';
+            iconSymbol.textContent = (p.name || p.code).charAt(0).toUpperCase();
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'website-icon-name';
+            nameSpan.textContent = p.name || p.code;
+
+            iconBtn.appendChild(iconSymbol);
+            iconBtn.appendChild(nameSpan);
+
+            iconBtn.addEventListener('click', () => {
+                if (currentJobWebsites.has(url)) {
+                    currentJobWebsites.delete(url);
+                    iconBtn.classList.remove('selected');
+                } else {
+                    currentJobWebsites.add(url);
+                    iconBtn.classList.add('selected');
+                }
+                saveBtn.disabled = false;
+            });
+
+            pickerGrid.appendChild(iconBtn);
+        }
+        groupWebsites.appendChild(pickerGrid);
+
+        const group3 = document.createElement('div');
+        group3.className = 'form-group';
+        group3.innerHTML = `<label>Page Limit:</label><input type="number" id="reg-job-limit-${j.id}" min="1" max="50" value="${j.limit || 2}" />`;
+
+        const markChanged = () => {
+            saveBtn.disabled = false;
+        };
+
+        contentContainer.appendChild(group1);
+        contentContainer.appendChild(groupWebsites);
+        contentContainer.appendChild(group3);
+
+        detailsEl.appendChild(contentContainer);
+        listEl.appendChild(detailsEl);
+
+        const titleInput = group1.querySelector('input');
+        const limitInput = group3.querySelector('input');
+
+        titleInput.addEventListener('input', markChanged);
+        limitInput.addEventListener('input', markChanged);
+
+        saveBtn.addEventListener('click', async () => {
+            const newTitle = titleInput.value.trim();
+            const newWebsites = Array.from(currentJobWebsites).join('\n');
+            const newLimit = parseInt(limitInput.value, 10) || 2;
+
+            await db.automation_jobs.update(j.id, {
+                title: newTitle || 'Custom Job',
+                websites: newWebsites,
+                limit: newLimit
+            });
+            saveBtn.disabled = true;
+            await loadCustomJobs();
+            const autoStatus = document.getElementById('automation-status');
+            if (autoStatus) {
+                autoStatus.innerText = 'Updated job template: ' + (newTitle || 'Custom Job');
+            }
+        });
+    }
+}
+
+async function renderProfilesRegistryList() {
+    const listEl = document.getElementById('profiles-registry-list');
+    const countBadge = document.getElementById('profiles-count-badge');
+    if (!listEl) {
+        return;
+    }
+
+    listEl.innerHTML = '';
+    const profiles = await db.personal_data.toArray();
+
+    if (countBadge) {
+        countBadge.textContent = profiles.length + ' profiles';
+    }
+
+    if (!profiles.length) {
+        listEl.innerHTML = '<div style="font-size: 11px; color: #64748b; padding: 4px;">No saved profiles.</div>';
+        return;
+    }
+
+    for (const p of profiles) {
+        const detailsEl = document.createElement('details');
+        detailsEl.className = 'accordion-item';
+
+        detailsEl.addEventListener('toggle', () => {
+            const activeTabPane = detailsEl.closest('.tab-pane');
+            if (activeTabPane) {
+                requestAnimationFrame(() => {
+                    activeTabPane.scrollTop += 1;
+                    activeTabPane.scrollTop -= 1;
+                });
+            }
+        });
+
+        const summaryEl = document.createElement('summary');
+        summaryEl.className = 'accordion-summary';
+
+        const titleWrapper = document.createElement('div');
+        titleWrapper.className = 'accordion-title-wrapper';
+
+        const arrowSpan = document.createElement('span');
+        arrowSpan.className = 'accordion-arrow';
+        arrowSpan.textContent = '▶';
+
+        const pName = (p.first_name || p.last_name) ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : (p.email || 'Profile');
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'platform-row-title';
+        titleSpan.textContent = pName;
+
+        titleWrapper.appendChild(arrowSpan);
+        titleWrapper.appendChild(titleSpan);
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'platform-row-actions';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'action-btn-sm primary-action-btn';
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = true;
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'action-btn-sm';
+        deleteBtn.style.color = 'var(--danger)';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm('Delete profile "' + pName + '"?')) {
+                await db.personal_data.delete(p.id);
+                await renderProfilesRegistryList();
+                await loadProfileDropdowns();
+            }
+        });
+
+        actionsDiv.appendChild(saveBtn);
+        actionsDiv.appendChild(deleteBtn);
+        summaryEl.appendChild(titleWrapper);
+        summaryEl.appendChild(actionsDiv);
+        detailsEl.appendChild(summaryEl);
+
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'selectors-box accordion-content';
+
+        const fieldsList = [
+            { key: 'first_name', label: 'First Name', type: 'text' },
+            { key: 'last_name', label: 'Last Name', type: 'text' },
+            { key: 'email', label: 'Email Address', type: 'email' },
+            { key: 'phone', label: 'Phone Number', type: 'tel' },
+            { key: 'location', label: 'Location', type: 'text' },
+            { key: 'headline', label: 'Job Title', type: 'text' },
+            { key: 'roles', label: 'Target Roles', type: 'text' },
+            { key: 'links', label: 'Portfolio Links', type: 'textarea' },
+            { key: 'skills', label: 'Skills', type: 'text' }
+        ];
+
+        const fieldElements = {};
+
+        for (const f of fieldsList) {
+            const group = document.createElement('div');
+            group.className = 'form-group';
+            const labelEl = document.createElement('label');
+            labelEl.textContent = f.label + ':';
+            group.appendChild(labelEl);
+
+            if (f.type === 'textarea') {
+                const ta = document.createElement('textarea');
+                ta.id = `reg-prof-${f.key}-${p.id}`;
+                ta.rows = 2;
+                ta.value = p[f.key] || '';
+                group.appendChild(ta);
+                fieldElements[f.key] = ta;
+            } else {
+                const inp = document.createElement('input');
+                inp.type = f.type;
+                inp.id = `reg-prof-${f.key}-${p.id}`;
+                inp.value = p[f.key] || '';
+                group.appendChild(inp);
+                fieldElements[f.key] = inp;
+            }
+            contentContainer.appendChild(group);
+
+            fieldElements[f.key].addEventListener('input', () => {
+                saveBtn.disabled = false;
+            });
+        }
+
+        detailsEl.appendChild(contentContainer);
+        listEl.appendChild(detailsEl);
+
+        saveBtn.addEventListener('click', async () => {
+            const updatedProfileData = {
+                first_name: fieldElements['first_name'].value.trim(),
+                last_name: fieldElements['last_name'].value.trim(),
+                email: fieldElements['email'].value.trim(),
+                phone: fieldElements['phone'].value.trim(),
+                location: fieldElements['location'].value.trim(),
+                headline: fieldElements['headline'].value.trim(),
+                roles: fieldElements['roles'].value.trim(),
+                links: fieldElements['links'].value.trim(),
+                skills: fieldElements['skills'].value.trim(),
+                updated_at: new Date().toISOString()
+            };
+
+            await db.personal_data.update(p.id, updatedProfileData);
+            saveBtn.disabled = true;
+            await renderProfilesRegistryList();
+            await loadProfileDropdowns();
+            const autoStatus = document.getElementById('automation-status');
+            if (autoStatus) {
+                autoStatus.innerText = 'Updated profile successfully.';
+            }
+        });
     }
 }
 
@@ -419,6 +743,7 @@ function initJobManagement() {
             document.getElementById('runner-profile-details-display').style.display = 'grid';
 
             renderRunnerSummary(websitesVal, limitVal, profileIdVal);
+            await renderProfilesRegistryList();
         });
     }
 
@@ -1017,7 +1342,7 @@ function initProfileManagement() {
                 updated_at: new Date().toISOString()
             };
 
-            chrome.runtime.sendMessage({ action: 'save_profile_data', profile: profileData }, (res) => {
+            chrome.runtime.sendMessage({ action: 'save_profile_data', profile: profileData }, async (res) => {
                 if (statusBox) {
                     statusBox.style.display = 'block';
                     if (res && res.success) {
@@ -1031,6 +1356,8 @@ function initProfileManagement() {
                         statusBox.style.display = 'none';
                     }, 3000);
                 }
+                await renderProfilesRegistryList();
+                await loadProfileDropdowns();
                 updateSystemMetrics();
             });
         });
@@ -1104,6 +1431,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadCustomJobs();
     await renderJobWebsitesPicker();
     await renderPlatformsRegistryList();
+    await renderJobsRegistryList();
+    await renderProfilesRegistryList();
     await loadUserProfile();
     await applyTranslations(currentLang);
     await updateVacancyCount();
