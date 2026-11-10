@@ -414,6 +414,16 @@ body {
     cursor: pointer;
 }
 
+.action-btn-sm:disabled,
+button:disabled,
+.primary-action-btn:disabled {
+    background-color: var(--secondary-bg) !important;
+    color: var(--text-muted) !important;
+    border-color: var(--border-subtle) !important;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
 .button-group {
     display: flex;
     gap: 6px;

@@ -324,6 +324,28 @@ async function renderJobsRegistryList() {
             j.websites.split('\n').map(s => s.trim()).filter(Boolean).forEach(w => currentJobWebsites.add(w));
         }
 
+        const group3 = document.createElement('div');
+        group3.className = 'form-group';
+        group3.innerHTML = `<label>Page Limit:</label><input type="number" id="reg-job-limit-${j.id}" min="1" max="50" value="${j.limit || 2}" />`;
+
+        const titleInput = group1.querySelector('input');
+        const limitInput = group3.querySelector('input');
+
+        const checkChanges = () => {
+            const currentTitle = titleInput.value.trim();
+            const currentWebsites = Array.from(currentJobWebsites).sort().join('\n');
+            const originalWebsites = (j.websites || '').split('\n').map(s => s.trim()).filter(Boolean).sort().join('\n');
+            const currentLimit = parseInt(limitInput.value, 10) || 2;
+            const originalLimit = j.limit || 2;
+
+            const isSame = (
+                currentTitle === (j.title || '') &&
+                currentWebsites === originalWebsites &&
+                currentLimit === originalLimit
+            );
+            saveBtn.disabled = isSame;
+        };
+
         for (const p of platforms) {
             const url = p.url || ('https://' + p.code);
             const iconBtn = document.createElement('div');
@@ -351,20 +373,12 @@ async function renderJobsRegistryList() {
                     currentJobWebsites.add(url);
                     iconBtn.classList.add('selected');
                 }
-                saveBtn.disabled = false;
+                checkChanges();
             });
 
             pickerGrid.appendChild(iconBtn);
         }
         groupWebsites.appendChild(pickerGrid);
-
-        const group3 = document.createElement('div');
-        group3.className = 'form-group';
-        group3.innerHTML = `<label>Page Limit:</label><input type="number" id="reg-job-limit-${j.id}" min="1" max="50" value="${j.limit || 2}" />`;
-
-        const markChanged = () => {
-            saveBtn.disabled = false;
-        };
 
         contentContainer.appendChild(group1);
         contentContainer.appendChild(groupWebsites);
@@ -373,11 +387,8 @@ async function renderJobsRegistryList() {
         detailsEl.appendChild(contentContainer);
         listEl.appendChild(detailsEl);
 
-        const titleInput = group1.querySelector('input');
-        const limitInput = group3.querySelector('input');
-
-        titleInput.addEventListener('input', markChanged);
-        limitInput.addEventListener('input', markChanged);
+        titleInput.addEventListener('input', checkChanges);
+        limitInput.addEventListener('input', checkChanges);
 
         saveBtn.addEventListener('click', async () => {
             const newTitle = titleInput.value.trim();
@@ -494,6 +505,21 @@ async function renderProfilesRegistryList() {
 
         const fieldElements = {};
 
+        const checkProfileChanges = () => {
+            const isSame = (
+                fieldElements['first_name'].value.trim() === (p.first_name || '') &&
+                fieldElements['last_name'].value.trim() === (p.last_name || '') &&
+                fieldElements['email'].value.trim() === (p.email || '') &&
+                fieldElements['phone'].value.trim() === (p.phone || '') &&
+                fieldElements['location'].value.trim() === (p.location || '') &&
+                fieldElements['headline'].value.trim() === (p.headline || '') &&
+                fieldElements['roles'].value.trim() === (p.roles || '') &&
+                fieldElements['links'].value.trim() === (p.links || '') &&
+                fieldElements['skills'].value.trim() === (p.skills || '')
+            );
+            saveBtn.disabled = isSame;
+        };
+
         for (const f of fieldsList) {
             const group = document.createElement('div');
             group.className = 'form-group';
@@ -518,9 +544,7 @@ async function renderProfilesRegistryList() {
             }
             contentContainer.appendChild(group);
 
-            fieldElements[f.key].addEventListener('input', () => {
-                saveBtn.disabled = false;
-            });
+            fieldElements[f.key].addEventListener('input', checkProfileChanges);
         }
 
         detailsEl.appendChild(contentContainer);
