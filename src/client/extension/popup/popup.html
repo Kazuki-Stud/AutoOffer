@@ -49,18 +49,18 @@
                 <input type="text" id="job-form-title" placeholder="e.g. Senior Frontend Search" />
             </div>
             <div class="form-group">
-                <label>Websites (one URL per line):</label>
-                <textarea id="job-form-websites" rows="2" placeholder="https://example.com/jobs"></textarea>
+                <label>Target Websites</label>
+                <div id="job-websites-picker" class="websites-picker-grid"></div>
             </div>
             <div class="form-group">
-                <label>Target Roles (comma-separated):</label>
+                <label>Target Roles:</label>
                 <input type="text" id="job-form-roles" placeholder="React, Frontend, TypeScript" />
             </div>
             <div class="form-group">
                 <label>Submission Mode:</label>
                 <select id="job-form-mode" class="form-select">
-                    <option value="semi">Semi-Automated (Human in charge)</option>
-                    <option value="autonomous">Full Autonomous (Auto-submit)</option>
+                    <option value="semi">Semi-Automated</option>
+                    <option value="autonomous">Full Autonomous</option>
                 </select>
             </div>
             <div id="job-autonomous-warning" class="warning-box" style="display: none;">
@@ -117,7 +117,7 @@
             <h4>Embedded Platforms & Selectors</h4>
             <span id="platform-count-badge" class="count-tag">0 platforms</span>
         </div>
-        <div id="platforms-registry-list" class="platforms-list"></div>
+        <div id="platforms-registry-list" class="platforms-list accordion-list"></div>
     </div>
 
     <div class="pane-section">

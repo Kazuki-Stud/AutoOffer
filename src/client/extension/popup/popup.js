@@ -11,6 +11,7 @@ const STORAGE_KEYS = [
 ];
 
 let currentCustomJobs = [];
+let selectedJobWebsites = new Set();
 
 async function applyTranslations(lang) {
     const url = chrome.runtime.getURL('_locales/' + lang + '/messages.json');
@@ -92,6 +93,48 @@ function initTabs() {
     });
 }
 
+async function renderJobWebsitesPicker() {
+    const pickerContainer = document.getElementById('job-websites-picker');
+    if (!pickerContainer) {
+        return;
+    }
+
+    pickerContainer.innerHTML = '';
+    const platforms = await db.platforms_dict.toArray();
+
+    for (const p of platforms) {
+        const url = p.url || ('https://' + p.code);
+        const iconBtn = document.createElement('div');
+        iconBtn.className = 'website-icon-chip';
+        if (selectedJobWebsites.has(url)) {
+            iconBtn.classList.add('selected');
+        }
+
+        const iconSymbol = document.createElement('span');
+        iconSymbol.className = 'website-icon-symbol';
+        iconSymbol.textContent = (p.name || p.code).charAt(0).toUpperCase();
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'website-icon-name';
+        nameSpan.textContent = p.name || p.code;
+
+        iconBtn.appendChild(iconSymbol);
+        iconBtn.appendChild(nameSpan);
+
+        iconBtn.addEventListener('click', () => {
+            if (selectedJobWebsites.has(url)) {
+                selectedJobWebsites.delete(url);
+                iconBtn.classList.remove('selected');
+            } else {
+                selectedJobWebsites.add(url);
+                iconBtn.classList.add('selected');
+            }
+        });
+
+        pickerContainer.appendChild(iconBtn);
+    }
+}
+
 async function loadCustomJobs() {
     try {
         currentCustomJobs = await db.automation_jobs.toArray();
@@ -127,11 +170,13 @@ function initJobManagement() {
     const cancelJobBtn = document.getElementById('btn-cancel-job');
 
     if (toggleBtn) {
-        toggleBtn.addEventListener('click', () => {
+        toggleBtn.addEventListener('click', async () => {
             const isHidden = editorBox.style.display === 'none';
             if (isHidden) {
                 editorBox.style.display = 'block';
                 toggleBtn.textContent = '- Close Form';
+                selectedJobWebsites.clear();
+                await renderJobWebsitesPicker();
             } else {
                 editorBox.style.display = 'none';
                 toggleBtn.textContent = '+ Create Job';
@@ -162,14 +207,14 @@ function initJobManagement() {
     if (saveJobBtn) {
         saveJobBtn.addEventListener('click', async () => {
             const title = document.getElementById('job-form-title').value.trim();
-            const websites = document.getElementById('job-form-websites').value.trim();
+            const websites = Array.from(selectedJobWebsites).join('\n');
             const roles = document.getElementById('job-form-roles').value.trim();
             const mode = modeSelect.value;
             const fields = document.getElementById('job-form-fields').value;
             const limit = parseInt(document.getElementById('job-form-limit').value, 10) || 2;
 
             if (!title || !websites || !roles) {
-                alert('Please specify job title, websites, and target roles.');
+                alert('Please specify job title, select at least one website, and enter target roles.');
                 return;
             }
 
@@ -263,11 +308,11 @@ async function renderPlatformsRegistryList() {
     }
 
     for (const p of platforms) {
-        const row = document.createElement('div');
-        row.className = 'platform-row';
+        const detailsEl = document.createElement('details');
+        detailsEl.className = 'accordion-item';
 
-        const rowHeader = document.createElement('div');
-        rowHeader.className = 'platform-row-header';
+        const summaryEl = document.createElement('summary');
+        summaryEl.className = 'accordion-summary';
 
         const titleSpan = document.createElement('span');
         titleSpan.className = 'platform-row-title';
@@ -288,7 +333,8 @@ async function renderPlatformsRegistryList() {
         modeSelect.appendChild(optAuto);
         modeSelect.value = p.mode || 'semi';
 
-        modeSelect.addEventListener('change', async () => {
+        modeSelect.addEventListener('change', async (e) => {
+            e.stopPropagation();
             const nextMode = modeSelect.value;
             if (nextMode === 'autonomous') {
                 const confirmed = confirm('Enable full autonomous submission on ' + p.name + '? The extension will apply without manual verification.');
@@ -303,7 +349,8 @@ async function renderPlatformsRegistryList() {
         const useBtn = document.createElement('button');
         useBtn.className = 'action-btn-sm';
         useBtn.textContent = 'Use';
-        useBtn.addEventListener('click', () => {
+        useBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             const area = document.getElementById('target-websites');
             const lines = area.value.trim().split('\n').filter(Boolean);
             const target = p.url || ('https://' + p.code);
@@ -321,10 +368,11 @@ async function renderPlatformsRegistryList() {
         const autoFixBtn = document.createElement('button');
         autoFixBtn.className = 'action-btn-sm magic-btn';
         autoFixBtn.textContent = 'AutoFix';
-        autoFixBtn.addEventListener('click', () => {
+        autoFixBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             const autoStatus = document.getElementById('automation-status');
             if (autoStatus) {
-                autoStatus.innerText = 'Running auto-fix on ' + p.code + '...';
+                autoStatus.innerText = 'Running AutoFix on ' + p.code + '...';
             }
             chrome.runtime.sendMessage({
                 action: 'auto_fix_platform_selectors',
@@ -334,9 +382,9 @@ async function renderPlatformsRegistryList() {
             }, async (res) => {
                 if (autoStatus) {
                     if (res && res.success) {
-                        autoStatus.innerText = 'Auto-fix completed successfully for ' + p.code;
+                        autoStatus.innerText = 'AutoFix completed successfully for ' + p.code;
                     } else {
-                        autoStatus.innerText = 'Auto-fix failed: ' + (res?.error || 'unknown error');
+                        autoStatus.innerText = 'AutoFix failed: ' + (res?.error || 'unknown error');
                     }
                 }
                 await renderPlatformsRegistryList();
@@ -348,12 +396,12 @@ async function renderPlatformsRegistryList() {
         actionsDiv.appendChild(useBtn);
         actionsDiv.appendChild(autoFixBtn);
 
-        rowHeader.appendChild(titleSpan);
-        rowHeader.appendChild(actionsDiv);
-        row.appendChild(rowHeader);
+        summaryEl.appendChild(titleSpan);
+        summaryEl.appendChild(actionsDiv);
+        detailsEl.appendChild(summaryEl);
 
         const selectorsContainer = document.createElement('div');
-        selectorsContainer.className = 'selectors-box';
+        selectorsContainer.className = 'selectors-box accordion-content';
 
         const platformSelectors = allSelectors.filter(s => s.platform_id === p.id || s.url_pattern === p.code);
 
@@ -405,8 +453,8 @@ async function renderPlatformsRegistryList() {
             selectorsContainer.appendChild(selectorGroup);
         }
 
-        row.appendChild(selectorsContainer);
-        listEl.appendChild(row);
+        detailsEl.appendChild(selectorsContainer);
+        listEl.appendChild(detailsEl);
     }
 }
 
@@ -543,6 +591,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindAutoSave('pagination-limit', 'pagination-limit');
 
     await loadCustomJobs();
+    await renderJobWebsitesPicker();
     await renderPlatformsRegistryList();
     await loadUserProfile();
     await applyTranslations(currentLang);
