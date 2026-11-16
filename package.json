@@ -3,10 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "vite build",
-    "dev:extension": "vite build --watch",
-    "dev:pwa": "vite src/client/pwa --port 5173 --host",
-    "build:pwa": "vite build src/client/pwa"
+    "dev:extension": "vite build --watch"
   },
   "dependencies": {
     "dexie": "^4.4.6"
