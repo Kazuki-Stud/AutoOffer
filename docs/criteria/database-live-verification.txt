@@ -1,4 +1,4 @@
-=== AutoOffer Live DB Verification (2026-11-16T21:21:34Z) ===
+=== AutoOffer Live DB Verification (2026-11-16T21:45:31Z) ===
 
 --- PostgreSQL Grants Audit ---
            object            | relkind 
@@ -34,9 +34,9 @@
 
 --- ClickHouse OLAP Tables ---
    ┌─table────────────────────┬─engine─────────────┬─total_rows─┬─total_bytes─┐
-1. │ dm_skill_demand          │ SummingMergeTree   │          0 │           0 │
+1. │ dm_skill_demand          │ SummingMergeTree   │          4 │         801 │
 2. │ mv_stg_to_skill_demand   │ MaterializedView   │       ᴺᵁᴸᴸ │        ᴺᵁᴸᴸ │
-3. │ raw_vacancies            │ MergeTree          │          0 │           0 │
-4. │ stg_vacancies            │ ReplacingMergeTree │          0 │           0 │
+3. │ raw_vacancies            │ MergeTree          │          3 │        1993 │
+4. │ stg_vacancies            │ ReplacingMergeTree │          3 │        1885 │
 5. │ v_top_skills_by_position │ View               │       ᴺᵁᴸᴸ │        ᴺᵁᴸᴸ │
    └──────────────────────────┴────────────────────┴────────────┴─────────────┘

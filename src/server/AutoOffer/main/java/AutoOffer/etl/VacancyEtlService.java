@@ -3,6 +3,8 @@ package AutoOffer.etl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -56,6 +58,16 @@ public class VacancyEtlService {
             int submission_count, int is_active, int is_quality_ok,
             List<String> skills, String created_at, String updated_at
     ) {}
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        if (!enabled) return;
+        try {
+            runIncremental();
+        } catch (Exception ex) {
+            log.error("Initial ETL sync on startup failed", ex);
+        }
+    }
 
     @Scheduled(cron = "0 */10 * * * *")
     public void scheduledRun() {
@@ -113,7 +125,6 @@ public class VacancyEtlService {
         }
     }
 
-    /** Rebuilds SummingMergeTree mart cleanly from deduplicated stg_vacancies FINAL. */
     public void rebuildSkillDemandMart() {
         clickHouse.executeStatement("TRUNCATE TABLE IF EXISTS autooffer_olap.dm_skill_demand");
         clickHouse.executeStatement("""
@@ -132,7 +143,6 @@ public class VacancyEtlService {
     }
 
     private List<RawVacancyRow> extractFromPostgres(UUID batchId, OffsetDateTime watermark) {
-        // Include entire boundary timestamp so identical updated_at rows are never split across batches
         String sql = """
                 WITH head AS (
                     SELECT updated_at
@@ -204,8 +214,15 @@ public class VacancyEtlService {
     private StgVacancyRow transform(RawVacancyRow r) {
         Double rate = r.currency_code() != null ? FX_TO_EUR.get(r.currency_code()) : null;
         Double eurFrom = (r.salary_from() != null && rate != null) ? r.salary_from().doubleValue() * rate : null;
-        Double eurTo   = (r.salary_to()   != null && rate != null) ? r.salary_to().doubleValue()   * rate : null;
-        Double eurMid  = (eurFrom != null && eurTo != null) ? (eurFrom + eurTo) / 2.0 : (eurFrom != null ? eurFrom : eurTo);
+        Double eurTo = (r.salary_to() != null && rate != null) ? r.salary_to().doubleValue() * rate : null;
+        Double eurMid;
+        if (eurFrom != null && eurTo != null) {
+            eurMid = (eurFrom + eurTo) / 2.0;
+        } else if (eurFrom != null) {
+            eurMid = eurFrom;
+        } else {
+            eurMid = eurTo;
+        }
         boolean validSalaryOrder = (eurFrom == null || eurTo == null || eurFrom <= eurTo);
         int qualityOk = (r.platform_code() != null && validSalaryOrder) ? 1 : 0;
 
