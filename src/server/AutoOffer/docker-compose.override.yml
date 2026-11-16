@@ -1,0 +1,12 @@
+# Локальная разработка: проброс портов PostgreSQL и JVM Debug (5005)
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  app:
+    ports:
+      - "5005:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -XX:MaxRAMPercentage=75.0"

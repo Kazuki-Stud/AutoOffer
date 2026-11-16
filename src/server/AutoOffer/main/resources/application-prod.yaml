@@ -1,0 +1,8 @@
+logging:
+  config: classpath:logback/production.xml
+  level:
+    AutoOffer: INFO
+
+springdoc:
+  swagger-ui:
+    enabled: false
