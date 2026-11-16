@@ -3,6 +3,9 @@ package AutoOffer.entity.view;
 import jakarta.persistence.*;
 import lombok.Getter;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -25,7 +28,11 @@ public class VacancyFullView {
     @Column(name = "region_name")        private String regionName;
     @Column(name = "salary_from")        private BigDecimal salaryFrom;
     @Column(name = "salary_to")          private BigDecimal salaryTo;
-    @Column(name = "currency_code")      private String currencyCode;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "currency_code", length = 3)
+    private String currencyCode;
+
     @Column(name = "level_name")         private String levelName;
     @Column(name = "work_format")        private String workFormat;
     @Column(name = "employment_type")    private String employmentType;

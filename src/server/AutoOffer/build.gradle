@@ -57,7 +57,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
-    implementation 'org.liquibase:liquibase-core'
+    implementation 'org.springframework.boot:spring-boot-starter-liquibase'
     implementation 'org.postgresql:postgresql'
 
     // Prometheus metrics (/actuator/prometheus)

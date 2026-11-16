@@ -1,23 +1,23 @@
 # --- Stage 1: Build ---
-FROM gradle:8.14-jdk23-alpine AS builder
+FROM eclipse-temurin:26-jdk AS builder
 WORKDIR /workspace
 
-# 1. Редко меняющийся слой: зависимости (кэшируется Docker)
-COPY build.gradle settings.gradle ./
-COPY gradle* ./gradle
-RUN gradle dependencies --no-daemon
+COPY gradlew settings.gradle build.gradle gradle.properties* ./
+COPY gradle ./gradle
+RUN chmod +x gradlew && ./gradlew dependencies --no-daemon --no-configuration-cache
 
-# 2. Часто меняющийся слой: исходники и ресурсы (main/ вместо src/)
 COPY main ./main
-RUN gradle bootJar --no-daemon -x test \
+RUN ./gradlew bootJar --no-daemon --no-configuration-cache -x test \
     && rm -rf /root/.gradle/caches
 
 # --- Stage 2: Runtime ---
-FROM eclipse-temurin:23-jre-alpine AS runtime
+FROM eclipse-temurin:26-jre AS runtime
 
-RUN apk add --no-cache curl \
-    && addgroup -S -g 1001 appgroup \
-    && adduser -S -u 1001 -G appgroup appuser
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -g 1001 appgroup \
+    && useradd -u 1001 -g appgroup -M -s /usr/sbin/nologin appuser
 
 WORKDIR /app
 COPY --from=builder --chown=1001:1001 /workspace/build/libs/*.jar app.jar

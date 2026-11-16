@@ -5,6 +5,8 @@ server:
 spring:
   application:
     name: AutoOffer
+  config:
+    import: optional:file:.env[.properties],optional:file:src/server/AutoOffer/.env[.properties]
   lifecycle:
     timeout-per-shutdown-phase: 5s
 
@@ -36,8 +38,6 @@ app:
     jwt-secret: ${JWT_SECRET}
     jwt-expiration-ms: ${JWT_EXPIRATION_MS:86400000}
     device-token-pepper: ${DEVICE_TOKEN_PEPPER}
-  cors:
-    allowed-origins: "*" # TODO: ограничить доменами PWA и chrome-extension://<id> в prod
 
 management:
   endpoints:

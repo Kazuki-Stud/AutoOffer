@@ -1,8 +1,10 @@
-# Локальная разработка: проброс портов PostgreSQL и JVM Debug (5005)
 services:
   postgres:
     ports:
       - "5432:5432"
+    networks:
+      - db-internal
+      - app-public
 
   app:
     ports:

@@ -2,6 +2,9 @@ package AutoOffer.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -16,7 +19,8 @@ public class Device {
     @Column(name = "pseudonymous_id", nullable = false, unique = true)
     private UUID pseudonymousId;
 
-    @Column(name = "auth_token_hash", nullable = false, length = 64)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "auth_token_hash", nullable = false, length = 64, columnDefinition = "char(64)")
     private String authTokenHash;
 
     @Column(name = "created_at", nullable = false, updatable = false)

@@ -8,15 +8,15 @@
     <!-- Скопируйте сюда ваши V1__schema.sql .. V4__seed_reference.sql.
          splitStatements="false" ОБЯЗАТЕЛЕН для V2/V3/V4 из-за $$ блоков PL/pgSQL и pg_temp! -->
     <changeSet id="V1-schema" author="autooffer">
-        <sqlFile path="V1__schema.sql" relativeToChangelogFile="true" splitStatements="false"/>
+        <sqlFile path="01__schema.sql" relativeToChangelogFile="true" splitStatements="false"/>
     </changeSet>
     <changeSet id="V2-logic" author="autooffer">
-        <sqlFile path="V2__logic.sql" relativeToChangelogFile="true" splitStatements="false"/>
+        <sqlFile path="02__logic.sql" relativeToChangelogFile="true" splitStatements="false"/>
     </changeSet>
     <changeSet id="V3-roles" author="autooffer">
-        <sqlFile path="V3__roles.sql" relativeToChangelogFile="true" splitStatements="false"/>
+        <sqlFile path="03__roles.sql" relativeToChangelogFile="true" splitStatements="false"/>
     </changeSet>
     <changeSet id="V4-seed-reference" author="autooffer">
-        <sqlFile path="V4__seed_reference.sql" relativeToChangelogFile="true" splitStatements="false"/>
+        <sqlFile path="04__seed_reference.sql" relativeToChangelogFile="true" splitStatements="false"/>
     </changeSet>
 </databaseChangeLog>
