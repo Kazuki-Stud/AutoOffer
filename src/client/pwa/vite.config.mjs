@@ -6,7 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
     root: __dirname,
-    base: '/',
+    base: '/AutoOffer/',
     build: {
         outDir: resolve(__dirname, 'dist'),
         emptyOutDir: true,
