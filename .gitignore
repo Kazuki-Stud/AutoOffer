@@ -25,3 +25,4 @@ yarn-error.log*
 *.sh
 /src/server/AutoOffer/build
 src/server/AutoOffer/.env
+/scripts
