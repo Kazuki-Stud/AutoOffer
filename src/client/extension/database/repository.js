@@ -1,39 +1,54 @@
 import { db } from './database.js';
 import { SETTING_KEYS } from './validation.js';
 
-// ---------------------------------------------------------------------------
-// Integrity helpers: the transactional rules IndexedDB cannot express by itself.
-// Always go through these for deletes and multi-store writes.
-// ---------------------------------------------------------------------------
 export const newId = () => crypto.randomUUID();
 export const nowIso = () => new Date().toISOString();
 
 export const DEFAULT_SETTINGS = {
-  private_use_only: false,             // US 7.4
-  submission_mode: 'semi_automated',   // US 3.4 default
-  selector_poll_interval_min: 5,       // KPI 3: <= 10 min
-  ai_consent_given_at: null,           // GDPR art. 6(1)(a): must be set before the first AI call
+  private_use_only: false,
+  submission_mode: 'semi_automated',
+  selector_poll_interval_min: 5,
+  ai_consent_given_at: null,
   ai_consent_version: null,
+  server_base_url: 'http://localhost:8080',
 };
 
 export async function getSetting(key) {
   const row = await db.app_settings.get(key);
   return row ? row.value : DEFAULT_SETTINGS[key];
 }
+
 export async function setSetting(key, value) {
   if (!SETTING_KEYS.includes(key)) throw new Error(`unknown setting ${key}`);
   await db.app_settings.put({ key, value, updated_at: nowIso() });
 }
+
 export async function recordAiConsent(version) {
   await setSetting('ai_consent_given_at', nowIso());
   await setSetting('ai_consent_version', version);
 }
+
 export async function hasAiConsent() {
   return (await getSetting('ai_consent_given_at')) !== null;
 }
 
 // ---- profiles ---------------------------------------------------------------
-/** Exactly one default profile at all times. */
+export async function ensureDefaultProfile() {
+  return db.transaction('rw', db.user_profiles, async () => {
+    const def = await db.user_profiles.where('is_default').equals(1).first();
+    if (def) return def;
+    const any = await db.user_profiles.toCollection().first();
+    if (any) {
+      await db.user_profiles.update(any.id, { is_default: 1, updated_at: nowIso() });
+      return { ...any, is_default: 1 };
+    }
+    const ts = nowIso();
+    const profile = { id: newId(), name: 'Default', is_default: 1, created_at: ts, updated_at: ts };
+    await db.user_profiles.add(profile);
+    return profile;
+  });
+}
+
 export async function setDefaultProfile(profileId) {
   await db.transaction('rw', db.user_profiles, async () => {
     if (!(await db.user_profiles.get(profileId))) throw new Error('profile not found');
@@ -41,10 +56,11 @@ export async function setDefaultProfile(profileId) {
   });
 }
 
-/** CASCADE: profile -> personal_data, resumes, cover_letters, credentials, preferences, applications, match_results. */
 export async function deleteProfileCascade(profileId) {
-  const t = [db.user_profiles, db.personal_data, db.resumes, db.cover_letters, db.platform_credentials,
-             db.search_preferences, db.applications, db.match_results];
+  const t = [
+    db.user_profiles, db.personal_data, db.resumes, db.cover_letters,
+    db.platform_credentials, db.search_preferences, db.applications, db.match_results,
+  ];
   await db.transaction('rw', t, async () => {
     const resumeIds = await db.resumes.where('profile_id').equals(profileId).primaryKeys();
     await db.match_results.where('resume_id').anyOf(resumeIds).delete();
@@ -58,7 +74,6 @@ export async function deleteProfileCascade(profileId) {
   });
 }
 
-/** SET NULL: applications/cover letters keep existing but lose the reference; match results are removed. */
 export async function deleteResume(resumeId) {
   await db.transaction('rw', [db.resumes, db.applications, db.cover_letters, db.match_results], async () => {
     await db.applications.where('resume_id').equals(resumeId).modify({ resume_id: null });
@@ -69,7 +84,6 @@ export async function deleteResume(resumeId) {
 }
 
 // ---- vacancies --------------------------------------------------------------
-/** RESTRICT: a vacancy with an application cannot be deleted. Match results and letters are removed with it. */
 export async function deleteVacancy(vacancyId) {
   await db.transaction('rw', [db.local_vacancies, db.applications, db.match_results, db.cover_letters], async () => {
     if ((await db.applications.where('vacancy_id').equals(vacancyId).count()) > 0) {
@@ -81,7 +95,6 @@ export async function deleteVacancy(vacancyId) {
   });
 }
 
-/** Find-or-create by unique name (companies, positions, skills). */
 export async function getOrCreateByName(table, name, extra = {}) {
   const trimmed = String(name).trim();
   return db.transaction('rw', db[table], async () => {
@@ -93,30 +106,29 @@ export async function getOrCreateByName(table, name, extra = {}) {
   });
 }
 
-/**
- * Save a vacancy (automatic collection or the "Save vacancy" button).
- * Upserts by URL. Never marks it as synced: that is done by markSynced() after the server acknowledges.
- */
 export async function saveVacancy(data, { source = 'manual' } = {}) {
   const now = nowIso();
   return db.transaction('rw', db.local_vacancies, async () => {
     const existing = await db.local_vacancies.where('url').equals(data.url).first();
     if (existing) {
-      await db.local_vacancies.update(existing.id, { ...data, updated_at: now });
+      await db.local_vacancies.update(existing.id, { ...data, sync_level: 'none', updated_at: now });
       return existing.id;
     }
-    const record = { skill_ids: [], status: 'complete', ...data, id: newId(), source, sync_level: 'none', created_at: now, updated_at: now };
+    const record = {
+      skill_ids: [], status: 'complete', ...data,
+      id: newId(), source, sync_level: 'none', created_at: now, updated_at: now,
+    };
     await db.local_vacancies.add(record);
     return record.id;
   });
 }
 
-/** What may be sent to the server for this vacancy, given the whitelist and Private use only mode (BA 2.8). */
 export async function allowedSyncLevel(vacancy) {
   if (await getSetting('private_use_only')) return 'none';
   const platform = vacancy.platform_id ? await db.platforms_dict.get(vacancy.platform_id) : null;
   return platform?.permission_status === 'granted' ? 'full' : 'url_only';
 }
+
 export async function markSynced(vacancyId, level) {
   await db.local_vacancies.update(vacancyId, { sync_level: level, updated_at: nowIso() });
 }
@@ -125,20 +137,24 @@ export async function markSynced(vacancyId, level) {
 export async function saveMatchResult({ vacancy_id, resume_id, score, matched_skills, missing_skills, model = null }) {
   return db.transaction('rw', db.match_results, async () => {
     const existing = await db.match_results.where('[vacancy_id+resume_id]').equals([vacancy_id, resume_id]).first();
-    const record = { id: existing?.id ?? newId(), vacancy_id, resume_id, score, matched_skills, missing_skills, model, created_at: nowIso() };
+    const record = {
+      id: existing?.id ?? newId(),
+      vacancy_id, resume_id, score, matched_skills, missing_skills, model, created_at: nowIso(),
+    };
     await db.match_results.put(record);
     return record.id;
   });
 }
 
-/** One application per (profile, vacancy): prevents the duplicate submissions described in the AS-IS analysis. */
 export async function createApplication({ profile_id, vacancy_id, resume_id = null, cover_letter_id = null, match_score = null }) {
   return db.transaction('rw', [db.applications, db.local_vacancies, db.resumes], async () => {
     if (!(await db.local_vacancies.get(vacancy_id))) throw new Error('vacancy not found');
     if (resume_id && !(await db.resumes.get(resume_id))) throw new Error('resume not found');
     const now = nowIso();
-    const record = { id: newId(), profile_id, vacancy_id, resume_id, cover_letter_id, match_score,
-                     status: 'Applied', applied_at: now, status_changed_at: now };
+    const record = {
+      id: newId(), profile_id, vacancy_id, resume_id, cover_letter_id, match_score,
+      status: 'Applied', applied_at: now, status_changed_at: now,
+    };
     try {
       await db.applications.add(record);
     } catch (e) {
@@ -148,20 +164,20 @@ export async function createApplication({ profile_id, vacancy_id, resume_id = nu
     return record.id;
   });
 }
+
 export async function setApplicationStatus(id, status) {
-  await db.applications.update(id, { status, status_changed_at: nowIso() });   // validated by hooks
+  await db.applications.update(id, { status, status_changed_at: nowIso() });
 }
 
 // ---- selector cache with rollback (US 2.1, 2.2) -----------------------------
-/** Apply rules downloaded from the registry. A newer version replaces the old one, which is kept for rollback. */
 export async function applyRegistrySelectors(rows) {
   const now = nowIso();
   let applied = 0;
   await db.transaction('rw', db.selectors, async () => {
     for (const r of rows) {
       const existing = (await db.selectors.where('[platform_id+task_id+element_type_id]')
-        .equals([r.platform_id, r.task_id, r.element_type_id]).toArray())
-        .find((s) => (s.url_pattern ?? null) === (r.url_pattern ?? null));
+          .equals([r.platform_id, r.task_id, r.element_type_id]).toArray())
+          .find((s) => (s.url_pattern ?? null) === (r.url_pattern ?? null));
       if (!existing) {
         await db.selectors.add({ id: newId(), source: 'registry', is_active: 1, validation_failures: 0, ...r, updated_at: now });
         applied++;
@@ -177,7 +193,7 @@ export async function applyRegistrySelectors(rows) {
   });
   return applied;
 }
-/** Called when validation of an extraction result set fails with the newest rule. */
+
 export async function rollbackSelector(id) {
   const s = await db.selectors.get(id);
   if (!s?.previous_selector_string) return false;

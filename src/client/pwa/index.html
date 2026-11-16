@@ -44,6 +44,10 @@
             <ao-stats id="dashboard-stats"></ao-stats>
         </div>
 
+        <div id="ext-missing-banner" class="pwa-card" style="display: none;">
+            <span class="status-msg">Browser extension is not connected. Standalone local mode is active; import/export JSON or set your Extension ID in Settings & Sync.</span>
+        </div>
+
         <div class="view-controls-bar">
             <div class="search-input-wrap">
                 <input type="text" id="filter-input" placeholder="Search vacancies by title or description..." autocomplete="off" />
@@ -71,13 +75,21 @@
                 <button id="goto-sync-btn" class="primary-btn">Go to Settings & Sync</button>
             </div>
         </main>
+
+        <div class="pwa-card">
+            <div class="card-header-bar">
+                <h2>Market Skill Hotwords (Server OLAP)</h2>
+                <button id="load-hotwords-btn" class="secondary-btn">Load Analytics</button>
+            </div>
+            <div id="hotwords-list" class="status-msg">Click "Load Analytics" to query public skill demand.</div>
+        </div>
     </div>
 
     <div id="view-profile" class="pwa-view" style="display: none;">
         <div class="pwa-card">
             <div class="card-header-bar">
-                <h2>Candidate Profile</h2>
-                <span class="tag-status">Device Local</span>
+                <h2>Candidate Profile & Default Resume</h2>
+                <span class="tag-status">Device Local (Dexie v7)</span>
             </div>
             <div class="profile-grid">
                 <div class="form-field">
@@ -101,12 +113,12 @@
                     <input type="text" id="pwa-prof-location" placeholder="Vilnius, Lithuania" />
                 </div>
                 <div class="form-field full-width">
-                    <label>Professional Headline</label>
-                    <input type="text" id="pwa-prof-headline" placeholder="Lead Software Architect" />
+                    <label>Resume Variant Title / Headline</label>
+                    <input type="text" id="pwa-prof-headline" placeholder="Backend Architecture 2026" />
                 </div>
                 <div class="form-field full-width">
-                    <label>Portfolio / Professional Links</label>
-                    <textarea id="pwa-prof-links" rows="2" placeholder="https://github.com/..., https://linkedin.com/..."></textarea>
+                    <label>Portfolio / Professional Links (comma-separated URLs)</label>
+                    <textarea id="pwa-prof-links" rows="2" placeholder="https://github.com/..., https://linkedin.com/in/..."></textarea>
                 </div>
                 <div class="form-field full-width">
                     <label>Skills Overview (comma-separated)</label>
@@ -143,7 +155,7 @@
 
         <div class="pwa-card">
             <div class="card-header-bar">
-                <h2>Synchronization Options</h2>
+                <h2>Synchronization & Privacy Options</h2>
                 <span class="tag-status">Extension Bridge</span>
             </div>
             <div class="sync-form-grid">
@@ -171,9 +183,24 @@
                     <label>Chrome Extension ID</label>
                     <input type="text" id="extension-id-input" placeholder="Extension ID" autocomplete="off" />
                 </div>
+                <div class="form-field">
+                    <label>Server API Base URL</label>
+                    <input type="url" id="server-url-input" placeholder="http://localhost:8080" autocomplete="off" />
+                </div>
+                <div class="form-field">
+                    <label>
+                        <input type="checkbox" id="private-use-only-toggle" />
+                        Private use only (do not send vacancies/URLs to server)
+                    </label>
+                </div>
             </div>
             <div class="sync-actions-bar">
                 <button id="sync-btn" class="primary-btn">Download / Sync Data</button>
+                <button id="export-json-btn" class="secondary-btn">Export Local Backup</button>
+                <label class="secondary-btn" style="cursor: pointer;">
+                    Import Backup
+                    <input type="file" id="import-json-input" accept="application/json" style="display: none;" />
+                </label>
                 <button id="clear-btn" class="clear-button">Clear Stored Vacancies</button>
                 <span id="sync-status" class="sync-status-indicator">Idle</span>
             </div>

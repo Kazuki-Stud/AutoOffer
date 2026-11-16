@@ -1,32 +1,25 @@
-// ---------------------------------------------------------------------------
-// Schema validation for the local store (IndexedDB has no constraints of its own).
-// Mirrors the server CHECK rules and the BA acceptance criteria.
-// validateRecord() is pure so it can be unit-tested without a browser.
-// ---------------------------------------------------------------------------
 const UUID_RE  = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_RE   = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_RE   = /^https?:\/\//i;
-// same rule as the server CHECK: selectors are declarative data, never scripts or URLs
 const UNSAFE_SELECTOR_RE = /(javascript:|<\s*script|https?:\/\/|data:)/i;
 
 export const ENUMS = {
   permission_status: ['none', 'pending', 'granted'],
   selector_kind:     ['css', 'xpath'],
   selector_source:   ['registry', 'heuristic', 'seed', 'manual'],
-  sync_level:        ['none', 'url_only', 'full'],        // what has actually been sent to the server
-  vacancy_source:    ['auto', 'manual'],                  // background collection vs "Save vacancy" button
+  sync_level:        ['none', 'url_only', 'full'],
+  vacancy_source:    ['auto', 'manual'],
   vacancy_status:    ['new', 'complete', 'error'],
-  application_status:['Applied', 'Screening', 'Interview', 'Offered', 'Rejected'],   // US 5.3
+  application_status:['Applied', 'Screening', 'Interview', 'Offered', 'Rejected'],
   submission_mode:   ['manual', 'semi_automated'],
 };
 
-// field spec helpers ---------------------------------------------------------
 const uuid  = (req = false) => ({ t: 'uuid', req });
 const str   = (max, req = false, min = 0) => ({ t: 'str', max, min, req });
 const text  = (req = false) => ({ t: 'text', req });
 const iso   = (req = false) => ({ t: 'iso', req });
-const flag  = (req = false) => ({ t: 'flag', req });         // 0 | 1  (booleans cannot be indexed in IndexedDB)
+const flag  = (req = false) => ({ t: 'flag', req });
 const int   = (min, max, req = false) => ({ t: 'int', min, max, req });
 const num   = (min, req = false) => ({ t: 'num', min, req });
 const url   = (req = false) => ({ t: 'url', req });
@@ -72,7 +65,7 @@ export const RULES = {
     region_id: uuid(), country_id: uuid(), city_id: uuid(),
     salary_from: num(0), salary_to: num(0), currency_id: uuid(),
     level_id: uuid(), work_format_id: uuid(), employment_type_id: uuid(),
-    url: url(true), description: text(true),
+    url: url(true), description: text(false),
     sync_level: oneOf(ENUMS.sync_level, true), source: oneOf(ENUMS.vacancy_source, true),
     status: oneOf(ENUMS.vacancy_status, true), skill_ids: uuids(true),
     created_at: iso(true), updated_at: iso(true),
@@ -118,17 +111,15 @@ export const RULES = {
   },
   search_preferences: {
     id: uuid(true), profile_id: uuid(true),
-    roles: strs(1, true),                                  // US 1.4: an empty role list is rejected
+    roles: strs(1, true),
     locations: strs(0), keywords: strs(0), urls: strs(0), platform_ids: uuids(),
-    page_limit: int(1, 1000, true),                        // US 1.4: page limit below 1 is rejected
+    page_limit: int(1, 1000, true),
     updated_at: iso(true),
   },
   app_settings: { key: str(100, true, 1), updated_at: iso() },
   automation_jobs: { id: uuid(), title: str(255), status: str(50), created_at: iso() },
 };
 
-// Secrets must never be stored in clear text. Legacy plain fields are tolerated ONLY while
-// needs_encryption === 1 (set by the v6 upgrade, cleared by migrateLegacySecrets()).
 const PLAIN_SECRET_FIELDS = {
   platform_credentials: ['credentials_data'],
   ai_configurations: ['api_key'],
@@ -138,20 +129,22 @@ const PLAIN_SECRET_FIELDS = {
 const SETTING_RULES = {
   private_use_only:           (v) => typeof v === 'boolean',
   submission_mode:            (v) => ENUMS.submission_mode.includes(v),
-  selector_poll_interval_min: (v) => Number.isInteger(v) && v >= 1 && v <= 60,   // KPI 3: propagation <= 10 min
+  selector_poll_interval_min: (v) => Number.isInteger(v) && v >= 1 && v <= 60,
   ai_consent_given_at:        (v) => v === null || ISO_RE.test(v),
   ai_consent_version:         (v) => v === null || (typeof v === 'string' && v.length <= 20),
+  server_base_url:            (v) => typeof v === 'string' && URL_RE.test(v),
 };
 export const SETTING_KEYS = Object.keys(SETTING_RULES);
 
 function checkField(name, spec, v) {
   if (v === undefined || v === null) return spec.req ? `${name} is required` : null;
+  if (v === '' && !spec.req && (spec.t === 'text' || spec.t === 'url' || spec.t === 'str')) return null;
   switch (spec.t) {
     case 'uuid':  return typeof v === 'string' && UUID_RE.test(v) ? null : `${name} must be a UUID`;
     case 'str':   return typeof v === 'string' && v.length >= (spec.min || 0) && v.length <= spec.max ? null : `${name} must be a string of ${spec.min || 0}..${spec.max} chars`;
-    case 'text':  return typeof v === 'string' && v.length > 0 ? null : `${name} must be non-empty text`;
+    case 'text':  return typeof v === 'string' && (!spec.req || v.length > 0) ? null : `${name} must be non-empty text`;
     case 'iso':   return typeof v === 'string' && ISO_RE.test(v) ? null : `${name} must be an ISO-8601 timestamp`;
-    case 'flag':  return v === 0 || v === 1 ? null : `${name} must be 0 or 1 (booleans cannot be indexed)`;
+    case 'flag':  return v === 0 || v === 1 ? null : `${name} must be 0 or 1`;
     case 'int':   return Number.isInteger(v) && (spec.min === undefined || v >= spec.min) && (spec.max === undefined || v <= spec.max) ? null : `${name} must be an integer in range`;
     case 'num':   return typeof v === 'number' && Number.isFinite(v) && (spec.min === undefined || v >= spec.min) ? null : `${name} must be a number >= ${spec.min}`;
     case 'url':   return typeof v === 'string' && URL_RE.test(v) && v.length <= 2048 ? null : `${name} must be an http(s) URL`;
@@ -166,20 +159,20 @@ function checkField(name, spec, v) {
   }
 }
 
-// Cross-field rules (the local equivalent of the server CHECK constraints)
 const CROSS = {
   local_vacancies(o, errs) {
-    if (!o.platform_id && !o.source_host) errs.push('platform_id or source_host is required (vacancies from any website can be saved)');
+    if (!o.platform_id && !o.source_host) errs.push('platform_id or source_host is required');
+    if (o.status === 'complete' && (!o.description || !o.description.trim())) errs.push('description is required for complete vacancies');
     const locations = [o.region_id, o.country_id, o.city_id].filter((x) => x != null).length;
-    if (locations > 1) errs.push('at most one of region_id/country_id/city_id may be set (derive the others from dictionaries)');
+    if (locations > 1) errs.push('at most one of region_id/country_id/city_id may be set');
     if (o.salary_from != null && o.salary_to != null && o.salary_from > o.salary_to) errs.push('salary_from must be <= salary_to');
-    if ((o.salary_from != null || o.salary_to != null) && !o.currency_id) errs.push('currency_id is required when a salary is given');
+    if ((o.salary_from != null || o.salary_to != null) && !o.currency_id) errs.push('currency_id is required when salary is given');
   },
   selectors(o, errs) {
     if (typeof o.selector_string === 'string' && UNSAFE_SELECTOR_RE.test(o.selector_string)) errs.push('selector_string must not contain scripts or URLs');
   },
   ai_configurations(o, errs) {
-    if (!o.api_key_enc && o.needs_encryption !== 1) errs.push('api_key_enc is required');
+    if (o.provider_name !== 'local' && !o.api_key_enc && o.needs_encryption !== 1) errs.push('api_key_enc is required for remote AI providers');
   },
   platform_credentials(o, errs) {
     if (!o.credentials_enc && o.needs_encryption !== 1) errs.push('credentials_enc is required');
@@ -193,7 +186,6 @@ const CROSS = {
   },
 };
 
-/** @returns {string[]} list of problems; empty = valid */
 export function validateRecord(table, obj) {
   const rules = RULES[table];
   if (!rules) return [];
@@ -218,9 +210,8 @@ export class ValidationError extends Error {
   }
 }
 
-/** Hooks run inside the Dexie transaction; throwing aborts the write. */
 export function attachValidation(db) {
-  db.validation = { enabled: true };           // paused only while a schema upgrade rewrites legacy rows
+  db.validation = { enabled: true };
   for (const table of Object.keys(RULES)) {
     db.table(table).hook('creating', function (primKey, obj) {
       if (!db.validation.enabled) return;

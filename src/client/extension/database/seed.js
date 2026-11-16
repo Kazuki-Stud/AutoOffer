@@ -1,312 +1,103 @@
-import { db } from '../database.js';
+import { db } from './database.js';
+import { DEFAULT_SETTINGS } from './repository.js';
+
+const sid = (p, n) => `${p}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const now = () => new Date().toISOString();
+
+const PLATFORMS = [
+    [1, 'Indeed',           'indeed.com',         'https://www.indeed.com'],
+    [2, 'ZipRecruiter',     'ziprecruiter.com',   'https://www.ziprecruiter.com'],
+    [3, 'We Work Remotely', 'weworkremotely.com', 'https://weworkremotely.com'],
+];
+const TASKS = [
+    [1, 'parse_vacancy_list', 'Parse Vacancy List'], [2, 'parse_vacancy_detail', 'Parse Vacancy Detail'],
+    [3, 'search_interaction', 'Search Interaction'], [4, 'fill_application_form', 'Fill Application Form'],
+];
+const ELEMENTS = [
+    'container:Container', 'title:Title', 'link:Link', 'search_input:Search Input', 'search_button:Search Button',
+    'pagination:Pagination', 'description:Job Description', 'company:Company', 'location:Location', 'salary:Salary',
+    'form_first_name:Form: first name', 'form_last_name:Form: last name', 'form_email:Form: e-mail',
+    'form_phone:Form: phone', 'form_location:Form: location', 'form_website:Form: website',
+    'form_github:Form: GitHub', 'form_linkedin:Form: LinkedIn', 'form_telegram:Form: Telegram',
+    'form_resume_upload:Form: resume upload', 'form_cover_letter:Form: cover letter',
+    'form_submit:Form: submit button', 'captcha:Captcha marker',
+].map((s, i) => { const [code, name] = s.split(':'); return [i + 1, code, name.trim()]; });
+
+const elId = (code) => sid('3', ELEMENTS.find((e) => e[1] === code)[0]);
+const taskId = (code) => sid('2', TASKS.find((t) => t[1] === code)[0]);
+const platId = (code) => sid('1', PLATFORMS.find((p) => p[2] === code)[0]);
+
+const SELECTORS = [
+    ['indeed.com','parse_vacancy_list','container','ul.css-pygyny.eu4oa1w0 li, .mosaic-provider-jobcards-1ppyh6m, div.job_seen_beacon'],
+    ['indeed.com','parse_vacancy_list','title','.jcs-JobTitle span[title], a.jcs-JobTitle'],
+    ['indeed.com','parse_vacancy_list','link','a.jcs-JobTitle'],
+    ['indeed.com','search_interaction','search_input','#text-input-what'],
+    ['indeed.com','search_interaction','search_button','button.yosegi-InlineWhatWhere-primaryButton'],
+    ['indeed.com','parse_vacancy_list','pagination','a[data-testid="pagination-page-next"]'],
+    ['indeed.com','parse_vacancy_detail','description','#jobDescriptionText'],
+    ['ziprecruiter.com','parse_vacancy_list','container','article.job_result, div.job_content, [data-testid="job-card"]'],
+    ['ziprecruiter.com','parse_vacancy_list','title','h2.job_title, a.job_link, [data-testid="job-title"]'],
+    ['ziprecruiter.com','parse_vacancy_list','link','a.job_link, a[data-testid="job-card-title"]'],
+    ['ziprecruiter.com','search_interaction','search_input','input#search-job-keyword, input[name="search"]'],
+    ['ziprecruiter.com','search_interaction','search_button','button.search_form_submit, button[type="submit"]'],
+    ['ziprecruiter.com','parse_vacancy_list','pagination','a.pagination_link[rel="next"], a[aria-label="Next Page"]'],
+    ['ziprecruiter.com','parse_vacancy_detail','description','div.job_description, [data-testid="job-description"]'],
+    ['weworkremotely.com','parse_vacancy_list','container','section.jobs article ul li:not(.view-all), li.feature'],
+    ['weworkremotely.com','parse_vacancy_list','title','span.title'],
+    ['weworkremotely.com','parse_vacancy_list','link','a[href*="/remote-jobs/"]'],
+    ['weworkremotely.com','search_interaction','search_input','input#search'],
+    ['weworkremotely.com','search_interaction','search_button','button#search-button'],
+    ['weworkremotely.com','parse_vacancy_list','pagination','span.next a'],
+    ['weworkremotely.com','parse_vacancy_detail','description','div#job-details, div.listing-container'],
+];
+
+const PROMPTS = [
+    {
+        code: 'auto_detect_selectors', name: 'Detect selectors', output_format: 'json',
+        system_prompt: 'You analyse HTML of a job listing page and return CSS selectors only.',
+        user_prompt_template: 'Analyze the HTML snippet below and return JSON {"container":"","title":"","link":""}.\n\n{{html}}',
+    },
+    {
+        code: 'match_score', name: 'Resume-vacancy match', output_format: 'json',
+        system_prompt: 'You compare a resume excerpt with a vacancy. Never include contact data in the answer.',
+        user_prompt_template: 'Vacancy:\n{{vacancy}}\n\nResume (skills and experience only):\n{{resume}}\n\nReturn JSON {"score":0-100,"matched_skills":[],"missing_skills":[]}.',
+    },
+    {
+        code: 'cover_letter', name: 'Tailored cover letter', output_format: 'text',
+        system_prompt: 'You write a concise formal cover letter that refers to the vacancy responsibilities and the candidate achievements.',
+        user_prompt_template: 'Vacancy:\n{{vacancy}}\n\nCandidate summary:\n{{resume_summary}}\n\nWrite the letter.',
+    },
+];
 
 export async function seedDatabase() {
-    try {
-        const platformCount = await db.platforms_dict.count();
-        if (platformCount > 0) return;
+    if ((await db.platforms_dict.count()) > 0) return;
+    const ts = now();
+    await db.transaction('rw', db.tables, async () => {
+        await db.platforms_dict.bulkAdd(PLATFORMS.map(([n, name, code, url]) =>
+            ({ id: sid('1', n), name, code, url, permission_status: 'none' })));
+        await db.selector_tasks_dict.bulkAdd(TASKS.map(([n, code, name]) => ({ id: sid('2', n), code, name })));
+        await db.selector_element_types_dict.bulkAdd(ELEMENTS.map(([n, code, name]) => ({ id: sid('3', n), code, name })));
+        await db.currencies_dict.bulkAdd([[1,'USD','US Dollar'],[2,'EUR','Euro'],[3,'GBP','British Pound'],[4,'PLN','Polish Zloty']]
+            .map(([n, code, name]) => ({ id: sid('4', n), code, name })));
+        await db.regions_dict.bulkAdd([[1,'AMERICA','America'],[2,'EU','EU'],[3,'CIS','CIS'],[4,'OTHER','Other']]
+            .map(([n, code, name]) => ({ id: sid('5', n), code, name })));
+        await db.countries_dict.bulkAdd([[1,1,'United States'],[2,2,'Lithuania'],[3,2,'Poland'],[4,2,'Germany'],[5,4,'United Kingdom']]
+            .map(([n, r, name]) => ({ id: sid('6', n), region_id: sid('5', r), name })));
+        await db.cities_dict.bulkAdd([[1,1,'New York'],[2,2,'Vilnius'],[3,2,'Kaunas'],[4,3,'Warsaw'],[5,4,'Berlin'],[6,5,'London']]
+            .map(([n, c, name]) => ({ id: sid('7', n), country_id: sid('6', c), name })));
+        await db.levels_dict.bulkAdd(['Intern','Junior','Middle','Senior','Lead'].map((name, i) => ({ id: sid('8', i + 1), name })));
+        await db.work_formats_dict.bulkAdd(['Remote','Offline','Hybrid'].map((name, i) => ({ id: sid('9', i + 1), name })));
+        await db.employment_types_dict.bulkAdd(['Full-time','Part-time','Contract'].map((name, i) => ({ id: sid('a', i + 1), name })));
+        await db.positions_dict.bulkAdd(['Frontend Developer','Backend Developer','Full Stack Developer','Software Engineer','DevOps Engineer','QA Engineer']
+            .map((name, i) => ({ id: sid('b', i + 1), name, is_verified: 1 })));
 
-        const platformIndeedId = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
-        const platformZipId = 'f67ac10b-58cc-4372-a567-0e02b2c3d480';
-        const platformWwrId = 'f77ac10b-58cc-4372-a567-0e02b2c3d481';
+        await db.selectors.bulkAdd(SELECTORS.map(([p, t, e, selector_string], i) => ({
+            id: sid('c', i + 1), platform_id: platId(p), task_id: taskId(t), element_type_id: elId(e),
+            url_pattern: p, selector_kind: 'css', selector_string, version: 1, source: 'seed',
+            is_active: 1, validation_failures: 0, updated_at: ts,
+        })));
 
-        const taskListId = '11111111-1111-1111-1111-111111111111';
-        const taskDetailId = '22222222-2222-2222-2222-222222222222';
-        const taskSearchId = '33333333-1111-1111-1111-111111111111';
-
-        const elContainerId = '33333333-3333-3333-3333-333333333333';
-        const elTitleId = '44444444-4444-4444-4444-444444444444';
-        const elLinkId = '55555555-5555-5555-5555-555555555555';
-        const elSearchInputId = '77777777-7777-7777-7777-777777777777';
-        const elSearchButtonId = '88888888-8888-8888-8888-888888888888';
-        const elPaginationId = '99999999-9999-9999-9999-999999999999';
-        const elDescriptionId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-
-        await db.platforms_dict.bulkAdd([
-            { id: platformIndeedId, name: 'Indeed', code: 'indeed.com', url: 'https://www.indeed.com' },
-            { id: platformZipId, name: 'ZipRecruiter', code: 'ziprecruiter.com', url: 'https://www.ziprecruiter.com' },
-            { id: platformWwrId, name: 'We Work Remotely', code: 'weworkremotely.com', url: 'https://weworkremotely.com' }
-        ]);
-
-        await db.selector_tasks_dict.bulkAdd([
-            { id: taskListId, code: 'parse_vacancy_list', name: 'Parse Vacancy List' },
-            { id: taskDetailId, code: 'parse_vacancy_detail', name: 'Parse Vacancy Detail' },
-            { id: taskSearchId, code: 'search_interaction', name: 'Search Interaction' }
-        ]);
-
-        await db.selector_element_types_dict.bulkAdd([
-            { id: elContainerId, code: 'container', name: 'Container' },
-            { id: elTitleId, code: 'title', name: 'Title' },
-            { id: elLinkId, code: 'link', name: 'Link' },
-            { id: elSearchInputId, code: 'search_input', name: 'Search Input' },
-            { id: elSearchButtonId, code: 'search_button', name: 'Search Button' },
-            { id: elPaginationId, code: 'pagination', name: 'Pagination' },
-            { id: elDescriptionId, code: 'description', name: 'Job Description' }
-        ]);
-
-        await db.positions_dict.bulkAdd([
-            { id: 'p1111111-1111-1111-1111-111111111111', name: 'Frontend Developer', is_verified: true },
-            { id: 'p2222222-2222-2222-2222-222222222222', name: 'Backend Developer', is_verified: true },
-            { id: 'p3333333-3333-3333-3333-333333333333', name: 'Full Stack Developer', is_verified: true },
-            { id: 'p4444444-4444-4444-4444-444444444444', name: 'Software Engineer', is_verified: true },
-            { id: 'p5555555-5555-5555-5555-555555555555', name: 'DevOps Engineer', is_verified: true },
-            { id: 'p6666666-6666-6666-6666-666666666666', name: 'QA Engineer', is_verified: true }
-        ]);
-
-        await db.currencies_dict.bulkAdd([
-            { id: 'c1111111-1111-1111-1111-111111111111', code: 'USD', name: 'US Dollar' },
-            { id: 'c2222222-2222-2222-2222-222222222222', code: 'EUR', name: 'Euro' },
-            { id: 'c3333333-3333-3333-3333-333333333333', code: 'GBP', name: 'British Pound' }
-        ]);
-
-        await db.regions_dict.bulkAdd([
-            { id: 'r1111111-1111-1111-1111-111111111111', code: 'AMERICA', name: 'America' },
-            { id: 'r2222222-2222-2222-2222-222222222222', code: 'EU', name: 'EU' },
-            { id: 'r3333333-3333-3333-3333-333333333333', code: 'CIS', name: 'CIS' },
-            { id: 'r4444444-4444-4444-4444-444444444444', code: 'OTHER', name: 'Other' }
-        ]);
-
-        await db.levels_dict.bulkAdd([
-            { id: 'l0000000-0000-0000-0000-000000000000', name: 'Intern' },
-            { id: 'l1111111-1111-1111-1111-111111111111', name: 'Junior' },
-            { id: 'l2222222-2222-2222-2222-222222222222', name: 'Middle' },
-            { id: 'l3333333-3333-3333-3333-333333333333', name: 'Senior' },
-            { id: 'l4444444-4444-4444-4444-444444444444', name: 'Lead' }
-        ]);
-
-        await db.work_formats_dict.bulkAdd([
-            { id: 'wf111111-1111-1111-1111-111111111111', name: 'Remote' },
-            { id: 'wf222222-2222-2222-2222-222222222222', name: 'Offline' },
-            { id: 'wf333333-3333-3333-3333-333333333333', name: 'Hybrid' }
-        ]);
-
-        await db.employment_types_dict.bulkAdd([
-            { id: 'et111111-1111-1111-1111-111111111111', name: 'Full-time' },
-            { id: 'et222222-2222-2222-2222-222222222222', name: 'Part-time' },
-            { id: 'et333333-3333-3333-3333-333333333333', name: 'Contract' }
-        ]);
-
-        await db.prompt_templates.bulkAdd([
-            {
-                id: 'pt111111-1111-1111-1111-111111111111',
-                code: 'auto_detect_selectors',
-                template: 'Analyze the given HTML snippet and output selectors for container, title, and link in JSON format.'
-            }
-        ]);
-
-        await db.selectors.bulkAdd([
-            {
-                id: 's1111111-1111-1111-1111-111111111111',
-                platform_id: platformIndeedId,
-                task_id: taskListId,
-                element_type_id: elContainerId,
-                url_pattern: 'indeed.com',
-                selector_string: 'ul.css-pygyny.eu4oa1w0 li, .mosaic-provider-jobcards-1ppyh6m, div.job_seen_beacon',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 's2222222-2222-2222-2222-222222222222',
-                platform_id: platformIndeedId,
-                task_id: taskListId,
-                element_type_id: elTitleId,
-                url_pattern: 'indeed.com',
-                selector_string: '.jcs-JobTitle span[title], a.jcs-JobTitle',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 's3333333-3333-3333-3333-333333333333',
-                platform_id: platformIndeedId,
-                task_id: taskListId,
-                element_type_id: elLinkId,
-                url_pattern: 'indeed.com',
-                selector_string: 'a.jcs-JobTitle',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 's5555555-5555-5555-5555-555555555555',
-                platform_id: platformIndeedId,
-                task_id: taskSearchId,
-                element_type_id: elSearchInputId,
-                url_pattern: 'indeed.com',
-                selector_string: '#text-input-what',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 's6666666-6666-6666-6666-666666666666',
-                platform_id: platformIndeedId,
-                task_id: taskSearchId,
-                element_type_id: elSearchButtonId,
-                url_pattern: 'indeed.com',
-                selector_string: 'button.yosegi-InlineWhatWhere-primaryButton',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 's7777777-7777-7777-7777-777777777777',
-                platform_id: platformIndeedId,
-                task_id: taskListId,
-                element_type_id: elPaginationId,
-                url_pattern: 'indeed.com',
-                selector_string: 'a[data-testid="pagination-page-next"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 's8888888-8888-8888-8888-888888888888',
-                platform_id: platformIndeedId,
-                task_id: taskDetailId,
-                element_type_id: elDescriptionId,
-                url_pattern: 'indeed.com',
-                selector_string: '#jobDescriptionText',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sz11111-1111-1111-1111-111111111111',
-                platform_id: platformZipId,
-                task_id: taskListId,
-                element_type_id: elContainerId,
-                url_pattern: 'ziprecruiter.com',
-                selector_string: 'article.job_result, div.job_content, [data-testid="job-card"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sz22222-2222-2222-2222-222222222222',
-                platform_id: platformZipId,
-                task_id: taskListId,
-                element_type_id: elTitleId,
-                url_pattern: 'ziprecruiter.com',
-                selector_string: 'h2.job_title, a.job_link, [data-testid="job-title"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sz33333-3333-3333-3333-333333333333',
-                platform_id: platformZipId,
-                task_id: taskListId,
-                element_type_id: elLinkId,
-                url_pattern: 'ziprecruiter.com',
-                selector_string: 'a.job_link, a[data-testid="job-card-title"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sz44444-4444-4444-4444-444444444444',
-                platform_id: platformZipId,
-                task_id: taskSearchId,
-                element_type_id: elSearchInputId,
-                url_pattern: 'ziprecruiter.com',
-                selector_string: 'input#search-job-keyword, input[name="search"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sz55555-5555-5555-5555-555555555555',
-                platform_id: platformZipId,
-                task_id: taskSearchId,
-                element_type_id: elSearchButtonId,
-                url_pattern: 'ziprecruiter.com',
-                selector_string: 'button.search_form_submit, button[type="submit"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sz66666-6666-6666-6666-666666666666',
-                platform_id: platformZipId,
-                task_id: taskListId,
-                element_type_id: elPaginationId,
-                url_pattern: 'ziprecruiter.com',
-                selector_string: 'a.pagination_link[rel="next"], a[aria-label="Next Page"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sz77777-7777-7777-7777-777777777777',
-                platform_id: platformZipId,
-                task_id: taskDetailId,
-                element_type_id: elDescriptionId,
-                url_pattern: 'ziprecruiter.com',
-                selector_string: 'div.job_description, [data-testid="job-description"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sw11111-1111-1111-1111-111111111111',
-                platform_id: platformWwrId,
-                task_id: taskListId,
-                element_type_id: elContainerId,
-                url_pattern: 'weworkremotely.com',
-                selector_string: 'section.jobs article ul li:not(.view-all), li.feature',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sw22222-2222-2222-2222-222222222222',
-                platform_id: platformWwrId,
-                task_id: taskListId,
-                element_type_id: elTitleId,
-                url_pattern: 'weworkremotely.com',
-                selector_string: 'span.title',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sw33333-3333-3333-3333-333333333333',
-                platform_id: platformWwrId,
-                task_id: taskListId,
-                element_type_id: elLinkId,
-                url_pattern: 'weworkremotely.com',
-                selector_string: 'a[href*="/remote-jobs/"]',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sw44444-4444-4444-4444-444444444444',
-                platform_id: platformWwrId,
-                task_id: taskSearchId,
-                element_type_id: elSearchInputId,
-                url_pattern: 'weworkremotely.com',
-                selector_string: 'input#search',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sw55555-5555-5555-5555-555555555555',
-                platform_id: platformWwrId,
-                task_id: taskSearchId,
-                element_type_id: elSearchButtonId,
-                url_pattern: 'weworkremotely.com',
-                selector_string: 'button#search-button',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sw66666-6666-6666-6666-666666666666',
-                platform_id: platformWwrId,
-                task_id: taskListId,
-                element_type_id: elPaginationId,
-                url_pattern: 'weworkremotely.com',
-                selector_string: 'span.next a',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            },
-            {
-                id: 'sw77777-7777-7777-7777-777777777777',
-                platform_id: platformWwrId,
-                task_id: taskDetailId,
-                element_type_id: elDescriptionId,
-                url_pattern: 'weworkremotely.com',
-                selector_string: 'div#job-details, div.listing-container',
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            }
-        ]);
-        console.log('[AutoOffer Seed] Database seeded successfully.');
-    } catch (err) {
-        console.error('[AutoOffer Seed] Seeding error:', err);
-    }
+        await db.prompt_templates.bulkAdd(PROMPTS.map((p, i) => ({ id: sid('e', i + 1), ...p, created_at: ts, updated_at: ts })));
+        await db.app_settings.bulkAdd(Object.entries(DEFAULT_SETTINGS).map(([key, value]) => ({ key, value, updated_at: ts })));
+    });
 }

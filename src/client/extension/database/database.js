@@ -1,6 +1,5 @@
 import Dexie from 'dexie';
 import { attachValidation } from './validation.js';
-export * from './database/database.js';
 
 const STORES_V5 = {
     local_device_state: 'id',
