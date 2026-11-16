@@ -23,3 +23,4 @@ yarn-error.log*
 *.ps1
 /src/server/AutoOffer/.gradle
 *.sh
+/src/server/AutoOffer/build
