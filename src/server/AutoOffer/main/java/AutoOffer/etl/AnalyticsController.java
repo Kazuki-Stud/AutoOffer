@@ -19,19 +19,18 @@ public class AnalyticsController {
     @GetMapping(value = "/api/analytics/skills-demand", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Top skills per position with window ranking (ClickHouse)")
     public ResponseEntity<String> topSkills() {
-        String json = clickHouse.queryJson("""
+        return ResponseEntity.ok(clickHouse.queryJson("""
                 SELECT position_name, skill_name, total_vacancies, avg_salary_eur, skill_rank
                 FROM autooffer_olap.v_top_skills_by_position
                 WHERE skill_rank <= 10
                 ORDER BY position_name, skill_rank
-                """);
-        return ResponseEntity.ok(json);
+                """));
     }
 
     @GetMapping(value = "/api/analytics/salary-by-country", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Salary medians & vacancy counts by country (ClickHouse)")
     public ResponseEntity<String> salaryByCountry() {
-        String json = clickHouse.queryJson("""
+        return ResponseEntity.ok(clickHouse.queryJson("""
                 SELECT
                     country_name,
                     count()                                      AS vacancies,
@@ -41,8 +40,7 @@ public class AnalyticsController {
                 WHERE is_active = 1 AND salary_eur_mid IS NOT NULL
                 GROUP BY country_name
                 ORDER BY vacancies DESC
-                """);
-        return ResponseEntity.ok(json);
+                """));
     }
 
     @PostMapping("/api/admin/etl/run")
@@ -50,5 +48,13 @@ public class AnalyticsController {
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<VacancyEtlService.EtlRunResult> triggerEtl() {
         return ResponseEntity.ok(etlService.runIncremental());
+    }
+
+    @PostMapping("/api/admin/etl/rebuild-mart")
+    @Operation(summary = "Rebuild dm_skill_demand from stg_vacancies FINAL (ROLE_ADMIN)")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<Void> rebuildMart() {
+        etlService.rebuildSkillDemandMart();
+        return ResponseEntity.noContent().build();
     }
 }

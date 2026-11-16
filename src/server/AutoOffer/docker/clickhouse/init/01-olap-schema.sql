@@ -1,6 +1,5 @@
 CREATE DATABASE IF NOT EXISTS autooffer_olap;
 
--- 1. RAW слой: неизменяемый лог сырых батчей из PostgreSQL
 CREATE TABLE IF NOT EXISTS autooffer_olap.raw_vacancies
 (
     batch_id           UUID,
@@ -26,12 +25,11 @@ CREATE TABLE IF NOT EXISTS autooffer_olap.raw_vacancies
     skills             Array(String),
     created_at         DateTime64(3, 'UTC'),
     updated_at         DateTime64(3, 'UTC')
-)
-ENGINE = MergeTree
-PARTITION BY toYYYYMM(loaded_at)
-ORDER BY (loaded_at, vacancy_id);
+    )
+    ENGINE = MergeTree
+    PARTITION BY toYYYYMM(loaded_at)
+    ORDER BY (loaded_at, vacancy_id);
 
--- 2. STAGING слой: дедуплицированные (ReplacingMergeTree) и нормализованные в EUR
 CREATE TABLE IF NOT EXISTS autooffer_olap.stg_vacancies
 (
     vacancy_id         UUID,
@@ -53,12 +51,11 @@ CREATE TABLE IF NOT EXISTS autooffer_olap.stg_vacancies
     skills             Array(String),
     created_at         DateTime64(3, 'UTC'),
     updated_at         DateTime64(3, 'UTC')
-)
-ENGINE = ReplacingMergeTree(updated_at)
-PARTITION BY toYYYYMM(created_at)
-ORDER BY (platform_code, vacancy_id);
+    )
+    ENGINE = ReplacingMergeTree(updated_at)
+    PARTITION BY toYYYYMM(created_at)
+    ORDER BY (platform_code, vacancy_id);
 
--- 3. DATA MART: витрина спроса на навыки (обновляется автоматически через MV)
 CREATE TABLE IF NOT EXISTS autooffer_olap.dm_skill_demand
 (
     month          Date,
@@ -67,10 +64,10 @@ CREATE TABLE IF NOT EXISTS autooffer_olap.dm_skill_demand
     vacancy_count  UInt64,
     salary_sum_eur Float64,
     salary_samples UInt64
-)
-ENGINE = SummingMergeTree
-PARTITION BY toYYYYMM(month)
-ORDER BY (month, position_name, skill_name);
+    )
+    ENGINE = SummingMergeTree
+    PARTITION BY toYYYYMM(month)
+    ORDER BY (month, position_name, skill_name);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS autooffer_olap.mv_stg_to_skill_demand
 TO autooffer_olap.dm_skill_demand
@@ -83,10 +80,12 @@ SELECT
     coalesce(salary_eur_mid, 0.0)                   AS salary_sum_eur,
     toUInt64(if(salary_eur_mid IS NOT NULL, 1, 0))  AS salary_samples
 FROM autooffer_olap.stg_vacancies
-ARRAY JOIN skills AS skill_name
-WHERE is_active = 1 AND storage_level = 'full' AND skill_name != '';
+    ARRAY JOIN skills AS skill_name
+WHERE is_active = 1
+  AND storage_level = 'full'
+  AND is_quality_ok = 1
+  AND skill_name != '';
 
--- Аналитическое представление с оконной функцией (ранжирование навыков внутри позиции)
 CREATE VIEW IF NOT EXISTS autooffer_olap.v_top_skills_by_position AS
 SELECT
     position_name,

@@ -57,11 +57,11 @@ AutoOffer/
 │   ├── src/server/AutoOffer/docker/clickhouse/init/01-olap-schema.sql
 │   ├── src/server/AutoOffer/main/java/AutoOffer/etl/VacancyEtlService.java / src/server/AutoOffer/main/java/AutoOffer/etl/ClickHouseClient.java
 │   └── src/server/AutoOffer/main/java/AutoOffer/etl/AnalyticsController.java
-└── IndexedDB NoSQL (Dexie v5, 27 active stores)
+└── IndexedDB NoSQL (Dexie v7, 28 active stores)
     ├── src/client/extension/database.js
-    ├── not found
-    ├── not found
-    ├── not found
+    ├── src/client/extension/validation.js
+    ├── src/client/extension/database/repository.js
+    ├── src/client/extension/database/crypto.js
     └── src/client/extension/database/seed.js
 ```
 
@@ -105,7 +105,11 @@ GROUP BY position_name, skill_name;
 ```
 
 ```javascript
-// (allowedSyncLevel not found on disk)
+export async function allowedSyncLevel(vacancy) {
+  if (await getSetting('private_use_only')) return 'none';
+  const platform = vacancy.platform_id ? await db.platforms_dict.get(vacancy.platform_id) : null;
+  return platform?.permission_status === 'granted' ? 'full' : 'url_only';
+}
 ```
 
 ### Diagrams
@@ -136,7 +140,7 @@ GROUP BY position_name, skill_name;
 | :--- | :--- | :--- | :--- |
 | 1 | Data dictionary, layer architecture, data flow diagram & DDL | ✅ | `src/server/AutoOffer/docker/clickhouse/init/01-olap-schema.sql`, `database-dictionary.md`, `db-diagrams.md` |
 | 2 | Modern OLAP DBMS (ClickHouse 24.8), separated dimensions/facts, incremental rule | ✅ | `raw_vacancies` → `stg_vacancies` → `dm_skill_demand` + `src/server/AutoOffer/main/resources/db/changelog/V5__etl_meta.sql` |
-| 3 | Reproducible ETL pipeline with incremental watermark, logging & quality checks | ⚠️ | `src/server/AutoOffer/main/java/AutoOffer/etl/VacancyEtlService.java` (`etl_runs`, `is_quality_ok`) |
+| 3 | Reproducible ETL pipeline with incremental watermark, logging & quality checks | ✅ | `src/server/AutoOffer/main/java/AutoOffer/etl/VacancyEtlService.java` (`etl_runs`, `is_quality_ok`) |
 | 4 | Analytical queries (`GROUP BY`, quantiles, window functions, `ARRAY JOIN`) | ✅ | `v_top_skills_by_position`, `src/server/AutoOffer/main/java/AutoOffer/etl/AnalyticsController.java` |
 | 5 | Max: Partitioning, `ReplacingMergeTree`, `SummingMergeTree`, `LowCardinality`, MVs | ✅ | `PARTITION BY toYYYYMM(...)`, `mv_stg_to_skill_demand` |
 
@@ -144,9 +148,9 @@ GROUP BY position_name, skill_name;
 
 | # | Requirement | Status | Evidence/Notes |
 | :--- | :--- | :--- | :--- |
-| 1 | Data dictionary, DBMS justification (local privacy) & integrity description | ⚠️ | `src/client/extension/database.js`, `not found` |
-| 2 | Structured stores, embed-vs-reference justification, compound/multiEntry indexes | ⚠️ | Dexie v5 (27 stores), `*skill_ids`, `[profile_id+vacancy_id]` |
-| 3 | Security & no plaintext secrets | ❌ | `not found` (non-extractable AES-GCM-256) + `not found` |
+| 1 | Data dictionary, DBMS justification (local privacy) & integrity description | ✅ | `src/client/extension/database.js`, `src/client/extension/validation.js` |
+| 2 | Structured stores, embed-vs-reference justification, compound/multiEntry indexes | ✅ | Dexie v7 (28 stores), `*skill_ids`, `[profile_id+vacancy_id]` |
+| 3 | Security & no plaintext secrets | ✅ | `src/client/extension/database/crypto.js` (non-extractable AES-GCM-256) + `src/client/extension/validation.js` |
 | 4 | Reproducible schema upgrades & seed/test documents | ✅ | Dexie version upgrades + `src/client/extension/database/seed.js` |
 
 * **Legend:** ✅ Fully implemented | ⚠️ Partially implemented | ❌ Not implemented
@@ -157,11 +161,11 @@ GROUP BY position_name, skill_name;
 
 | Limitation | Impact | Potential Solution |
 | :--- | :--- | :--- |
-| `ClickHouseClient.java` Jackson 3 import (`tools.jackson.databind`, detected=1) | Fails compilation on Spring Boot 3.4.3 (Jackson 2) | Switch to `com.fasterxml.jackson.databind.ObjectMapper` and handle `JsonProcessingException` |
-| `mv_stg_to_skill_demand` missing `is_quality_ok = 1` / update handling (detected=1) | Rejected or updated vacancies can over-count in `dm_skill_demand` | Filter `WHERE is_quality_ok = 1` and reconcile mart or use `CollapsingMergeTree` |
+| `ClickHouseClient.java` Jackson 3 import (`tools.jackson.databind`, detected=0) | Fails compilation on Spring Boot 3.4.3 (Jackson 2) | Switch to `com.fasterxml.jackson.databind.ObjectMapper` and handle `JsonProcessingException` |
+| `mv_stg_to_skill_demand` missing `is_quality_ok = 1` / update handling (detected=0) | Rejected or updated vacancies can over-count in `dm_skill_demand` | Filter `WHERE is_quality_ok = 1` and reconcile mart or use `CollapsingMergeTree` |
 | `VacancyServiceImpl.java` skill persistence TODO (detected=0) | `mv_skill_hotwords` and `dm_skill_demand` get empty skills from API calls | Insert validated `skillIds` into `vacancy_skills` when `storage_level = 'full'` |
 | Statistical name scrubbing TODO (detected=1) | Emails/phones are stripped by SQL, but personal names require app-layer NER | Implement name scrubber in `VacancyServiceImpl` before calling `upsert_vacancy()` |
-| Dexie `database.js` version on disk (`v5`) | v5 prototype on disk; v6/v7 upgrade, validation.js, and crypto.js needed | Commit v6/v7 `database.js`, `validation.js`, `repository.js`, `crypto.js` |
+| Dexie `database.js` version on disk (`v7`) | v6/v7 active; optional empty string fields must be normalized to null | Convert `""` to `null` in PWA forms before Dexie writes |
 | IndexedDB lacks DB-level user roles | Relies on browser same-origin isolation instead of SQL roles | Mitigated with non-extractable `CryptoKey` and strict extension CSP |
 
 ---

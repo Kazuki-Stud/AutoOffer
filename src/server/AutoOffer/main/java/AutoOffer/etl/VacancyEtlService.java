@@ -59,9 +59,7 @@ public class VacancyEtlService {
 
     @Scheduled(cron = "0 */10 * * * *")
     public void scheduledRun() {
-        if (enabled) {
-            runIncremental();
-        }
+        if (enabled) runIncremental();
     }
 
     public EtlRunResult runIncremental() {
@@ -90,15 +88,12 @@ public class VacancyEtlService {
             for (RawVacancyRow raw : rawRows) {
                 OffsetDateTime rowUpd = OffsetDateTime.parse(raw.updated_at());
                 if (rowUpd.isAfter(maxUpdatedAt)) maxUpdatedAt = rowUpd;
-
                 StgVacancyRow stg = transform(raw);
                 if (stg.is_quality_ok() == 0) rejected++;
                 stgRows.add(stg);
             }
 
-            // 1. Load RAW
             clickHouse.insertJsonEachRow("raw_vacancies", rawRows);
-            // 2. Load STAGING (MV автоматически обновит dm_skill_demand)
             clickHouse.insertJsonEachRow("stg_vacancies", stgRows);
 
             pg.update("""
@@ -110,7 +105,6 @@ public class VacancyEtlService {
             finishRun(runId, "success", rawRows.size(), stgRows.size(), rejected, null);
             log.info("ETL batch {} completed: extracted={}, loaded={}, qualityRejected={}",
                     batchId, rawRows.size(), stgRows.size(), rejected);
-
             return new EtlRunResult(runId, rawRows.size(), stgRows.size(), rejected, "success");
         } catch (Exception ex) {
             log.error("ETL run {} failed", runId, ex);
@@ -119,8 +113,37 @@ public class VacancyEtlService {
         }
     }
 
+    /** Rebuilds SummingMergeTree mart cleanly from deduplicated stg_vacancies FINAL. */
+    public void rebuildSkillDemandMart() {
+        clickHouse.executeStatement("TRUNCATE TABLE IF EXISTS autooffer_olap.dm_skill_demand");
+        clickHouse.executeStatement("""
+                INSERT INTO autooffer_olap.dm_skill_demand
+                SELECT
+                    toStartOfMonth(created_at)                      AS month,
+                    position_name,
+                    skill_name,
+                    toUInt64(1)                                     AS vacancy_count,
+                    coalesce(salary_eur_mid, 0.0)                   AS salary_sum_eur,
+                    toUInt64(if(salary_eur_mid IS NOT NULL, 1, 0))  AS salary_samples
+                FROM autooffer_olap.stg_vacancies FINAL
+                ARRAY JOIN skills AS skill_name
+                WHERE is_active = 1 AND storage_level = 'full' AND is_quality_ok = 1 AND skill_name != ''
+                """);
+    }
+
     private List<RawVacancyRow> extractFromPostgres(UUID batchId, OffsetDateTime watermark) {
+        // Include entire boundary timestamp so identical updated_at rows are never split across batches
         String sql = """
+                WITH head AS (
+                    SELECT updated_at
+                      FROM autooffer.v_vacancies_full
+                     WHERE updated_at > :watermark
+                     ORDER BY updated_at ASC
+                     LIMIT :limit
+                ),
+                cutoff AS (
+                    SELECT max(updated_at) AS max_ts FROM head
+                )
                 SELECT v.id, v.storage_level, v.platform_code,
                        v.full_position_name, v.position_name, v.company_name,
                        v.city_name, v.country_name, v.region_name,
@@ -130,9 +153,12 @@ public class VacancyEtlService {
                        v.created_at, v.updated_at,
                        COALESCE(array_agg(s.name) FILTER (WHERE s.name IS NOT NULL), ARRAY[]::text[]) AS skills
                   FROM autooffer.v_vacancies_full v
+                  CROSS JOIN cutoff c
                   LEFT JOIN autooffer.vacancy_skills vs ON vs.vacancy_id = v.id
                   LEFT JOIN autooffer.skills s          ON s.id = vs.skill_id
-                 WHERE v.updated_at > :watermark
+                 WHERE c.max_ts IS NOT NULL
+                   AND v.updated_at > :watermark
+                   AND v.updated_at <= c.max_ts
                  GROUP BY v.id, v.storage_level, v.platform_code,
                           v.full_position_name, v.position_name, v.company_name,
                           v.city_name, v.country_name, v.region_name,
@@ -140,17 +166,14 @@ public class VacancyEtlService {
                           v.level_name, v.work_format, v.employment_type,
                           v.submission_count, v.is_active, v.is_verified,
                           v.created_at, v.updated_at
-                 ORDER BY v.updated_at ASC
-                 LIMIT :limit
+                 ORDER BY v.updated_at ASC, v.id ASC
                 """;
 
         return pg.query(sql,
                 new MapSqlParameterSource().addValue("watermark", watermark).addValue("limit", batchSize),
                 (rs, rowNum) -> {
                     Array sqlArr = rs.getArray("skills");
-                    List<String> skills = sqlArr != null
-                            ? Arrays.asList((String[]) sqlArr.getArray())
-                            : List.of();
+                    List<String> skills = sqlArr != null ? Arrays.asList((String[]) sqlArr.getArray()) : List.of();
                     return new RawVacancyRow(
                             batchId,
                             rs.getObject("id", UUID.class),
@@ -182,16 +205,12 @@ public class VacancyEtlService {
         Double rate = r.currency_code() != null ? FX_TO_EUR.get(r.currency_code()) : null;
         Double eurFrom = (r.salary_from() != null && rate != null) ? r.salary_from().doubleValue() * rate : null;
         Double eurTo   = (r.salary_to()   != null && rate != null) ? r.salary_to().doubleValue()   * rate : null;
-        Double eurMid  = (eurFrom != null && eurTo != null) ? (eurFrom + eurTo) / 2.0
-                       : (eurFrom != null ? eurFrom : eurTo);
-
+        Double eurMid  = (eurFrom != null && eurTo != null) ? (eurFrom + eurTo) / 2.0 : (eurFrom != null ? eurFrom : eurTo);
         boolean validSalaryOrder = (eurFrom == null || eurTo == null || eurFrom <= eurTo);
         int qualityOk = (r.platform_code() != null && validSalaryOrder) ? 1 : 0;
 
         return new StgVacancyRow(
-                r.vacancy_id(),
-                r.platform_code(),
-                r.storage_level(),
+                r.vacancy_id(), r.platform_code(), r.storage_level(),
                 coalesce(r.position_name(), "Unspecified"),
                 coalesce(r.company_name(), "Unknown"),
                 coalesce(r.country_name(), "Unknown"),
@@ -200,12 +219,8 @@ public class VacancyEtlService {
                 coalesce(r.level_name(), "Unspecified"),
                 coalesce(r.work_format(), "Unspecified"),
                 coalesce(r.employment_type(), "Unspecified"),
-                r.submission_count(),
-                r.is_active(),
-                qualityOk,
-                r.skills(),
-                r.created_at(),
-                r.updated_at()
+                r.submission_count(), r.is_active(), qualityOk, r.skills(),
+                r.created_at(), r.updated_at()
         );
     }
 

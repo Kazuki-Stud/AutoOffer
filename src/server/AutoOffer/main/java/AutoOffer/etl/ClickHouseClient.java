@@ -1,9 +1,11 @@
 package AutoOffer.etl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,10 +17,13 @@ public class ClickHouseClient {
     private final ClickHouseProperties props;
     private final ObjectMapper objectMapper;
 
-    public ClickHouseClient(ClickHouseProperties props, ObjectMapper objectMapper) {
+    public ClickHouseClient(
+            ObjectProvider<RestClient.Builder> builderProvider,
+            ClickHouseProperties props,
+            ObjectProvider<ObjectMapper> objectMapperProvider) {
         this.props = props;
-        this.objectMapper = objectMapper;
-        this.restClient = RestClient.builder()
+        this.objectMapper = objectMapperProvider.getIfAvailable(ObjectMapper::new);
+        this.restClient = builderProvider.getIfAvailable(RestClient::builder)
                 .baseUrl(props.url())
                 .defaultHeader("X-ClickHouse-User", props.username())
                 .defaultHeader("X-ClickHouse-Key", props.password())
@@ -28,7 +33,7 @@ public class ClickHouseClient {
     public <T> void insertJsonEachRow(String table, List<T> rows) {
         if (rows.isEmpty()) return;
         String ndjson = rows.stream()
-                .map(objectMapper::writeValueAsString)
+                .map(this::toJson)
                 .collect(Collectors.joining("\n"));
 
         restClient.post()
@@ -44,6 +49,18 @@ public class ClickHouseClient {
                 .toBodilessEntity();
     }
 
+    public void executeStatement(String sql) {
+        restClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/")
+                        .queryParam("database", props.database())
+                        .build())
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(sql)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     public String queryJson(String sql) {
         return restClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -53,5 +70,13 @@ public class ClickHouseClient {
                         .build())
                 .retrieve()
                 .body(String.class);
+    }
+
+    private String toJson(Object row) {
+        try {
+            return objectMapper.writeValueAsString(row);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize ClickHouse row", e);
+        }
     }
 }

@@ -7,10 +7,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/registry")
@@ -19,6 +21,7 @@ import java.util.List;
 public class RegistryController {
 
     private final RegistrySelectorViewRepository selectorViewRepo;
+    private final JdbcTemplate jdbc;
 
     @GetMapping("/selectors")
     @Operation(summary = "Fetch active approved selectors (optionally changed since timestamp)")
@@ -30,5 +33,18 @@ public class RegistryController {
         return ResponseEntity.ok(result);
     }
 
-    // TODO: добавить GET /api/registry/whitelist из autooffer.v_registry_whitelist
+    @GetMapping("/whitelist")
+    @Operation(summary = "Fetch platform permission whitelist (US 1.1)")
+    public ResponseEntity<List<Map<String, Object>>> getWhitelist() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT platform_code AS "platformCode",
+                       name,
+                       url,
+                       permission_status AS "permissionStatus",
+                       updated_at AS "updatedAt"
+                  FROM autooffer.v_registry_whitelist
+                 ORDER BY name
+                """);
+        return ResponseEntity.ok(rows);
+    }
 }

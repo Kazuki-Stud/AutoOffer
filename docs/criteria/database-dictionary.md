@@ -382,36 +382,37 @@ _Auto-generated directly from DDL/schema files on disk (2026-11-16)._
 - `MATERIALIZED VIEW autooffer_olap.mv_stg_to_skill_demand`
 - `VIEW autooffer_olap.v_top_skills_by_position`
 
-## 3. Non-Relational Database (IndexedDB via Dexie, schema v5)
+## 3. Non-Relational Database (IndexedDB via Dexie, schema v7)
 
-- **Database:** `LocalJobManagementDB` | **Active Object Stores:** 27 | **Source:** `src/client/extension/database.js`
+- **Database:** `LocalJobManagementDB` | **Active Object Stores:** 28 | **Source:** `src/client/extension/database.js`
 
 | Object Store | Primary Key | Indexes |
 | :--- | :--- | :--- |
 | `local_device_state` | `id` | — |
-| `platforms_dict` | `id` | `code`, `url`, `name`, `mode` |
-| `selector_tasks_dict` | `id` | `code` |
-| `selector_element_types_dict` | `id` | `code` |
-| `currencies_dict` | `id` | `code` |
-| `companies_dict` | `id` | `name`, `is_verified` |
-| `positions_dict` | `id` | `name`, `is_verified` |
-| `regions_dict` | `id` | `code` |
-| `countries_dict` | `id` | `region_id` |
-| `cities_dict` | `id` | `country_id` |
-| `levels_dict` | `id` | — |
-| `work_formats_dict` | `id` | — |
-| `employment_types_dict` | `id` | — |
-| `selectors` | `id` | `platform_id`, `task_id`, `element_type_id`, `url_pattern` |
-| `skills` | `id` | `name`, `is_verified` |
-| `local_vacancies` | `id` | `platform_id`, `position_id`, `company_id`, `region_id`, `country_id`, `city_id`, `currency_id`, `level_id`, `work_format_id`, `employment_type_id`, `url`, `synced` |
-| `local_vacancy_skills` | `[vacancy_id+skill_id]` | `vacancy_id`, `skill_id` |
+| `platforms_dict` | `id` | `&code`, `url`, `name`, `mode`, `permission_status` |
+| `selector_tasks_dict` | `id` | `&code` |
+| `selector_element_types_dict` | `id` | `&code` |
+| `currencies_dict` | `id` | `&code` |
+| `companies_dict` | `id` | `&name`, `is_verified` |
+| `positions_dict` | `id` | `&name`, `is_verified` |
+| `regions_dict` | `id` | `&code` |
+| `countries_dict` | `id` | `region_id`, `&name` |
+| `cities_dict` | `id` | `country_id`, `&[country_id+name]` |
+| `levels_dict` | `id` | `&name` |
+| `work_formats_dict` | `id` | `&name` |
+| `employment_types_dict` | `id` | `&name` |
+| `selectors` | `id` | `platform_id`, `task_id`, `element_type_id`, `url_pattern`, `version`, `source`, `is_active`, `[platform_id+task_id+element_type_id]` |
+| `skills` | `id` | `&name`, `is_verified` |
+| `local_vacancies` | `id` | `platform_id`, `source_host`, `position_id`, `company_id`, `region_id`, `country_id`, `city_id`, `currency_id`, `level_id`, `work_format_id`, `employment_type_id`, `&url`, `sync_level`, `status`, `source`, `created_at`, `updated_at`, `*skill_ids`, `[platform_id+updated_at]` |
 | `user_profiles` | `id` | `is_default` |
-| `personal_data` | `id` | `profile_id` |
-| `resumes` | `id` | `profile_id` |
-| `resume_skills` | `[resume_id+skill_id]` | `resume_id`, `skill_id` |
-| `cover_letters` | `id` | `profile_id` |
-| `cover_letter_skills` | `[cover_letter_id+skill_id]` | `cover_letter_id`, `skill_id` |
-| `platform_credentials` | `id` | `platform_id`, `profile_id` |
-| `ai_configurations` | `id` | — |
-| `prompt_templates` | `id` | `code` |
+| `personal_data` | `id` | `&profile_id` |
+| `resumes` | `id` | `profile_id`, `updated_at`, `*skill_ids` |
+| `cover_letters` | `id` | `profile_id`, `vacancy_id`, `resume_id`, `updated_at`, `*skill_ids` |
+| `platform_credentials` | `id` | `platform_id`, `profile_id`, `&[profile_id+platform_id+account_identifier]` |
+| `ai_configurations` | `id` | `is_active` |
+| `prompt_templates` | `id` | `&code` |
 | `automation_jobs` | `id` | `title`, `status`, `created_at` |
+| `applications` | `id` | `profile_id`, `vacancy_id`, `resume_id`, `cover_letter_id`, `status`, `applied_at`, `match_score`, `&[profile_id+vacancy_id]`, `[status+applied_at]` |
+| `match_results` | `id` | `vacancy_id`, `resume_id`, `score`, `created_at`, `&[vacancy_id+resume_id]` |
+| `search_preferences` | `id` | `&profile_id` |
+| `app_settings` | `key` | — |

@@ -9,7 +9,7 @@ flowchart LR
     subgraph Client["Client Device (NoSQL: IndexedDB / Dexie)"]
         EXT["Browser Extension\n(Selectors + DOM Extract)"]
         PWA["PWA Dashboard\n(Profile, Resumes, Applications)"]
-        IDB[("LocalJobManagementDB\n(v5, 27 stores)")]
+        IDB[("LocalJobManagementDB\n(v7, 28 stores)")]
         EXT --> IDB
         PWA --> IDB
     end
@@ -260,7 +260,7 @@ erDiagram
     admins ||--o{ removal_requests : "processed_by_admin_id"
 ```
 
-## 3. Client NoSQL Logical Model (IndexedDB / Dexie v5)
+## 3. Client NoSQL Logical Model (IndexedDB / Dexie v7)
 
 ```mermaid
 erDiagram
@@ -269,53 +269,59 @@ erDiagram
     }
     platforms_dict {
         string id PK
-        index code
+        index _code
         index url
         index name
         index mode
+        index permission_status
     }
     selector_tasks_dict {
         string id PK
-        index code
+        index _code
     }
     selector_element_types_dict {
         string id PK
-        index code
+        index _code
     }
     currencies_dict {
         string id PK
-        index code
+        index _code
     }
     companies_dict {
         string id PK
-        index name
+        index _name
         index is_verified
     }
     positions_dict {
         string id PK
-        index name
+        index _name
         index is_verified
     }
     regions_dict {
         string id PK
-        index code
+        index _code
     }
     countries_dict {
         string id PK
         index region_id
+        index _name
     }
     cities_dict {
         string id PK
         index country_id
+        index __country_id_name
     }
     levels_dict {
         string id PK
+        index _name
     }
     work_formats_dict {
         string id PK
+        index _name
     }
     employment_types_dict {
         string id PK
+        index _name
     }
     selectors {
         string id PK
@@ -323,15 +329,20 @@ erDiagram
         index task_id
         index element_type_id
         index url_pattern
+        index version
+        index source
+        index is_active
+        index _platform_id_task_id_element_type_id
     }
     skills {
         string id PK
-        index name
+        index _name
         index is_verified
     }
     local_vacancies {
         string id PK
         index platform_id
+        index source_host
         index position_id
         index company_id
         index region_id
@@ -341,13 +352,14 @@ erDiagram
         index level_id
         index work_format_id
         index employment_type_id
-        index url
-        index synced
-    }
-    local_vacancy_skills {
-        string [vacancy_id+skill_id] PK
-        index vacancy_id
-        index skill_id
+        index _url
+        index sync_level
+        index status
+        index source
+        index created_at
+        index updated_at
+        index _skill_ids
+        index _platform_id_updated_at
     }
     user_profiles {
         string id PK
@@ -355,43 +367,68 @@ erDiagram
     }
     personal_data {
         string id PK
-        index profile_id
+        index _profile_id
     }
     resumes {
         string id PK
         index profile_id
-    }
-    resume_skills {
-        string [resume_id+skill_id] PK
-        index resume_id
-        index skill_id
+        index updated_at
+        index _skill_ids
     }
     cover_letters {
         string id PK
         index profile_id
-    }
-    cover_letter_skills {
-        string [cover_letter_id+skill_id] PK
-        index cover_letter_id
-        index skill_id
+        index vacancy_id
+        index resume_id
+        index updated_at
+        index _skill_ids
     }
     platform_credentials {
         string id PK
         index platform_id
         index profile_id
+        index __profile_id_platform_id_account_identifier
     }
     ai_configurations {
         string id PK
+        index is_active
     }
     prompt_templates {
         string id PK
-        index code
+        index _code
     }
     automation_jobs {
         string id PK
         index title
         index status
         index created_at
+    }
+    applications {
+        string id PK
+        index profile_id
+        index vacancy_id
+        index resume_id
+        index cover_letter_id
+        index status
+        index applied_at
+        index match_score
+        index __profile_id_vacancy_id
+        index _status_applied_at
+    }
+    match_results {
+        string id PK
+        index vacancy_id
+        index resume_id
+        index score
+        index created_at
+        index __vacancy_id_resume_id
+    }
+    search_preferences {
+        string id PK
+        index _profile_id
+    }
+    app_settings {
+        string key PK
     }
     user_profiles ||--o{ personal_data : "profile_id"
     user_profiles ||--o{ resumes : "profile_id"
