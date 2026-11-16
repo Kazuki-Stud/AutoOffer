@@ -39,6 +39,15 @@ app:
     jwt-expiration-ms: ${JWT_EXPIRATION_MS:86400000}
     device-token-pepper: ${DEVICE_TOKEN_PEPPER}
 
+  clickhouse:
+    url: ${CH_URL:http://localhost:8123}
+    database: ${CH_DB:autooffer_olap}
+    username: ${CH_USER:autooffer_etl}
+    password: ${CH_PASSWORD}
+  etl:
+    enabled: true
+    batch-size: 500
+
 management:
   endpoints:
     web:

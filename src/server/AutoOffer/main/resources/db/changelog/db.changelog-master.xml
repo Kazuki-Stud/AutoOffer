@@ -19,4 +19,7 @@
     <changeSet id="V4-seed-reference" author="autooffer">
         <sqlFile path="04__seed_reference.sql" relativeToChangelogFile="true" splitStatements="false"/>
     </changeSet>
+    <changeSet id="V5-etl-meta" author="autooffer">
+        <sqlFile path="V5__etl_meta.sql" relativeToChangelogFile="true" splitStatements="false"/>
+    </changeSet>
 </databaseChangeLog>

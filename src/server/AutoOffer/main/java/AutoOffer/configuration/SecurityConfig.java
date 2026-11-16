@@ -38,7 +38,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/devices/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/login").permitAll()
                         // Публичное чтение (соответствует роли БД app_read)
-                        .requestMatchers(HttpMethod.GET, "/api/registry/**", "/api/vacancies/**", "/api/dictionaries/**", "/api/skills/hotwords").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/registry/**", "/api/vacancies/**", "/api/dictionaries/**", "/api/skills/hotwords", "/api/analytics/**").permitAll()
                         // Анонимные GDPR Art. 17 запросы на удаление
                         .requestMatchers(HttpMethod.POST, "/api/removal-requests").permitAll()
                         // Отправка данных от расширения/PWA (требует валидный токен устройства)
