@@ -1,0 +1,5 @@
+logging:
+  config: classpath:logback/local.xml
+  level:
+    AutoOffer: DEBUG
+    org.hibernate.SQL: DEBUG

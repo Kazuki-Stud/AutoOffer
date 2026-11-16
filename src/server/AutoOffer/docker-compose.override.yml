@@ -1,0 +1,22 @@
+# Локальная разработка: порты Postgres, ClickHouse и JVM Debug
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+    networks:
+      - db-internal
+      - app-public
+
+  clickhouse:
+    ports:
+      - "8123:8123"
+    networks:
+      - db-internal
+      - app-public
+
+  app:
+    ports:
+      - "5005:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -XX:MaxRAMPercentage=75.0"

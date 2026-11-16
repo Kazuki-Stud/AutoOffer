@@ -1,0 +1,90 @@
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.2'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'lt.ehu'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(26)
+    }
+}
+
+sourceSets {
+    main {
+        java { srcDirs = ['main/java'] }
+        resources { srcDirs = ['main/resources'] }
+    }
+    test {
+        java { srcDirs = ['test/java'] }
+        resources { srcDirs = ['test/resources'] }
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+    // Раскомментируйте только если релизная версия Lombok ещё не поддерживает JDK 26:
+    // maven { url = 'https://projectlombok.org/edge-releases' }
+}
+
+ext {
+    // Проверьте последнюю версию с поддержкой JDK 26 на projectlombok.org/download
+    // (для edge-репозитория: 'edge-SNAPSHOT')
+    lombokVersion = '1.18.42'
+}
+
+dependencies {
+    def springBootBom = platform(SpringBootPlugin.BOM_COORDINATES)
+    implementation springBootBom
+    runtimeOnly springBootBom
+    annotationProcessor springBootBom
+    testImplementation springBootBom
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    implementation 'org.springframework.boot:spring-boot-starter-liquibase'
+    implementation 'org.postgresql:postgresql'
+
+    // Prometheus metrics (/actuator/prometheus)
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
+    // OpenAPI / Swagger UI
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5'
+
+    // JWT для администраторов
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
+    // Структурированные JSON-логи в stdout для Docker/production
+    implementation 'net.logstash.logback:logstash-logback-encoder:8.0'
+
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testCompileOnly "org.projectlombok:lombok:${lombokVersion}"
+    testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+    testRuntimeOnly 'com.h2database:h2'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

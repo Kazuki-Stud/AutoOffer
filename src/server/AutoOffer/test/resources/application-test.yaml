@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:autooffer_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  liquibase:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: none
+
+app:
+  security:
+    jwt-secret: test-jwt-secret-key-must-be-at-least-32-bytes-long
+    jwt-expiration-ms: 3600000
+    device-token-pepper: test-device-pepper-must-be-at-least-32-bytes-long
+  clickhouse:
+    url: http://localhost:8123
+    database: autooffer_olap
+    username: autooffer_etl
+    password: test-clickhouse-password
+  etl:
+    enabled: false
+    batch-size: 500

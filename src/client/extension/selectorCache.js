@@ -1,4 +1,5 @@
-import { db } from './database.js';
+import { db } from './database/database.js';
+import { rollbackSelector } from './database/repository.js';
 
 class SelectorCache {
     constructor() {
@@ -7,41 +8,44 @@ class SelectorCache {
     }
 
     async init() {
-        try {
-            const allSelectors = await db.selectors.toArray();
-            const activeSelectors = allSelectors.filter(item => Boolean(item.is_active));
-
-            this.cache.clear();
-
-            for (const item of activeSelectors) {
-                const pattern = item.url_pattern || 'default';
-                if (!this.cache.has(pattern)) {
-                    this.cache.set(pattern, new Map());
-                }
-                this.cache.get(pattern).set(item.element_type_id, item.selector_string);
-            }
-
-            this.isInitialized = true;
-            console.log(`[AutoOffer SelectorCache] Initialized with ${activeSelectors.length} active selectors.`);
-        } catch (err) {
-            console.error('[AutoOffer SelectorCache] Failed to initialize:', err);
-            throw err;
+        const activeSelectors = await db.selectors.where('is_active').equals(1).toArray();
+        this.cache.clear();
+        for (const item of activeSelectors) {
+            const pattern = item.url_pattern || 'default';
+            if (!this.cache.has(pattern)) this.cache.set(pattern, new Map());
+            this.cache.get(pattern).set(item.element_type_id, item);
         }
+        this.isInitialized = true;
     }
 
     getSelectorsForUrl(url) {
         for (const [pattern, selectorsMap] of this.cache.entries()) {
             if (url.includes(pattern)) {
-                return Object.fromEntries(selectorsMap);
+                const out = {};
+                for (const [elId, rec] of selectorsMap.entries()) {
+                    out[elId] = rec.selector_string;
+                }
+                return out;
             }
         }
         return null;
     }
 
+    async rollbackForUrl(url, elementTypeId) {
+        for (const [pattern, selectorsMap] of this.cache.entries()) {
+            if (url.includes(pattern) && selectorsMap.has(elementTypeId)) {
+                const rec = selectorsMap.get(elementTypeId);
+                const rolled = await rollbackSelector(rec.id);
+                if (rolled) await this.init();
+                return rolled;
+            }
+        }
+        return false;
+    }
+
     invalidate() {
         this.cache.clear();
         this.isInitialized = false;
-        console.log('[AutoOffer SelectorCache] Invalidation completed.');
     }
 }
 

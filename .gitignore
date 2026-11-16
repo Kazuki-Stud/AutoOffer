@@ -21,3 +21,9 @@ yarn-error.log*
 *.docx
 /docs/old
 *.ps1
+/src/server/AutoOffer/.gradle
+*.sh
+/src/server/AutoOffer/build
+src/server/AutoOffer/.env
+/scripts
+*.bak

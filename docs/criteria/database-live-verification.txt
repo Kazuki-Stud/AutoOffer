@@ -1,0 +1,42 @@
+=== AutoOffer Live DB Verification (2026-11-16T21:45:31Z) ===
+
+--- PostgreSQL Grants Audit ---
+           object            | relkind 
+-----------------------------+---------
+ devices                     | r
+ admins                      | r
+ platforms_dict              | r
+ selector_tasks_dict         | r
+ selector_element_types_dict | r
+ currencies_dict             | r
+ regions_dict                | r
+ countries_dict              | r
+ cities_dict                 | r
+ levels_dict                 | r
+ work_formats_dict           | r
+ employment_types_dict       | r
+ companies_dict              | r
+ positions_dict              | r
+ skills                      | r
+ selectors                   | r
+ v_registry_selectors        | v
+ v_registry_whitelist        | v
+ v_vacancies_full            | v
+ vacancy_skills              | r
+ removal_requests            | r
+ v_selector_review_queue     | v
+ vacancies                   | r
+ etl_watermark               | r
+ etl_runs                    | r
+ mv_skill_hotwords           | m
+(26 rows)
+
+
+--- ClickHouse OLAP Tables ---
+   ┌─table────────────────────┬─engine─────────────┬─total_rows─┬─total_bytes─┐
+1. │ dm_skill_demand          │ SummingMergeTree   │          4 │         801 │
+2. │ mv_stg_to_skill_demand   │ MaterializedView   │       ᴺᵁᴸᴸ │        ᴺᵁᴸᴸ │
+3. │ raw_vacancies            │ MergeTree          │          3 │        1993 │
+4. │ stg_vacancies            │ ReplacingMergeTree │          3 │        1885 │
+5. │ v_top_skills_by_position │ View               │       ᴺᵁᴸᴸ │        ᴺᵁᴸᴸ │
+   └──────────────────────────┴────────────────────┴────────────┴─────────────┘

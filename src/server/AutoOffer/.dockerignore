@@ -1,0 +1,13 @@
+.git
+.github
+.gradle
+build
+out
+target
+.idea
+*.iml
+.env
+.env.*
+!.env.example
+*.md
+setup-server.sh
