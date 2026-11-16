@@ -24,19 +24,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Copy root lockfile
-        run: cp package-lock.json ./src/client/pwa/
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install dependencies
-        run: npm ci --prefix ./src/client/pwa
+        working-directory: ./src/client/pwa
+        run: npm ci
 
       - name: Build project
-        run: npm run build --prefix ./src/client/pwa
+        working-directory: ./src/client/pwa
+        run: npm run build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
