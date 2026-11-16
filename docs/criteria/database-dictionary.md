@@ -384,7 +384,7 @@ _Auto-generated directly from DDL/schema files on disk (2026-11-16)._
 
 ## 3. Non-Relational Database (IndexedDB via Dexie, schema v7)
 
-- **Database:** `LocalJobManagementDB` | **Active Object Stores:** 28 | **Source:** `src/client/extension/database.js`
+- **Database:** `LocalJobManagementDB` | **Active Object Stores:** 28 | **Source:** `src/client/extension/database/database.js`
 
 | Object Store | Primary Key | Indexes |
 | :--- | :--- | :--- |

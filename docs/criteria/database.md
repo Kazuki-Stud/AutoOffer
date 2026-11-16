@@ -52,14 +52,14 @@ AutoOffer/
 │   ├── src/server/AutoOffer/main/resources/db/changelog/03__roles.sql
 │   ├── src/server/AutoOffer/main/resources/db/changelog/04__seed_reference.sql
 │   ├── src/server/AutoOffer/main/resources/db/changelog/V5__etl_meta.sql
-│   └── not found / not found
+│   └── src/server/AutoOffer/main/resources/db/changelog/seed/test_data.sql / src/server/AutoOffer/main/resources/db/changelog/seed/audit_grants.sql
 ├── ClickHouse OLAP (3 tables, 1 matviews, 1 views)
 │   ├── src/server/AutoOffer/docker/clickhouse/init/01-olap-schema.sql
 │   ├── src/server/AutoOffer/main/java/AutoOffer/etl/VacancyEtlService.java / src/server/AutoOffer/main/java/AutoOffer/etl/ClickHouseClient.java
 │   └── src/server/AutoOffer/main/java/AutoOffer/etl/AnalyticsController.java
 └── IndexedDB NoSQL (Dexie v7, 28 active stores)
-    ├── src/client/extension/database.js
-    ├── src/client/extension/validation.js
+    ├── src/client/extension/database/database.js
+    ├── src/client/extension/database/validation.js
     ├── src/client/extension/database/repository.js
     ├── src/client/extension/database/crypto.js
     └── src/client/extension/database/seed.js
@@ -128,8 +128,8 @@ export async function allowedSyncLevel(vacancy) {
 | 1 | Data dictionary, integrity description, logical schema & DDL | ✅ | `src/server/AutoOffer/main/resources/db/changelog/01__schema.sql`, `database-dictionary.md`, `db-diagrams.md` |
 | 2 | Modern RDBMS (PostgreSQL 16), 3NF normalization, PK/FK/UNIQUE/CHECK, meaningful types | ✅ | 21 tables; `vacancies_single_location`, `numeric(10,2)`, `timestamptz` |
 | 3 | Reproducible SQL migrations in Git (not manual) | ⚠️ | `src/server/AutoOffer/main/resources/db/changelog/db.changelog-master.xml` (Warning: `V1__*` vs `01__*` filename mismatch) |
-| 4 | Reference seed data & test/edge-case data | ⚠️ | `src/server/AutoOffer/main/resources/db/changelog/04__seed_reference.sql`, `not found` |
-| 5 | Roles (`app_read`, `app_write`, `app_admin`), non-superuser app user, grant audit | ⚠️ | `src/server/AutoOffer/main/resources/db/changelog/03__roles.sql`, `not found` |
+| 4 | Reference seed data & test/edge-case data | ✅ | `src/server/AutoOffer/main/resources/db/changelog/04__seed_reference.sql`, `src/server/AutoOffer/main/resources/db/changelog/seed/test_data.sql` |
+| 5 | Roles (`app_read`, `app_write`, `app_admin`), non-superuser app user, grant audit | ✅ | `src/server/AutoOffer/main/resources/db/changelog/03__roles.sql`, `src/server/AutoOffer/main/resources/db/changelog/seed/audit_grants.sql` |
 | 6 | Encrypted/hashed passwords & tokens (Argon2id/bcrypt, HMAC-SHA-256) | ✅ | `admins.password_hash` CHECK; `devices.auth_token_hash` HMAC |
 | 7 | Max: Justified indexes, triggers, stored functions, views & materialized views | ✅ | 26 indexes, 9 triggers, 10 functions, 4 views, 1 matview |
 | 8 | Max: Personal data masking / anonymization | ⚠️ | `sanitize_description()` removes emails/phones; name NER has `TODO (BA R-names)` |
@@ -148,9 +148,9 @@ export async function allowedSyncLevel(vacancy) {
 
 | # | Requirement | Status | Evidence/Notes |
 | :--- | :--- | :--- | :--- |
-| 1 | Data dictionary, DBMS justification (local privacy) & integrity description | ✅ | `src/client/extension/database.js`, `src/client/extension/validation.js` |
+| 1 | Data dictionary, DBMS justification (local privacy) & integrity description | ✅ | `src/client/extension/database/database.js`, `src/client/extension/database/validation.js` |
 | 2 | Structured stores, embed-vs-reference justification, compound/multiEntry indexes | ✅ | Dexie v7 (28 stores), `*skill_ids`, `[profile_id+vacancy_id]` |
-| 3 | Security & no plaintext secrets | ✅ | `src/client/extension/database/crypto.js` (non-extractable AES-GCM-256) + `src/client/extension/validation.js` |
+| 3 | Security & no plaintext secrets | ✅ | `src/client/extension/database/crypto.js` (non-extractable AES-GCM-256) + `src/client/extension/database/validation.js` |
 | 4 | Reproducible schema upgrades & seed/test documents | ✅ | Dexie version upgrades + `src/client/extension/database/seed.js` |
 
 * **Legend:** ✅ Fully implemented | ⚠️ Partially implemented | ❌ Not implemented
@@ -176,4 +176,4 @@ export async function allowedSyncLevel(vacancy) {
 * [ClickHouse MergeTree Documentation](https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/mergetree)
 * [Dexie.js IndexedDB Wrapper](https://dexie.org/)
 * [W3C Indexed Database API 3.0](https://www.w3.org/TR/IndexedDB/)
-* Scraped workspace files: `src/server/AutoOffer/main/resources/db/changelog/01__schema.sql`, `src/server/AutoOffer/main/resources/db/changelog/02__logic.sql`, `src/server/AutoOffer/main/resources/db/changelog/03__roles.sql`, `src/server/AutoOffer/docker/clickhouse/init/01-olap-schema.sql`, `src/client/extension/database.js`
+* Scraped workspace files: `src/server/AutoOffer/main/resources/db/changelog/01__schema.sql`, `src/server/AutoOffer/main/resources/db/changelog/02__logic.sql`, `src/server/AutoOffer/main/resources/db/changelog/03__roles.sql`, `src/server/AutoOffer/docker/clickhouse/init/01-olap-schema.sql`, `src/client/extension/database/database.js`

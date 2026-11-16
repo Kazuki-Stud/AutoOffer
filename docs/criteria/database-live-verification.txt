@@ -1,4 +1,4 @@
-=== AutoOffer Live DB Verification (2026-11-16T19:53:54Z) ===
+=== AutoOffer Live DB Verification (2026-11-16T21:21:34Z) ===
 
 --- PostgreSQL Grants Audit ---
            object            | relkind 
