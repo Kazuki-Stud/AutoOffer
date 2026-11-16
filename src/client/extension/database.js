@@ -4,9 +4,9 @@ export class LocalJobDatabase extends Dexie {
     constructor() {
         super('LocalJobManagementDB');
 
-        this.version(4).stores({
+        this.version(5).stores({
             local_device_state: 'id',
-            platforms_dict: 'id, code, url, name',
+            platforms_dict: 'id, code, url, name, mode',
             selector_tasks_dict: 'id, code',
             selector_element_types_dict: 'id, code',
             currencies_dict: 'id, code',
@@ -31,7 +31,7 @@ export class LocalJobDatabase extends Dexie {
             platform_credentials: 'id, platform_id, profile_id',
             ai_configurations: 'id',
             prompt_templates: 'id, code',
-            automation_jobs: 'id, status, created_at'
+            automation_jobs: 'id, title, status, created_at'
         });
     }
 }

@@ -94,23 +94,6 @@ async function sendTabMessage(tabId, message) {
     });
 }
 
-async function getOrRegisterPlatform(hostname, url) {
-    let platform = await db.platforms_dict.where('code').equals(hostname).first();
-    if (!platform) {
-        const newId = crypto.randomUUID();
-        const baseName = hostname.replace(/^www\./, '').split('.')[0];
-        const formattedName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-        platform = {
-            id: newId,
-            name: formattedName,
-            code: hostname,
-            url: url || `https://${hostname}`
-        };
-        await db.platforms_dict.add(platform);
-    }
-    return platform;
-}
-
 async function getSelectorsForHostname(hostname) {
     const allSelectors = await db.selectors.toArray();
     const activeList = allSelectors.filter(item => Boolean(item.is_active));
@@ -134,53 +117,69 @@ async function getSelectorsForHostname(hostname) {
         }
     }
 
-    const platform = await db.platforms_dict.where('code').equals(hostname).first();
-    if (platform && platform.search_selector && !result.searchInput) {
-        result.searchInput = platform.search_selector;
-    }
-
     return Object.keys(result).length > 0 ? result : null;
 }
 
-async function saveSelectorsForHostname(hostname, selectors, targetUrl) {
-    const platform = await getOrRegisterPlatform(hostname, targetUrl);
+async function saveSpecificSelector(platformId, hostname, elementTypeId, selectorString) {
     const taskId = '11111111-1111-1111-1111-111111111111';
+    const existing = await db.selectors
+        .where('url_pattern')
+        .equals(hostname)
+        .and(s => s.element_type_id === elementTypeId)
+        .first();
 
-    const entries = [
-        { type: ELEMENT_TYPES.CONTAINER, str: selectors.container },
-        { type: ELEMENT_TYPES.TITLE, str: selectors.title },
-        { type: ELEMENT_TYPES.LINK, str: selectors.link },
-        { type: ELEMENT_TYPES.SEARCH_INPUT, str: selectors.searchInput || '' },
-        { type: ELEMENT_TYPES.SEARCH_BUTTON, str: selectors.searchButton || '' },
-        { type: ELEMENT_TYPES.PAGINATION, str: selectors.pagination || '' },
-        { type: ELEMENT_TYPES.DESCRIPTION, str: selectors.description || '' }
-    ];
+    if (existing) {
+        await db.selectors.update(existing.id, {
+            selector_string: selectorString,
+            is_active: 1,
+            updated_at: new Date().toISOString()
+        });
+    } else {
+        await db.selectors.add({
+            id: crypto.randomUUID(),
+            platform_id: platformId,
+            task_id: taskId,
+            element_type_id: elementTypeId,
+            url_pattern: hostname,
+            selector_string: selectorString,
+            is_active: 1,
+            updated_at: new Date().toISOString()
+        });
+    }
+}
 
-    for (const item of entries) {
-        if (!item.str) continue;
-        const existing = await db.selectors
-            .where('url_pattern')
-            .equals(hostname)
-            .and(s => s.element_type_id === item.type)
-            .first();
+async function autoFixPlatformSelectors(platformId, hostname, url) {
+    let tab = null;
+    try {
+        tab = await chrome.tabs.create({ url: url, active: false });
+        await waitForTabLoad(tab.id);
 
-        if (existing) {
-            await db.selectors.update(existing.id, {
-                selector_string: item.str,
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            });
+        const guessRes = await sendTabMessage(tab.id, { action: 'auto_guess_selectors_internal' });
+        if (guessRes && guessRes.success && guessRes.selectors) {
+            const guessed = guessRes.selectors;
+            const mapping = [
+                { type: ELEMENT_TYPES.CONTAINER, val: guessed.container },
+                { type: ELEMENT_TYPES.TITLE, val: guessed.title },
+                { type: ELEMENT_TYPES.LINK, val: guessed.link },
+                { type: ELEMENT_TYPES.SEARCH_INPUT, val: guessed.searchInput },
+                { type: ELEMENT_TYPES.PAGINATION, val: guessed.pagination },
+                { type: ELEMENT_TYPES.DESCRIPTION, val: guessed.description }
+            ];
+
+            for (const item of mapping) {
+                if (item.val) {
+                    await saveSpecificSelector(platformId, hostname, item.type, item.val);
+                }
+            }
+            return { success: true };
         } else {
-            await db.selectors.add({
-                id: crypto.randomUUID(),
-                platform_id: platform.id,
-                task_id: taskId,
-                element_type_id: item.type,
-                url_pattern: hostname,
-                selector_string: item.str,
-                is_active: 1,
-                updated_at: new Date().toISOString()
-            });
+            return { success: false, error: 'Could not automatically determine selectors.' };
+        }
+    } catch (err) {
+        return { success: false, error: err.message };
+    } finally {
+        if (tab && tab.id) {
+            chrome.tabs.remove(tab.id).catch(() => {});
         }
     }
 }
@@ -234,22 +233,45 @@ async function resolveWorkingSelectors(tabId, hostname, targetUrl) {
         } catch (e) {}
     }
 
-    const guessRes = await sendTabMessage(tabId, { action: 'auto_guess_selectors_internal' });
-    if (guessRes && guessRes.success && guessRes.selectors) {
-        await saveSelectorsForHostname(hostname, guessRes.selectors, targetUrl);
-        return guessRes.selectors;
-    }
-
     const fallbackDefault = {
         container: '[data-testid*="job" i], article, li, div[class*="job" i], div[class*="card" i]',
         title: 'h2, h3, a[class*="title" i], [class*="jobTitle" i], [data-testid*="title" i]',
         link: 'a[href*="job"], a[href*="career"], a'
     };
-    return fallbackDefault;
+    return selectors || fallbackDefault;
+}
+
+async function calculateStorageWeight() {
+    let totalBytes = 0;
+    const tables = [
+        db.local_vacancies,
+        db.platforms_dict,
+        db.selectors,
+        db.personal_data,
+        db.resumes,
+        db.automation_jobs
+    ];
+
+    for (const table of tables) {
+        try {
+            const records = await table.toArray();
+            const serialized = JSON.stringify(records);
+            totalBytes += new Blob([serialized]).size;
+        } catch (e) {}
+    }
+
+    let formatted = '0 KB';
+    if (totalBytes > 1048576) {
+        formatted = (totalBytes / 1048576).toFixed(2) + ' MB';
+    } else {
+        formatted = Math.max(1, Math.round(totalBytes / 1024)) + ' KB';
+    }
+
+    return { bytes: totalBytes, formatted: formatted };
 }
 
 async function runAutomationPipeline(config) {
-    const { websites, roles, paginationLimit } = config;
+    const { websites, roles, paginationLimit, fieldsMode = 'all', jobTitle = 'Job Execution' } = config;
     let tab = null;
     let tabId = null;
 
@@ -264,14 +286,6 @@ async function runAutomationPipeline(config) {
             const parsedUrl = new URL(targetUrl);
             const hostname = parsedUrl.hostname;
 
-            await getOrRegisterPlatform(hostname, targetUrl);
-
-            chrome.runtime.sendMessage({
-                action: 'automation_status_update',
-                stage: 1,
-                message: `Status 1: Loading ${hostname} (${wIndex + 1}/${websites.length})`
-            }).catch(() => {});
-
             await chrome.tabs.update(tabId, { url: targetUrl });
             await waitForTabLoad(tabId);
 
@@ -281,11 +295,6 @@ async function runAutomationPipeline(config) {
                 if (!activeAutomationSession || activeAutomationSession.abort) break;
 
                 const role = roles[rIndex];
-                chrome.runtime.sendMessage({
-                    action: 'automation_status_update',
-                    stage: 2,
-                    message: `Status 2: Searching role "${role}" on ${hostname}`
-                }).catch(() => {});
 
                 const existingSelectors = await getSelectorsForHostname(hostname);
 
@@ -339,40 +348,32 @@ async function runAutomationPipeline(config) {
             }
 
             if (collectedVacanciesForSite.length > 0) {
-                chrome.runtime.sendMessage({
-                    action: 'automation_status_update',
-                    stage: 3,
-                    message: `Status 3: Parsing details for ${collectedVacanciesForSite.length} vacancies`
-                }).catch(() => {});
+                if (fieldsMode === 'all') {
+                    for (let vIndex = 0; vIndex < collectedVacanciesForSite.length; vIndex++) {
+                        if (!activeAutomationSession || activeAutomationSession.abort) break;
 
-                for (let vIndex = 0; vIndex < collectedVacanciesForSite.length; vIndex++) {
-                    if (!activeAutomationSession || activeAutomationSession.abort) break;
+                        const vacancy = collectedVacanciesForSite[vIndex];
+                        try {
+                            await chrome.tabs.update(tabId, { url: vacancy.url });
+                            await waitForTabLoad(tabId);
 
-                    const vacancy = collectedVacanciesForSite[vIndex];
-                    try {
-                        await chrome.tabs.update(tabId, { url: vacancy.url });
-                        await waitForTabLoad(tabId);
+                            const detailRes = await sendTabMessage(tabId, {
+                                action: 'extract_detail_description'
+                            });
 
-                        const detailRes = await sendTabMessage(tabId, {
-                            action: 'extract_detail_description'
-                        });
-
-                        if (detailRes && detailRes.description) {
-                            vacancy.description = detailRes.description;
+                            if (detailRes && detailRes.description) {
+                                vacancy.description = detailRes.description;
+                            }
+                        } catch (e) {
+                            vacancy.description = '';
                         }
-                    } catch (e) {
-                        vacancy.description = '';
-                    }
 
-                    await saveVacancies(hostname, [vacancy]);
+                        await saveVacancies(hostname, [vacancy]);
+                    }
+                } else {
+                    await saveVacancies(hostname, collectedVacanciesForSite);
                 }
             }
-
-            chrome.runtime.sendMessage({
-                action: 'automation_status_update',
-                stage: 4,
-                message: `Status 4: Finished ${hostname}.`
-            }).catch(() => {});
         }
 
         chrome.runtime.sendMessage({
@@ -381,7 +382,6 @@ async function runAutomationPipeline(config) {
         }).catch(() => {});
 
     } catch (err) {
-        console.error('[AutoOffer Automation] Pipeline execution failure:', err);
         throw err;
     } finally {
         if (tabId) {
@@ -392,83 +392,113 @@ async function runAutomationPipeline(config) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'register_platform_data') {
-        (async () => {
-            const { name, url, hostname, searchSelector } = request.platform;
-            let platform = await db.platforms_dict.where('code').equals(hostname).first();
-            let platformId = platform ? platform.id : crypto.randomUUID();
+    if (request.action === 'get_background_status') {
+        calculateStorageWeight().then((weightInfo) => {
+            sendResponse({
+                success: true,
+                isRunning: Boolean(activeAutomationSession),
+                activeJobTitle: activeAutomationSession ? activeAutomationSession.config?.jobTitle || 'Active Job' : null,
+                storageWeight: weightInfo.formatted,
+                storageBytes: weightInfo.bytes
+            });
+        }).catch((err) => {
+            sendResponse({
+                success: false,
+                isRunning: Boolean(activeAutomationSession),
+                error: err.message
+            });
+        });
+        return true;
+    }
 
-            if (!platform) {
-                await db.platforms_dict.add({
-                    id: platformId,
-                    name: name,
-                    code: hostname,
-                    url: url
-                });
+    if (request.action === 'get_storage_weight') {
+        calculateStorageWeight().then((weightInfo) => {
+            sendResponse({ success: true, weight: weightInfo.formatted, bytes: weightInfo.bytes });
+        }).catch((err) => {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'get_jobs') {
+        db.automation_jobs.toArray().then((jobs) => {
+            sendResponse({ success: true, jobs: jobs });
+        }).catch((err) => {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'save_job') {
+        (async () => {
+            const jobData = request.job;
+            if (!jobData.id) {
+                jobData.id = crypto.randomUUID();
+                jobData.created_at = new Date().toISOString();
+                jobData.status = 'ready';
+                await db.automation_jobs.add(jobData);
             } else {
-                await db.platforms_dict.update(platform.id, {
-                    name: name,
-                    url: url
-                });
+                await db.automation_jobs.put(jobData);
             }
-
-            if (searchSelector) {
-                await saveSelectorsForHostname(hostname, { searchInput: searchSelector }, url);
-            }
-
-            sendResponse({ success: true, platformId: platformId });
+            sendResponse({ success: true, job: jobData });
         })().catch(err => sendResponse({ success: false, error: err.message }));
         return true;
     }
 
-    if (request.action === 'delete_platform') {
+    if (request.action === 'delete_job') {
+        db.automation_jobs.delete(request.id).then(() => {
+            sendResponse({ success: true });
+        }).catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_profile_data') {
+        db.personal_data.toArray().then(items => {
+            const profile = items.length ? items[0] : null;
+            sendResponse({ success: true, profile: profile });
+        }).catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'save_profile_data') {
         (async () => {
-            const { platformId, hostname } = request;
-            if (platformId) {
-                await db.platforms_dict.delete(platformId);
-            }
-            if (hostname) {
-                await db.selectors.where('url_pattern').equals(hostname).delete();
+            const profileData = request.profile;
+            const existing = await db.personal_data.toArray();
+            if (existing.length) {
+                await db.personal_data.update(existing[0].id, profileData);
+            } else {
+                profileData.id = crypto.randomUUID();
+                profileData.profile_id = 'default';
+                await db.personal_data.add(profileData);
             }
             sendResponse({ success: true });
         })().catch(err => sendResponse({ success: false, error: err.message }));
         return true;
     }
 
-    if (request.action === 'update_platform_search_selector') {
+    if (request.action === 'update_platform_mode') {
         (async () => {
-            const { platformId, hostname, selector } = request;
-            let platform = await db.platforms_dict.get(platformId);
-            if (!platform && hostname) {
-                platform = await db.platforms_dict.where('code').equals(hostname).first();
-            }
-            if (platform) {
-                const existing = await db.selectors
-                    .where('url_pattern')
-                    .equals(hostname)
-                    .and(s => s.element_type_id === ELEMENT_TYPES.SEARCH_INPUT)
-                    .first();
-
-                if (existing) {
-                    await db.selectors.update(existing.id, {
-                        selector_string: selector,
-                        is_active: 1,
-                        updated_at: new Date().toISOString()
-                    });
-                } else if (selector) {
-                    await db.selectors.add({
-                        id: crypto.randomUUID(),
-                        platform_id: platform.id,
-                        task_id: '33333333-1111-1111-1111-111111111111',
-                        element_type_id: ELEMENT_TYPES.SEARCH_INPUT,
-                        url_pattern: hostname,
-                        selector_string: selector,
-                        is_active: 1,
-                        updated_at: new Date().toISOString()
-                    });
-                }
-            }
+            const { platformId, mode } = request;
+            await db.platforms_dict.update(platformId, { mode: mode });
             sendResponse({ success: true });
+        })().catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'update_specific_selector') {
+        (async () => {
+            const { platformId, hostname, elementTypeId, selectorString } = request;
+            await saveSpecificSelector(platformId, hostname, elementTypeId, selectorString);
+            sendResponse({ success: true });
+        })().catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'auto_fix_platform_selectors') {
+        (async () => {
+            const { platformId, hostname, url } = request;
+            const res = await autoFixPlatformSelectors(platformId, hostname, url);
+            sendResponse(res);
         })().catch(err => sendResponse({ success: false, error: err.message }));
         return true;
     }
@@ -481,7 +511,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         activeAutomationSession = { abort: false, config: request.config };
         runAutomationPipeline(request.config).catch(err => {
-            console.error('[AutoOffer Background] Pipeline exception:', err);
             activeAutomationSession = null;
             chrome.runtime.sendMessage({
                 action: 'automation_failed',
@@ -501,26 +530,73 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: true });
         return true;
     }
-
-    if (request.action === 'save_platform_selectors') {
-        saveSelectorsForHostname(request.hostname, request.selectors, sender.tab?.url || '')
-            .then(() => sendResponse({ success: true }))
-            .catch(err => sendResponse({ success: false, error: err.message }));
-        return true;
-    }
-
-    if (request.action === 'save_scraped_vacancies') {
-        saveVacancies(request.hostname, request.vacancies || [])
-            .then(() => sendResponse({ success: true }))
-            .catch(err => sendResponse({ success: false, error: err.message }));
-        return true;
-    }
 });
 
 chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
     if (request.action === 'get_vacancies') {
         db.local_vacancies.toArray().then(vacancies => {
-            sendResponse({ status: 'success', data: vacancies });
+            let filtered = vacancies;
+            if (request.role && request.role !== 'all') {
+                const targetRole = request.role.toLowerCase();
+                filtered = filtered.filter(v =>
+                    v.full_position_name && v.full_position_name.toLowerCase().includes(targetRole)
+                );
+            }
+            if (request.dateRange && request.dateRange !== 'all') {
+                const now = new Date().getTime();
+                const days = request.dateRange === 'today' ? 1 : request.dateRange === '7days' ? 7 : 30;
+                const cutoff = now - days * 86400000;
+                filtered = filtered.filter(v => {
+                    const t = new Date(v.created_at).getTime();
+                    return !isNaN(t) && t >= cutoff;
+                });
+            }
+            if (request.fieldsMode === 'minimum') {
+                filtered = filtered.map(v => ({
+                    id: v.id,
+                    full_position_name: v.full_position_name,
+                    url: v.url,
+                    created_at: v.created_at,
+                    synced: v.synced
+                }));
+            }
+            sendResponse({ status: 'success', data: filtered });
+        }).catch(error => {
+            sendResponse({ status: 'error', message: error.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'get_profile') {
+        db.personal_data.toArray().then(items => {
+            sendResponse({ status: 'success', data: items.length ? items[0] : null });
+        }).catch(error => {
+            sendResponse({ status: 'error', message: error.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'save_profile') {
+        (async () => {
+            const profileData = request.profile;
+            const existing = await db.personal_data.toArray();
+            if (existing.length) {
+                await db.personal_data.update(existing[0].id, profileData);
+            } else {
+                profileData.id = crypto.randomUUID();
+                profileData.profile_id = 'default';
+                await db.personal_data.add(profileData);
+            }
+            sendResponse({ status: 'success' });
+        })().catch(error => {
+            sendResponse({ status: 'error', message: error.message });
+        });
+        return true;
+    }
+
+    if (request.action === 'get_storage_weight') {
+        calculateStorageWeight().then(weightInfo => {
+            sendResponse({ status: 'success', data: weightInfo });
         }).catch(error => {
             sendResponse({ status: 'error', message: error.message });
         });
