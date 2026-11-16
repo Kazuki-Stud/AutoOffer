@@ -1,18 +1,22 @@
 import { defineConfig } from 'vite';
-import webExtension from 'vite-plugin-web-extension';
 import { resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
-    root: resolve(__dirname, 'src/client/extension'),
-    publicDir: resolve(__dirname, 'public'),
-    plugins: [
-        webExtension({
-            manifest: 'manifest.json'
-        })
-    ],
+    root,
+    publicDir: resolve(root, 'public'),
     build: {
-        target: 'esnext',
-        outDir: resolve(__dirname, 'dist'),
-        emptyOutDir: true
-    }
+        outDir: resolve(root, 'dist'),
+        emptyOutDir: true,
+        rollupOptions: {
+            input: {
+                popup: resolve(root, 'popup/popup.html'),
+                background: resolve(root, 'background.js'),
+                content: resolve(root, 'content.js'),
+            },
+            output: { entryFileNames: '[name].js' },
+        },
+    },
 });
