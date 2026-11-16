@@ -6,6 +6,8 @@ import AutoOffer.entity.Device;
 import AutoOffer.repository.DeviceRepository;
 import AutoOffer.service.DeviceAuthService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +27,7 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private final DeviceRepository deviceRepository;
+    private final NamedParameterJdbcTemplate jdbc;
     private final SecurityProperties securityProperties;
 
     @Override
@@ -35,18 +38,19 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
         String rawToken = HexFormat.of().formatHex(rawBytes);
         String hash = hmacSha256Hex(rawToken);
 
-        Device device = deviceRepository.findByPseudonymousId(pseudonymousId)
-                .map(existing -> {
-                    existing.setAuthTokenHash(hash);
-                    existing.setLastActiveAt(OffsetDateTime.now());
-                    return deviceRepository.save(existing);
-                })
-                .orElseGet(() -> deviceRepository.save(Device.builder()
-                        .pseudonymousId(pseudonymousId)
-                        .authTokenHash(hash)
-                        .build()));
+        // В1: только INSERT по разрешённым в V3__roles.sql колонкам.
+        // При повторном pseudonymousId БД кинет 23505 (unique_violation) -> 409 Conflict.
+        UUID deviceId = jdbc.queryForObject("""
+                INSERT INTO autooffer.devices (pseudonymous_id, auth_token_hash)
+                VALUES (CAST(:pid AS uuid), :hash)
+                RETURNING id
+                """,
+                new MapSqlParameterSource()
+                        .addValue("pid", pseudonymousId)
+                        .addValue("hash", hash),
+                UUID.class);
 
-        return new DeviceRegisterResponse(device.getId(), device.getPseudonymousId(), rawToken);
+        return new DeviceRegisterResponse(deviceId, pseudonymousId, rawToken);
     }
 
     @Override
