@@ -30,6 +30,11 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
     private final NamedParameterJdbcTemplate jdbc;
     private final SecurityProperties securityProperties;
 
+    /**
+     * Registers a new pseudonymous device or rotates auth_token_hash if the
+     * pseudonymousId already exists (US 7.1). Requires UPDATE(auth_token_hash, last_active_at)
+     * on autooffer.devices for app_write in 03__roles.sql.
+     */
     @Override
     @Transactional
     public DeviceRegisterResponse registerOrRotateToken(UUID pseudonymousId) {
@@ -38,11 +43,12 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
         String rawToken = HexFormat.of().formatHex(rawBytes);
         String hash = hmacSha256Hex(rawToken);
 
-        // В1: только INSERT по разрешённым в V3__roles.sql колонкам.
-        // При повторном pseudonymousId БД кинет 23505 (unique_violation) -> 409 Conflict.
         UUID deviceId = jdbc.queryForObject("""
                 INSERT INTO autooffer.devices (pseudonymous_id, auth_token_hash)
                 VALUES (CAST(:pid AS uuid), :hash)
+                ON CONFLICT (pseudonymous_id) DO UPDATE
+                   SET auth_token_hash = EXCLUDED.auth_token_hash,
+                       last_active_at = now()
                 RETURNING id
                 """,
                 new MapSqlParameterSource()

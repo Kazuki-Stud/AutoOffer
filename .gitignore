@@ -28,3 +28,4 @@ src/server/AutoOffer/.env
 /scripts
 *.bak
 client_bundle.txt
+Road.txt
