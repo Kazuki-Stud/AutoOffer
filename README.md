@@ -1,5 +1,7 @@
 https://github.com/users/Kazuki-Stud/projects/2
 
+https://kazuki-stud.github.io/AutoOffer/
+
 # AutoOffer
 
 **AutoOffer** is a privacy-first job search automation platform consisting of a Chrome Extension, a Progressive Web App (PWA) dashboard, a Spring Boot REST API, and a polyglot persistence layer (PostgreSQL, ClickHouse, and IndexedDB).
