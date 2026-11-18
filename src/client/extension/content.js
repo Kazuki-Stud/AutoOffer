@@ -5,13 +5,25 @@ function waitForPageReady() {
   });
 }
 
-function observeDomMutation(targetNode = document.body) {
+function observeDomMutationWithTimeout(targetNode = document.body, timeoutMs = 2000) {
   return new Promise((resolve) => {
-    const observer = new MutationObserver((mutations, obs) => {
-      obs.disconnect();
-      resolve();
+    if (!targetNode) return resolve(false);
+    let done = false;
+    let timer = null;
+    const observer = new MutationObserver(() => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      observer.disconnect();
+      resolve(true);
     });
     observer.observe(targetNode, { childList: true, subtree: true });
+    timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      observer.disconnect();
+      resolve(false);
+    }, timeoutMs);
   });
 }
 
@@ -23,9 +35,9 @@ function deriveOptimalSelector(el, scope) {
 
   const tag = el.tagName.toLowerCase();
   const validClasses = Array.from(el.classList).filter((c) =>
-    !/^css-[a-z0-9]+/i.test(c) &&
-    !/^[a-z][0-9]{3,}/i.test(c) &&
-    !/active|hover|focus|selected|boosted|feature|paid/i.test(c)
+      !/^css-[a-z0-9]+/i.test(c) &&
+      !/^[a-z][0-9]{3,}/i.test(c) &&
+      !/active|hover|focus|selected|boosted|feature|paid/i.test(c)
   );
   if (validClasses.length > 0) return tag + '.' + CSS.escape(validClasses[0]);
 
@@ -90,10 +102,10 @@ function guessSelectorsHeuristically() {
   const [c1, c2] = cards;
   if (c1.tagName === c2.tagName) {
     const sharedClasses = Array.from(c1.classList).filter((c) =>
-      c2.classList.contains(c) &&
-      !/^css-[a-z0-9]+/i.test(c) &&
-      !/^[a-z][0-9]{3,}/i.test(c) &&
-      !/active|hover|focus|selected|boosted|feature/i.test(c)
+        c2.classList.contains(c) &&
+        !/^css-[a-z0-9]+/i.test(c) &&
+        !/^[a-z][0-9]{3,}/i.test(c) &&
+        !/active|hover|focus|selected|boosted|feature/i.test(c)
     );
     const tag = c1.tagName.toLowerCase();
     if (sharedClasses.length > 0) {
@@ -165,56 +177,72 @@ function extractCardsData(selectors) {
     if (!titleEl || !linkEl) continue;
     const rawUrl = linkEl.getAttribute('href');
     if (!rawUrl) continue;
-    items.push({ fullPositionName: titleEl.textContent.trim(), url: new URL(rawUrl, window.location.origin).href });
+    items.push({
+      fullPositionName: titleEl.textContent.trim(),
+      url: new URL(rawUrl, window.location.origin).href,
+      cardText: (card.innerText || '').trim(),
+    });
   }
   return items;
 }
 
-function executePagination(explicitSelector) {
+async function executePagination(explicitSelector) {
+  let target = null;
+  let method = 'none';
+
   if (explicitSelector) {
-    const target = document.querySelector(explicitSelector);
-    if (target && target.offsetParent !== null && !target.hasAttribute('disabled')) {
-      const mutationPromise = observeDomMutation(document.body);
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      target.click();
-      return { advanced: true, method: 'explicit_selector', promise: mutationPromise };
+    const el = document.querySelector(explicitSelector);
+    if (el && el.offsetParent !== null && !el.hasAttribute('disabled')) {
+      target = el;
+      method = 'explicit_selector';
     }
   }
-  const loadMoreQueries = [
-    'button[data-testid*="load-more"]', 'button[class*="loadMore" i]', 'button[class*="load-more" i]',
-    'button[class*="showMore" i]', 'button[class*="show-more" i]', 'a[class*="load-more" i]', 'button[id*="loadMore" i]'
-  ];
-  for (const q of loadMoreQueries) {
-    const btn = document.querySelector(q);
-    if (btn && btn.offsetParent !== null && !btn.hasAttribute('disabled')) {
-      const mutationPromise = observeDomMutation(document.body);
-      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      btn.click();
-      return { advanced: true, method: 'load_more_button', promise: mutationPromise };
+
+  if (!target) {
+    const loadMoreQueries = [
+      'button[data-testid*="load-more"]', 'button[class*="loadMore" i]', 'button[class*="load-more" i]',
+      'button[class*="showMore" i]', 'button[class*="show-more" i]', 'a[class*="load-more" i]', 'button[id*="loadMore" i]'
+    ];
+    for (const q of loadMoreQueries) {
+      const btn = document.querySelector(q);
+      if (btn && btn.offsetParent !== null && !btn.hasAttribute('disabled')) {
+        target = btn;
+        method = 'load_more_button';
+        break;
+      }
     }
   }
-  const nextNavQueries = [
-    'a[rel="next"]', 'a[aria-label*="Next" i]', 'button[aria-label*="Next" i]',
-    '[data-testid*="pagination-page-next"]', '[class*="pagination"] a[class*="next" i]',
-    '[class*="pagination"] button[class*="next" i]', 'li.next a', 'a.next'
-  ];
-  for (const q of nextNavQueries) {
-    const nextEl = document.querySelector(q);
-    if (nextEl && nextEl.offsetParent !== null && !nextEl.hasAttribute('disabled') && !nextEl.getAttribute('aria-disabled')) {
-      const mutationPromise = observeDomMutation(document.body);
-      nextEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      nextEl.click();
-      return { advanced: true, method: 'next_page_link', promise: mutationPromise };
+
+  if (!target) {
+    const nextNavQueries = [
+      'a[rel="next"]', 'a[aria-label*="Next" i]', 'button[aria-label*="Next" i]',
+      '[data-testid*="pagination-page-next"]', '[class*="pagination"] a[class*="next" i]',
+      '[class*="pagination"] button[class*="next" i]', 'li.next a', 'a.next'
+    ];
+    for (const q of nextNavQueries) {
+      const nextEl = document.querySelector(q);
+      if (nextEl && nextEl.offsetParent !== null && !nextEl.hasAttribute('disabled') && !nextEl.getAttribute('aria-disabled')) {
+        target = nextEl;
+        method = 'next_page_link';
+        break;
+      }
     }
   }
-  return { advanced: false, method: 'none', promise: Promise.resolve() };
+
+  if (!target) return { advanced: false, domMutated: false, method: 'none' };
+
+  const mutationPromise = observeDomMutationWithTimeout(document.body, 2500);
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target.click();
+  const domMutated = await mutationPromise;
+  return { advanced: true, domMutated, method };
 }
 
 // US 3.1 / 3.4 / 3.5: React/Vue-safe native value setter + field highlight + captcha check
 function setNativeInputValue(el, value) {
   const proto = el.tagName === 'TEXTAREA'
-    ? window.HTMLTextAreaElement.prototype
-    : window.HTMLInputElement.prototype;
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (setter) setter.call(el, value);
   else el.value = value;
@@ -279,7 +307,6 @@ function autofillApplicationForm({ profile = {}, coverLetter = '', selectors = {
       filled.push(field);
     }
   }
-  // Never auto-click submit in semi_automated mode (US 3.4)
   return { success: true, captchaDetected: false, filled };
 }
 
@@ -302,7 +329,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'execute_search_input') {
-    waitForPageReady().then(() => {
+    waitForPageReady().then(async () => {
       const role = request.role;
       const sel = request.selectors || {};
       const inputSelectors = [
@@ -318,7 +345,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (found && found.offsetParent !== null) { inputEl = found; matchedSelector = s; break; }
       }
       if (!inputEl) {
-        sendResponse({ success: false, triggered: false, error: 'Search input not found.' });
+        sendResponse({ success: false, triggered: false, domMutated: true, error: 'Search input not found.' });
         return;
       }
 
@@ -334,18 +361,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         submitBtn = document.querySelector('.siteSearch-submit button, button[type="submit"], input[type="submit"], button[class*="search" i], button[aria-label*="search" i]');
       }
 
-      sendResponse({ success: true, triggered: true, searchInput: matchedSelector });
+      const mutationPromise = observeDomMutationWithTimeout(document.body, 2000);
+      if (submitBtn) submitBtn.click();
+      else if (inputEl.form) {
+        if (typeof inputEl.form.requestSubmit === 'function') inputEl.form.requestSubmit();
+        else inputEl.form.submit();
+      } else {
+        inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        inputEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, bubbles: true }));
+      }
 
-      queueMicrotask(() => {
-        if (submitBtn) submitBtn.click();
-        else if (inputEl.form) {
-          if (typeof inputEl.form.requestSubmit === 'function') inputEl.form.requestSubmit();
-          else inputEl.form.submit();
-        } else {
-          inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-          inputEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, bubbles: true }));
-        }
-      });
+      const domMutated = await mutationPromise;
+      sendResponse({ success: true, triggered: true, domMutated: true, mutated: domMutated, searchInput: matchedSelector });
     });
     return true;
   }
@@ -356,8 +383,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'advance_pagination') {
-    const outcome = executePagination((request.selectors || {}).pagination);
-    sendResponse({ advanced: outcome.advanced, method: outcome.method });
+    executePagination((request.selectors || {}).pagination).then(sendResponse);
     return true;
   }
 

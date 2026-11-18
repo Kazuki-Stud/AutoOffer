@@ -106,8 +106,16 @@
                     <div id="pwa-job-platforms-picker" class="chips-grid"></div>
                 </div>
                 <div class="form-field full-width">
-                    <label>Target Roles (comma-separated, overrides profile roles if set)</label>
+                    <label>Target Roles (comma-separated, required if profile has no roles)</label>
                     <input type="text" id="pwa-job-roles" placeholder="Frontend Developer, React, TypeScript" />
+                </div>
+                <div class="form-field">
+                    <label>Locations (comma-separated, optional)</label>
+                    <input type="text" id="pwa-job-locations" placeholder="Remote, Vilnius, Berlin" />
+                </div>
+                <div class="form-field">
+                    <label>Keywords (comma-separated, optional)</label>
+                    <input type="text" id="pwa-job-keywords" placeholder="TypeScript, REST, Docker" />
                 </div>
                 <div class="form-field">
                     <label>Fields Extraction</label>
@@ -187,6 +195,14 @@
                 <div class="form-field full-width">
                     <label>Target Roles (comma-separated)</label>
                     <input type="text" id="pwa-prof-roles" placeholder="Backend Developer, Java Developer" />
+                </div>
+                <div class="form-field">
+                    <label>Preferred Search Locations (comma-separated)</label>
+                    <input type="text" id="pwa-prof-locations" placeholder="Remote, Vilnius" />
+                </div>
+                <div class="form-field">
+                    <label>Preferred Search Keywords (comma-separated)</label>
+                    <input type="text" id="pwa-prof-keywords" placeholder="Spring Boot, PostgreSQL" />
                 </div>
                 <div class="form-field full-width">
                     <label>Portfolio / Professional Links (comma-separated URLs)</label>

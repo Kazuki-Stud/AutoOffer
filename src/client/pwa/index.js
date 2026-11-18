@@ -77,6 +77,10 @@ function parseProfileLinks(rawText) {
     };
 }
 
+function toStringArray(raw) {
+    return (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 async function calculateStorageWeight() {
     if (isExtensionConnected) {
         try {
@@ -365,6 +369,8 @@ async function loadLocalHydratedProfiles() {
             headline: resume?.title || '',
             skills: skillRows.filter(Boolean).map((s) => s.name).join(', '),
             roles: (prefs?.roles || []).join(', '),
+            locations: (prefs?.locations || []).join(', '),
+            keywords: (prefs?.keywords || []).join(', '),
         });
     }
     return out;
@@ -420,7 +426,7 @@ async function saveLocalProfile(incoming) {
         await db.personal_data.add({ id: newId(), profile_id: profileId, ...personalPayload, created_at: now });
     }
 
-    const skillNames = [...new Set((incoming.skills || '').split(',').map((s) => s.trim()).filter(Boolean))];
+    const skillNames = [...new Set(toStringArray(incoming.skills))];
     const skillIds = [];
     for (const name of skillNames) skillIds.push(await getOrCreateByName('skills', name));
     const headline = incoming.headline || 'Default Resume';
@@ -432,11 +438,19 @@ async function saveLocalProfile(incoming) {
         await db.resumes.add({ id: newId(), profile_id: profileId, title: headline, plain_text: resumeText, skill_ids: skillIds, created_at: now, updated_at: now });
     }
 
-    const rolesArr = (incoming.roles || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const rolesArr = toStringArray(incoming.roles);
+    const locsArr = toStringArray(incoming.locations);
+    const kwArr = toStringArray(incoming.keywords);
     const existingPrefs = await db.search_preferences.where('profile_id').equals(profileId).first();
     if (rolesArr.length > 0) {
-        if (existingPrefs) await db.search_preferences.update(existingPrefs.id, { roles: rolesArr, updated_at: now });
-        else await db.search_preferences.add({ id: newId(), profile_id: profileId, roles: rolesArr, locations: [], keywords: [], urls: [], platform_ids: [], page_limit: 2, updated_at: now });
+        if (existingPrefs) {
+            await db.search_preferences.update(existingPrefs.id, { roles: rolesArr, locations: locsArr, keywords: kwArr, updated_at: now });
+        } else {
+            await db.search_preferences.add({
+                id: newId(), profile_id: profileId, roles: rolesArr,
+                locations: locsArr, keywords: kwArr, urls: [], platform_ids: [], page_limit: 2, updated_at: now,
+            });
+        }
     } else if (existingPrefs) {
         await db.search_preferences.delete(existingPrefs.id);
     }
@@ -453,6 +467,8 @@ function populateProfileForm(p) {
     document.getElementById('pwa-prof-location').value = p?.location || '';
     document.getElementById('pwa-prof-headline').value = p?.headline || '';
     document.getElementById('pwa-prof-roles').value = p?.roles || '';
+    document.getElementById('pwa-prof-locations').value = p?.locations || '';
+    document.getElementById('pwa-prof-keywords').value = p?.keywords || '';
     document.getElementById('pwa-prof-links').value = p?.links || '';
     document.getElementById('pwa-prof-skills').value = p?.skills || '';
 }
@@ -558,6 +574,8 @@ function initProfilePage() {
                 location: document.getElementById('pwa-prof-location').value.trim(),
                 headline: document.getElementById('pwa-prof-headline').value.trim() || 'Default Resume',
                 roles: document.getElementById('pwa-prof-roles').value.trim(),
+                locations: document.getElementById('pwa-prof-locations').value.trim(),
+                keywords: document.getElementById('pwa-prof-keywords').value.trim(),
                 links: document.getElementById('pwa-prof-links').value.trim(),
                 skills: document.getElementById('pwa-prof-skills').value.trim(),
             };
@@ -624,7 +642,15 @@ function renderJobsList() {
         const meta = document.createElement('div');
         meta.className = 'job-row-meta';
         const sites = (j.websites || '').split('\n').filter(Boolean).length;
-        meta.textContent = `Sites: ${sites} · Roles: ${j.roles || '(from profile)'} · Pages: ${j.limit || 2} · Fields: ${j.fields_mode || 'all'}`;
+        const extras = [
+            `Sites: ${sites}`,
+            `Roles: ${j.roles || '(from profile)'}`,
+            j.locations ? `Locations: ${j.locations}` : null,
+            j.keywords ? `Keywords: ${j.keywords}` : null,
+            `Pages: ${j.limit || 2}`,
+            `Fields: ${j.fields_mode || 'all'}`,
+        ].filter(Boolean).join(' · ');
+        meta.textContent = extras;
         info.append(title, meta);
 
         const actions = document.createElement('div');
@@ -637,6 +663,8 @@ function renderJobsList() {
             document.getElementById('pwa-job-form-heading').textContent = `Edit Job: ${j.title}`;
             document.getElementById('pwa-job-title').value = j.title || '';
             document.getElementById('pwa-job-roles').value = j.roles || '';
+            document.getElementById('pwa-job-locations').value = j.locations || '';
+            document.getElementById('pwa-job-keywords').value = j.keywords || '';
             document.getElementById('pwa-job-fields').value = j.fields_mode || 'all';
             document.getElementById('pwa-job-limit').value = j.limit || 2;
             if (j.profile_id) document.getElementById('pwa-job-profile').value = j.profile_id;
@@ -688,6 +716,8 @@ function initJobsPage() {
         document.getElementById('pwa-job-form-heading').textContent = 'Create Automation Job';
         document.getElementById('pwa-job-title').value = '';
         document.getElementById('pwa-job-roles').value = '';
+        document.getElementById('pwa-job-locations').value = '';
+        document.getElementById('pwa-job-keywords').value = '';
         document.getElementById('pwa-job-fields').value = 'all';
         document.getElementById('pwa-job-limit').value = 2;
         selectedJobUrls.clear();
@@ -702,11 +732,21 @@ function initJobsPage() {
         const title = document.getElementById('pwa-job-title').value.trim();
         const profileId = document.getElementById('pwa-job-profile').value;
         const roles = document.getElementById('pwa-job-roles').value.trim();
+        const locations = document.getElementById('pwa-job-locations').value.trim();
+        const keywords = document.getElementById('pwa-job-keywords').value.trim();
         const fields_mode = document.getElementById('pwa-job-fields').value;
-        const limit = parseInt(document.getElementById('pwa-job-limit').value, 10);
+        const limit = Number(document.getElementById('pwa-job-limit').value);
+
+        const selectedProfile = cachedProfiles.find((p) => p.profile_id === profileId);
+        const effectiveRoles = toStringArray(roles || selectedProfile?.roles || selectedProfile?.skills || '');
 
         if (!websites) {
             statusEl.textContent = 'Select at least one target platform.';
+            statusEl.style.color = '#f87171';
+            return;
+        }
+        if (!effectiveRoles.length) {
+            statusEl.textContent = 'Provide target roles (either here or in the selected profile).';
             statusEl.style.color = '#f87171';
             return;
         }
@@ -722,6 +762,8 @@ function initJobsPage() {
                 title: title || 'Custom Job',
                 websites,
                 roles,
+                locations,
+                keywords,
                 profile_id: profileId,
                 fields_mode,
                 limit,

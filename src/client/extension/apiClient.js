@@ -135,6 +135,33 @@ export async function syncRegistrySelectors() {
     }
 }
 
+/** US 2.3 & US 3.7: submit a selector or field mapping proposal to the admin review queue. */
+export async function submitSelectorProposal({
+                                                 platformId,
+                                                 taskId,
+                                                 elementTypeId,
+                                                 urlPattern = null,
+                                                 kind = 'css',
+                                                 selectorString,
+                                             }) {
+    const res = await deviceFetch('/api/selectors', {
+        method: 'POST',
+        body: JSON.stringify({
+            platformId,
+            taskId,
+            elementTypeId,
+            urlPattern,
+            kind,
+            selectorString,
+        }),
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Selector submission failed (${res.status}): ${text}`);
+    }
+    return res.json();
+}
+
 /** US 1.3 / 1.5 / 7.4: send public URL (and full text ONLY if board is granted & private_use_only is off). */
 export async function syncVacancyToServer(vacancy) {
     const level = await allowedSyncLevel(vacancy);
