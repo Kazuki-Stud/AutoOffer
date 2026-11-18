@@ -1,4 +1,3 @@
-# Simple workflow for deploying static content to GitHub Pages
 name: Deploy static content to Pages
 
 on:
@@ -57,7 +56,7 @@ jobs:
         run: find src/client/pwa/dist -type f | sort
 
       - name: Setup Pages
-        uses: configure-pages@v5
+        uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
