@@ -1,8 +1,7 @@
-const CACHE_NAME = 'autooffer-pwa-v5';
+const CACHE_NAME = 'autooffer-pwa-v6';
 const ASSETS = [
     './',
     './index.html',
-    './kit.js',
     './manifest.webmanifest',
     './image.svg',
     './icon-192.png',

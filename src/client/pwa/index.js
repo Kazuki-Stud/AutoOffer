@@ -1,3 +1,4 @@
+import { AoTheme } from './ui.js';
 import { db } from '../extension/database/database.js';
 import { migrateLegacySecrets } from '../extension/database/crypto.js';
 import {
@@ -31,7 +32,7 @@ let cachedJobs = [];
 let isExtensionConnected = false;
 let activeProfileId = null;
 let activeResumeId = null;
-let pendingResumeFile = null; // { file_name, mime_type, file_data_b64, clear_file }
+let pendingResumeFile = null;
 let editingJobId = null;
 const selectedJobUrls = new Set();
 
@@ -173,15 +174,7 @@ function renderStats(list, weightStr = '0 KB') {
     const total = list.length;
     const withDesc = list.filter((v) => v.status === 'complete' && v.description && v.description.length > 50).length;
     const raw = `${total} | Total Vacancies\n${withDesc} | Detailed\n${weightStr} | Storage Weight`;
-
-    if (typeof statsContainer.render === 'function') {
-        statsContainer.render(raw);
-    } else {
-        statsContainer.textContent = raw;
-        if (typeof statsContainer.connectedCallback === 'function') {
-            statsContainer.connectedCallback();
-        }
-    }
+    statsContainer.render(raw);
 }
 
 async function syncApplicationsFromBridge() {
@@ -1051,7 +1044,6 @@ function initProfilePage() {
         }
     });
 
-    // Resume variant controls (US 5.1 & US 3.6)
     const resumeSelect = document.getElementById('pwa-resume-select');
     const newResumeBtn = document.getElementById('pwa-new-resume-btn');
     const delResumeBtn = document.getElementById('pwa-delete-resume-btn');
@@ -1505,8 +1497,7 @@ async function loadHotwords() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         let rows = await res.json();
 
-        // Optional fallback to ClickHouse OLAP endpoint if hotwords materialized view is empty
-        if ((!Array.isArray(rows) || !rows.length)) {
+        if (!Array.isArray(rows) || !rows.length) {
             try {
                 const chRes = await fetch(`${base}/api/analytics/skills-demand`);
                 if (chRes.ok) {
@@ -1622,12 +1613,14 @@ function initNavigation() {
 }
 
 function updateThemeToggleUI() {
-    const currentTheme = window.AoTheme ? window.AoTheme.getTheme() : (document.documentElement.getAttribute('data-theme') || 'dark');
+    const currentTheme = AoTheme.getTheme();
     document.querySelector('.theme-icon.moon-icon')?.classList.toggle('active', currentTheme === 'dark');
     document.querySelector('.theme-icon.sun-icon')?.classList.toggle('active', currentTheme !== 'dark');
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    AoTheme.initTheme();
+
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js').then((reg) => reg.update()).catch(() => {});
     }
@@ -1678,7 +1671,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     updateThemeToggleUI();
     document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
-        if (window.AoTheme) { window.AoTheme.toggleTheme(); updateThemeToggleUI(); }
+        AoTheme.toggleTheme();
+        updateThemeToggleUI();
     });
     window.addEventListener('ao-theme-changed', updateThemeToggleUI);
 

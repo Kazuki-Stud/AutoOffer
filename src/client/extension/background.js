@@ -33,6 +33,9 @@ const ELEMENT_TYPES = {
     SEARCH_BUTTON: '30000000-0000-4000-8000-000000000005',
     PAGINATION:    '30000000-0000-4000-8000-000000000006',
     DESCRIPTION:   '30000000-0000-4000-8000-000000000007',
+    COMPANY:       '30000000-0000-4000-8000-000000000008',
+    LOCATION:      '30000000-0000-4000-8000-000000000009',
+    SALARY:        '30000000-0000-4000-8000-000000000010',
 };
 const TASK_IDS = {
     LIST:   '20000000-0000-4000-8000-000000000001',
@@ -42,8 +45,21 @@ const TASK_IDS = {
 };
 
 function taskForElementType(elementTypeId) {
-    if (elementTypeId === ELEMENT_TYPES.DESCRIPTION) return TASK_IDS.DETAIL;
-    if (elementTypeId === ELEMENT_TYPES.SEARCH_INPUT || elementTypeId === ELEMENT_TYPES.SEARCH_BUTTON) return TASK_IDS.SEARCH;
+    if (elementTypeId === ELEMENT_TYPES.SEARCH_INPUT || elementTypeId === ELEMENT_TYPES.SEARCH_BUTTON) {
+        return TASK_IDS.SEARCH;
+    }
+    if (
+        elementTypeId === ELEMENT_TYPES.DESCRIPTION ||
+        elementTypeId === ELEMENT_TYPES.COMPANY ||
+        elementTypeId === ELEMENT_TYPES.LOCATION ||
+        elementTypeId === ELEMENT_TYPES.SALARY
+    ) {
+        return TASK_IDS.DETAIL;
+    }
+    const suffix = Number.parseInt(String(elementTypeId).slice(-2), 10);
+    if (suffix >= 11 && suffix <= 23) {
+        return TASK_IDS.FORM;
+    }
     return TASK_IDS.LIST;
 }
 
@@ -207,15 +223,23 @@ async function getSelectorsForHostname(hostname) {
 
 async function saveSpecificSelector(platformId, hostname, elementTypeId, selectorString, source = 'manual') {
     const taskId = taskForElementType(elementTypeId);
+    const trimmed = (selectorString || '').trim();
     const existing = (await db.selectors.where('[platform_id+task_id+element_type_id]')
         .equals([platformId, taskId, elementTypeId]).toArray())
         .find((s) => (s.url_pattern ?? null) === hostname);
+
+    if (!trimmed) {
+        if (existing) {
+            await db.selectors.update(existing.id, { is_active: 0, updated_at: nowIso() });
+        }
+        return;
+    }
 
     if (existing) {
         await db.selectors.update(existing.id, {
             previous_selector_string: existing.selector_string,
             previous_version: existing.version,
-            selector_string: selectorString,
+            selector_string: trimmed,
             version: existing.version + 1,
             source,
             is_active: 1,
@@ -228,8 +252,8 @@ async function saveSpecificSelector(platformId, hostname, elementTypeId, selecto
             task_id: taskId,
             element_type_id: elementTypeId,
             url_pattern: hostname,
-            selector_kind: 'css',
-            selector_string: selectorString,
+            selector_kind: /^\s*(\/|\(|\.\/)/.test(trimmed) ? 'xpath' : 'css',
+            selector_string: trimmed,
             version: 1,
             source,
             is_active: 1,
@@ -377,6 +401,9 @@ async function runAutomationPipeline(config) {
 
     let tab = null;
     let tabId = null;
+    let processedBoards = 0;
+    const skippedHosts = [];
+
     try {
         tab = await chrome.tabs.create({ url: 'about:blank', active: false });
         tabId = tab.id;
@@ -387,14 +414,16 @@ async function runAutomationPipeline(config) {
             const platform = await findPlatformByHostname(hostname);
 
             if (!platform || platform.permission_status !== 'granted') {
+                skippedHosts.push(hostname);
                 chrome.runtime.sendMessage({
                     action: 'automation_skipped_board',
                     hostname,
-                    message: `Skipped ${hostname}: board has not granted automated collection permission. Use "Save vacancy" on open tabs instead.`,
+                    message: `Skipped ${hostname}: board has not granted automated collection permission. Use "Save Current Vacancy" on open tabs instead.`,
                 }).catch(() => {});
                 continue;
             }
 
+            processedBoards++;
             await chrome.tabs.update(tabId, { url: targetUrl });
             await waitForTabLoad(tabId);
             const collected = [];
@@ -457,7 +486,13 @@ async function runAutomationPipeline(config) {
             }
         }
 
-        chrome.runtime.sendMessage({ action: 'automation_completed', message: 'Automation completed successfully.' }).catch(() => {});
+        const completionMessage = processedBoards === 0 && skippedHosts.length > 0
+            ? `Skipped ${skippedHosts.join(', ')}: no automated permission granted. Use "Save Current Vacancy" on open tabs.`
+            : skippedHosts.length > 0
+                ? `Completed permitted boards (skipped ${skippedHosts.join(', ')}).`
+                : 'Automation completed successfully.';
+
+        chrome.runtime.sendMessage({ action: 'automation_completed', message: completionMessage }).catch(() => {});
     } finally {
         if (tabId) chrome.tabs.remove(tabId).catch(() => {});
         activeAutomationSession = null;

@@ -38,13 +38,25 @@ async function getHydratedProfile(profileId = null) {
 }
 
 async function applyTranslations(lang) {
-    const url = chrome.runtime.getURL('_locales/' + lang + '/messages.json');
-    const response = await fetch(url);
-    const messages = await response.json();
-    document.querySelectorAll('[data-i18n]').forEach((node) => {
-        const key = node.getAttribute('data-i18n');
-        if (key && messages[key]) node.textContent = messages[key].message;
-    });
+    try {
+        const url = chrome.runtime.getURL('_locales/' + lang + '/messages.json');
+        const response = await fetch(url);
+        const messages = await response.json();
+        document.querySelectorAll('[data-i18n]').forEach((node) => {
+            const key = node.getAttribute('data-i18n');
+            if (key && messages[key]) node.textContent = messages[key].message;
+        });
+    } catch {}
+}
+
+function showInlineFeedback(elId, text, isError = false) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.textContent = text;
+    el.className = isError ? 'inline-feedback error' : 'inline-feedback';
+    el.style.display = 'block';
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => { el.style.display = 'none'; }, 3200);
 }
 
 async function updateVacancyCount() {
@@ -60,7 +72,7 @@ async function updateVacancyCount() {
 
 async function updateSystemMetrics() {
     chrome.runtime.sendMessage({ action: 'get_background_status' }, (response) => {
-        if (!response?.success) return;
+        if (chrome.runtime.lastError || !response?.success) return;
         const weightPill = document.getElementById('badge-weight');
         const jobPill = document.getElementById('badge-job-status');
         const privPill = document.getElementById('badge-private-mode');
@@ -97,12 +109,12 @@ function initTabs() {
     });
 }
 
-async function loadProfileDropdown() {
+async function loadProfileDropdown(preferredId = null) {
     const selectEl = document.getElementById('runner-profile-select');
     if (!selectEl) return;
-    await ensureDefaultProfile();
+    const def = await ensureDefaultProfile();
     const profiles = await db.user_profiles.toArray();
-    const currentVal = selectEl.value;
+    const targetId = preferredId || selectEl.value;
     selectEl.innerHTML = '';
     for (const prof of profiles) {
         const pData = await db.personal_data.where('profile_id').equals(prof.id).first();
@@ -112,8 +124,10 @@ async function loadProfileDropdown() {
         opt.textContent = fullName || prof.name || 'Default Profile';
         selectEl.appendChild(opt);
     }
-    if (currentVal && profiles.some((p) => p.id === currentVal)) {
-        selectEl.value = currentVal;
+    if (targetId && profiles.some((p) => p.id === targetId)) {
+        selectEl.value = targetId;
+    } else if (def?.id) {
+        selectEl.value = def.id;
     }
 }
 
@@ -139,20 +153,37 @@ async function renderRunnerSummary(websitesStr, profileId) {
         websitesDisplay.innerHTML = '';
         const websites = (websitesStr || '').split('\n').map((s) => s.trim()).filter(Boolean);
         if (!websites.length) {
-            websitesDisplay.innerHTML = '<span style="font-size: 11px; color: var(--text-muted);">No websites selected — configure in Dashboard or Platforms tab</span>';
+            websitesDisplay.innerHTML = '<span style="font-size: 11px; color: var(--text-muted);">No websites selected — add from Platforms tab or select a Job</span>';
         } else {
             const platforms = await db.platforms_dict.toArray();
             for (const url of websites) {
                 const match = platforms.find((p) => p.url === url || ('https://' + p.code) === url);
                 const chip = document.createElement('div');
-                chip.className = 'website-icon-chip selected';
-                chip.style.cursor = 'default';
+                chip.className = 'website-icon-chip';
                 const name = match ? (match.name || match.code) : url;
-                chip.innerHTML = `<span class="website-icon-symbol">${name.charAt(0).toUpperCase()}</span>`;
+
+                const sym = document.createElement('span');
+                sym.className = 'website-icon-symbol';
+                sym.textContent = name.charAt(0).toUpperCase();
+
                 const ns = document.createElement('span');
-                ns.className = 'website-icon-name';
-                ns.textContent = `${name}${match?.permission_status === 'granted' ? '' : ' (Manual only)'}`;
-                chip.appendChild(ns);
+                ns.textContent = `${name}${match?.permission_status === 'granted' ? '' : ' (Manual)'}`;
+
+                const rmBtn = document.createElement('button');
+                rmBtn.type = 'button';
+                rmBtn.className = 'chip-remove-btn';
+                rmBtn.title = 'Remove website';
+                rmBtn.textContent = '×';
+                rmBtn.addEventListener('click', async () => {
+                    const area = document.getElementById('target-websites');
+                    const next = websites.filter((u) => u !== url).join('\n');
+                    area.value = next;
+                    document.getElementById('job-select').value = '';
+                    await chrome.storage.local.set({ automation_websites: next, automation_job_id: '' });
+                    await renderRunnerSummary(next, document.getElementById('runner-profile-select').value);
+                });
+
+                chip.append(sym, ns, rmBtn);
                 websitesDisplay.appendChild(chip);
             }
         }
@@ -182,7 +213,10 @@ async function applySelectedJob(job) {
     const profileSelect = document.getElementById('runner-profile-select');
     if (websitesArea) websitesArea.value = job.websites || '';
     if (limitInput) limitInput.value = job.limit || 2;
-    if (profileSelect && job.profile_id) profileSelect.value = job.profile_id;
+    if (profileSelect && job.profile_id) {
+        const hasOption = Array.from(profileSelect.options).some((o) => o.value === job.profile_id);
+        if (hasOption) profileSelect.value = job.profile_id;
+    }
 
     await chrome.storage.local.set({
         automation_job_id: job.id || '',
@@ -222,6 +256,7 @@ async function renderPlatformsRegistryList() {
         actionsDiv.className = 'platform-row-actions';
 
         const useBtn = document.createElement('button');
+        useBtn.type = 'button';
         useBtn.className = 'action-btn-sm';
         useBtn.textContent = 'Use';
         useBtn.addEventListener('click', async (e) => {
@@ -239,20 +274,30 @@ async function renderPlatformsRegistryList() {
         });
 
         const autoFixBtn = document.createElement('button');
-        autoFixBtn.className = 'action-btn-sm magic-btn';
+        autoFixBtn.type = 'button';
+        autoFixBtn.className = 'action-btn-sm';
         autoFixBtn.textContent = 'AutoFix';
         autoFixBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            autoFixBtn.disabled = true;
+            autoFixBtn.textContent = '...';
             chrome.runtime.sendMessage({
                 action: 'auto_fix_platform_selectors', platformId: p.id, hostname: p.code, url: p.url || ('https://' + p.code),
-            }, async () => {
-                await renderPlatformsRegistryList();
-                await updateSystemMetrics();
+            }, async (res) => {
+                autoFixBtn.disabled = false;
+                autoFixBtn.textContent = 'AutoFix';
+                if (res?.success) {
+                    showInlineFeedback('platforms-feedback', `Discovered selectors for ${p.name || p.code}.`);
+                    await renderPlatformsRegistryList();
+                    await updateSystemMetrics();
+                } else {
+                    showInlineFeedback('platforms-feedback', res?.error || 'AutoFix failed.', true);
+                }
             });
         });
 
-        // US 2.3 & US 3.7: share selectors / field mappings with the central registry
         const shareBtn = document.createElement('button');
+        shareBtn.type = 'button';
         shareBtn.className = 'action-btn-sm';
         shareBtn.textContent = 'Share';
         shareBtn.addEventListener('click', (e) => {
@@ -263,10 +308,11 @@ async function renderPlatformsRegistryList() {
                 shareBtn.disabled = false;
                 if (res?.success) {
                     shareBtn.textContent = `Sent (${res.submittedCount})`;
+                    showInlineFeedback('platforms-feedback', `Submitted ${res.submittedCount} selector(s) for review.`);
                     setTimeout(() => { shareBtn.textContent = 'Share'; }, 2500);
                 } else {
                     shareBtn.textContent = 'Share';
-                    alert(res?.error || 'Could not submit selectors.');
+                    showInlineFeedback('platforms-feedback', res?.error || 'Could not submit selectors.', true);
                 }
             });
         });
@@ -291,12 +337,26 @@ async function renderPlatformsRegistryList() {
             inp.type = 'text';
             inp.value = matched ? matched.selector_string : '';
             const sb = document.createElement('button');
+            sb.type = 'button';
             sb.className = 'action-btn-sm';
             sb.textContent = 'Save';
             sb.addEventListener('click', () => {
+                sb.disabled = true;
                 chrome.runtime.sendMessage({
-                    action: 'update_specific_selector', platformId: p.id, hostname: p.code, elementTypeId: et.id, selectorString: inp.value.trim(),
-                }, () => updateSystemMetrics());
+                    action: 'update_specific_selector',
+                    platformId: p.id,
+                    hostname: p.code,
+                    elementTypeId: et.id,
+                    selectorString: inp.value.trim(),
+                }, (res) => {
+                    sb.disabled = false;
+                    if (res?.success) {
+                        showInlineFeedback('platforms-feedback', `Saved ${et.name} for ${p.code}.`);
+                        updateSystemMetrics();
+                    } else {
+                        showInlineFeedback('platforms-feedback', res?.error || 'Failed to save selector.', true);
+                    }
+                });
             });
             ig.append(inp, sb);
             g.append(lbl, ig);
@@ -311,12 +371,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     initTabs();
     try { await seedDatabase(); } catch (e) { console.error(e); }
 
+    const extIdInput = document.getElementById('extension-id-display');
+    if (extIdInput && chrome?.runtime?.id) {
+        extIdInput.value = chrome.runtime.id;
+    }
+
     const data = await chrome.storage.local.get(STORAGE_KEYS);
     const currentLang = data.preferred_locale || 'en';
     const langSelect = document.getElementById('lang-select');
     if (langSelect) langSelect.value = currentLang;
 
-    await loadProfileDropdown();
+    await loadProfileDropdown(data.automation_profile_id || null);
     await loadCustomJobs();
 
     const jobSelect = document.getElementById('job-select');
@@ -325,7 +390,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (data.automation_websites) document.getElementById('target-websites').value = data.automation_websites;
     if (data.automation_limit) document.getElementById('pagination-limit').value = data.automation_limit;
-    if (data.automation_profile_id) document.getElementById('runner-profile-select').value = data.automation_profile_id;
 
     await renderRunnerSummary(
         document.getElementById('target-websites').value,
@@ -355,28 +419,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('pagination-limit')?.addEventListener('change', (e) => {
-        const val = parseInt(e.target.value, 10);
+        const val = Number(e.target.value);
         if (Number.isInteger(val) && val >= 1) {
             chrome.storage.local.set({ automation_limit: val });
         }
     });
 });
 
-const openDashboard = () => chrome.tabs.create({ url: PWA_DEFAULT_URL });
+function openDashboard() {
+    const extId = chrome?.runtime?.id;
+    const targetUrl = extId ? `${PWA_DEFAULT_URL}?extId=${encodeURIComponent(extId)}` : PWA_DEFAULT_URL;
+    chrome.tabs.create({ url: targetUrl });
+}
+
 document.getElementById('open-pwa-btn')?.addEventListener('click', openDashboard);
 document.getElementById('open-pwa-runner-btn')?.addEventListener('click', openDashboard);
+
+document.getElementById('copy-ext-id-btn')?.addEventListener('click', async () => {
+    const val = document.getElementById('extension-id-display')?.value;
+    if (!val) return;
+    await navigator.clipboard.writeText(val);
+    const btn = document.getElementById('copy-ext-id-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+});
 
 document.getElementById('lang-select')?.addEventListener('change', async (e) => {
     await chrome.storage.local.set({ preferred_locale: e.target.value });
     await applyTranslations(e.target.value);
 });
 
-// US 1.5 manual Save Vacancy button
 document.getElementById('save-current-vacancy-btn')?.addEventListener('click', () => {
+    const btn = document.getElementById('save-current-vacancy-btn');
     const autoStatus = document.getElementById('automation-status');
+    btn.disabled = true;
     if (autoStatus) autoStatus.innerText = 'Saving current vacancy...';
     chrome.runtime.sendMessage({ action: 'save_current_vacancy' }, async (res) => {
-        if (autoStatus) autoStatus.innerText = res?.success ? 'Saved current vacancy locally.' : (res?.error || 'Could not save vacancy.');
+        btn.disabled = false;
+        if (autoStatus) {
+            autoStatus.innerText = res?.success
+                ? 'Saved current vacancy locally.'
+                : (res?.error || 'Could not save vacancy.');
+        }
         await updateVacancyCount();
         await updateSystemMetrics();
     });
@@ -400,7 +484,6 @@ document.getElementById('start-automation')?.addEventListener('click', async () 
     const keywords = keywordsText.split(',').map((s) => s.trim()).filter(Boolean);
     const autoStatus = document.getElementById('automation-status');
 
-    // US 1.4: reject empty roles, missing websites, or page limit < 1 with a clear message
     if (!websites.length) {
         if (autoStatus) autoStatus.innerText = 'Error: Select at least one website first.';
         return;
@@ -469,12 +552,27 @@ db.local_vacancies.hook('deleting', function () {
 
 document.getElementById('clear-db')?.addEventListener('click', async () => {
     try {
+        let cleared = 0;
+        let skipped = 0;
         for (const v of await db.local_vacancies.toArray()) {
-            try { await deleteVacancy(v.id); } catch {}
+            try {
+                await deleteVacancy(v.id);
+                cleared++;
+            } catch {
+                skipped++;
+            }
         }
         await updateVacancyCount();
         await updateSystemMetrics();
+        showInlineFeedback(
+            'clear-db-feedback',
+            skipped
+                ? `Cleared ${cleared} vacancies (${skipped} kept because they have linked applications).`
+                : `Cleared ${cleared} vacancies.`,
+            false
+        );
     } catch (err) {
         console.error(err);
+        showInlineFeedback('clear-db-feedback', err.message, true);
     }
 });
