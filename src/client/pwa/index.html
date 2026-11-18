@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoOffer Hub</title>
-    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%image.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%icon-192.png">
+    <link rel="apple-touch-icon" href="%BASE_URL%icon-192.png">
     <link rel="stylesheet" href="index.css">
     <script src="%BASE_URL%kit.js" defer></script>
 </head>
@@ -13,6 +16,7 @@
     <header class="app-header">
         <div class="header-top-row">
             <div class="brand-group">
+                <img src="%BASE_URL%image.svg" alt="AutoOffer logo" class="header-brand-logo" width="30" height="30" />
                 <h1 class="header-brand-title">AutoOffer</h1>
                 <span class="hub-badge">Local Hub</span>
             </div>
