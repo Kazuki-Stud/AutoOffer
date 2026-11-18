@@ -1,3 +1,7 @@
+spring:
+  liquibase:
+    contexts: local
+
 logging:
   config: classpath:logback/local.xml
   level:

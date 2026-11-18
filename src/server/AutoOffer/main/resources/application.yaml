@@ -23,6 +23,7 @@ spring:
     user: ${DB_MIGRATOR_USER}
     password: ${DB_MIGRATOR_PASSWORD}
     default-schema: public
+    contexts: ${LIQUIBASE_CONTEXTS:prod}
 
   jpa:
     open-in-view: false

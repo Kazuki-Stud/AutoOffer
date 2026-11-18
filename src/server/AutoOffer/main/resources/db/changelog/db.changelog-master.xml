@@ -21,7 +21,7 @@
     <changeSet id="V5-etl-meta" author="autooffer">
         <sqlFile path="V5__etl_meta.sql" relativeToChangelogFile="true" splitStatements="false"/>
     </changeSet>
-    <changeSet id="V6-seed-test-data" author="autooffer">
+    <changeSet id="V6-seed-test-data" author="autooffer" context="local,dev">
         <sqlFile path="db/seed/test_data.sql" relativeToChangelogFile="false" splitStatements="false"/>
     </changeSet>
 </databaseChangeLog>

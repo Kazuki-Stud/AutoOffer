@@ -30,13 +30,13 @@ GRANT SELECT ON
     regions_dict, countries_dict, cities_dict, levels_dict, work_formats_dict, employment_types_dict,
     companies_dict, positions_dict, skills, vacancies, vacancy_skills, selectors,
     v_registry_selectors, v_registry_whitelist, v_vacancies_full, mv_skill_hotwords
-TO app_read;
+    TO app_read;
 -- devices, admins, removal_requests, v_selector_review_queue are NOT readable by app_read
 
 -- ---------------- app_write ----------------
 GRANT SELECT ON devices TO app_write;                                  -- token verification
 GRANT INSERT (pseudonymous_id, auth_token_hash) ON devices TO app_write;
-GRANT UPDATE (last_active_at) ON devices TO app_write;
+GRANT UPDATE (auth_token_hash, last_active_at) ON devices TO app_write; -- token rotation & activity tracking
 
 -- column-level grants: writers can never set is_verified / verified_by_admin_id
 GRANT INSERT (name, website, created_by_device_id, updated_by_device_id) ON companies_dict TO app_write;
