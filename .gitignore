@@ -27,3 +27,4 @@ yarn-error.log*
 src/server/AutoOffer/.env
 /scripts
 *.bak
+client_bundle.txt
