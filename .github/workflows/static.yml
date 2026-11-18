@@ -30,25 +30,34 @@ jobs:
         with:
           node-version: 24
           cache: 'npm'
-          cache-dependency-path: src/client/pwa/package-lock.json
-          
+          cache-dependency-path: |
+            src/client/extension/package-lock.json
+            src/client/pwa/package-lock.json
+
       - name: Install extension dependencies
         run: npm ci
-        working-directory: src/client/extension    
+        working-directory: src/client/extension
 
-      - name: Install dependencies
+      - name: Install PWA dependencies
         run: npm ci
         working-directory: src/client/pwa
 
-      - name: Build
+      - name: Build PWA
         run: npm run build
         working-directory: src/client/pwa
 
+      - name: Verify required PWA assets in dist
+        working-directory: src/client/pwa
+        run: |
+          for f in index.html manifest.webmanifest sw.js image.svg icon-192.png icon-512.png; do
+            test -f "dist/$f" || { echo "Missing required PWA asset: dist/$f"; exit 1; }
+          done
+
       - name: List dist (debug)
-        run: find src/client/pwa/dist -type f
+        run: find src/client/pwa/dist -type f | sort
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
