@@ -1,7 +1,9 @@
 import { db } from './database/database.js';
 import { migrateLegacySecrets } from './database/crypto.js';
 import {
+    createApplication,
     deleteProfileCascade,
+    deleteResume,
     deleteVacancy,
     ensureDefaultProfile,
     getOrCreateByName,
@@ -10,6 +12,7 @@ import {
     nowIso,
     rollbackSelector,
     saveVacancy,
+    setApplicationStatus,
     setDefaultProfile,
     setSetting,
 } from './database/repository.js';
@@ -84,6 +87,25 @@ function toStringArray(val) {
     if (Array.isArray(val)) return val.map((s) => String(s).trim()).filter(Boolean);
     if (typeof val === 'string') return val.split(',').map((s) => s.trim()).filter(Boolean);
     return [];
+}
+
+async function blobToBase64(blob) {
+    if (!blob) return null;
+    const buf = blob instanceof Blob ? await blob.arrayBuffer() : blob;
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 8192) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    }
+    return btoa(bin);
+}
+
+function base64ToBlob(b64, mimeType = 'application/octet-stream') {
+    if (!b64) return null;
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
 }
 
 function waitForTabLoad(tabId) {
@@ -250,9 +272,6 @@ async function autoFixPlatformSelectors(platformId, hostname, url) {
     }
 }
 
-/**
- * US 2.2 (rollback) + US 1.2 (automatic heuristic discovery & caching).
- */
 async function resolveWorkingSelectors(tabId, hostname, platformId) {
     let rows = await getSelectorRowsForHostname(hostname);
     let selectors = rowsToSelectorMap(rows);
@@ -262,7 +281,6 @@ async function resolveWorkingSelectors(tabId, hostname, platformId) {
             const verifyRes = await sendTabMessage(tabId, { action: 'validate_selectors', selectors });
             if (verifyRes?.isValid) return selectors;
 
-            // US 2.2: attempt rollback to previous version if any rule has a previous_selector_string
             let rolledBackAny = false;
             for (const r of rows) {
                 if (r.previous_selector_string && await rollbackSelector(r.id)) {
@@ -279,7 +297,6 @@ async function resolveWorkingSelectors(tabId, hostname, platformId) {
         } catch {}
     }
 
-    // US 1.2: run heuristic discovery on page and cache discovered selectors
     try {
         const guessRes = await sendTabMessage(tabId, { action: 'auto_guess_selectors_internal' });
         if (guessRes?.success && guessRes.selectors) {
@@ -353,13 +370,8 @@ async function runAutomationPipeline(config) {
     const cleanLocations = toStringArray(locations);
     const cleanKeywords = toStringArray(keywords);
 
-    // US 1.4 validation
-    if (!cleanRoles.length) {
-        throw new Error('At least one target role is required.');
-    }
-    if (!Number.isInteger(paginationLimit) || paginationLimit < 1) {
-        throw new Error('Page limit must be at least 1.');
-    }
+    if (!cleanRoles.length) throw new Error('At least one target role is required.');
+    if (!Number.isInteger(paginationLimit) || paginationLimit < 1) throw new Error('Page limit must be at least 1.');
 
     await syncWhitelist();
 
@@ -374,7 +386,6 @@ async function runAutomationPipeline(config) {
             const hostname = new URL(targetUrl).hostname;
             const platform = await findPlatformByHostname(hostname);
 
-            // US 1.1 & BA 2.8: skip automated scraping unless board has permission_status === 'granted'
             if (!platform || platform.permission_status !== 'granted') {
                 chrome.runtime.sendMessage({
                     action: 'automation_skipped_board',
@@ -453,7 +464,7 @@ async function runAutomationPipeline(config) {
     }
 }
 
-// ---- Profile & Settings helpers (shared with PWA bridge) --------------------
+// ---- Profile, Resume & Settings helpers (shared with PWA bridge) ------------
 async function hydrateProfile(profileRow) {
     const pData = await db.personal_data.where('profile_id').equals(profileRow.id).first();
     const resume = await db.resumes.where('profile_id').equals(profileRow.id).first();
@@ -601,6 +612,72 @@ async function saveProfileRecord(incoming) {
     return hydrateProfile(row);
 }
 
+async function listHydratedResumes(profileId = null) {
+    const rows = profileId
+        ? await db.resumes.where('profile_id').equals(profileId).toArray()
+        : await db.resumes.toArray();
+    rows.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+
+    const out = [];
+    for (const r of rows) {
+        const skillRows = r.skill_ids?.length ? await db.skills.bulkGet(r.skill_ids) : [];
+        const file_data_b64 = r.file_data ? await blobToBase64(r.file_data) : null;
+        const { file_data, ...rest } = r;
+        out.push({
+            ...rest,
+            skills: skillRows.filter(Boolean).map((s) => s.name),
+            file_data_b64,
+        });
+    }
+    return out;
+}
+
+async function saveResumeRecord(incoming) {
+    const now = nowIso();
+    const skillNames = [...new Set(toStringArray(incoming.skills))];
+    const skillIds = [];
+    for (const name of skillNames) {
+        skillIds.push(await getOrCreateByName('skills', name));
+    }
+    const existing = incoming.id ? await db.resumes.get(incoming.id) : null;
+    const title = (incoming.title || '').trim();
+    const summary = (incoming.summary || '').trim() || null;
+    const plain_text = (incoming.plain_text || '').trim()
+        || [title, summary, skillNames.length ? `Skills: ${skillNames.join(', ')}` : ''].filter(Boolean).join('\n\n');
+
+    let file_data = existing?.file_data ?? null;
+    let file_name = incoming.file_name !== undefined ? (incoming.file_name || null) : (existing?.file_name ?? null);
+    let mime_type = incoming.mime_type !== undefined ? (incoming.mime_type || null) : (existing?.mime_type ?? null);
+
+    if (incoming.clear_file) {
+        file_data = null;
+        file_name = null;
+        mime_type = null;
+    } else if (incoming.file_data_b64) {
+        file_data = base64ToBlob(incoming.file_data_b64, mime_type || 'application/octet-stream');
+    }
+
+    const record = {
+        id: existing?.id || incoming.id || newId(),
+        profile_id: incoming.profile_id,
+        title,
+        summary,
+        plain_text,
+        skill_ids: skillIds,
+        file_name,
+        mime_type,
+        file_data,
+        created_at: existing?.created_at || now,
+        updated_at: now,
+    };
+    if (!record.file_data) delete record.file_data;
+    await db.resumes.put(record);
+
+    const file_data_b64 = record.file_data ? await blobToBase64(record.file_data) : null;
+    const { file_data: _ignored, ...rest } = record;
+    return { ...rest, skills: skillNames, file_data_b64 };
+}
+
 async function readAllSettings() {
     const out = {};
     for (const k of SETTING_KEYS) {
@@ -678,7 +755,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    // US 2.3 & US 3.7: share active selectors / form mappings for a platform
     if (request.action === 'share_platform_selectors') {
         (async () => {
             const rows = (await db.selectors.where('is_active').equals(1).toArray())
@@ -703,7 +779,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    // US 1.5: Manual "Save vacancy" button on the user's active tab (works on any website)
     if (request.action === 'save_current_vacancy') {
         (async () => {
             const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -866,6 +941,69 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
             await deleteProfileCascade(request.profileId);
             await ensureDefaultProfile();
             sendResponse({ status: 'success' });
+        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_resumes') {
+        listHydratedResumes(request.profileId || null)
+            .then((list) => sendResponse({ status: 'success', data: list }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'save_resume') {
+        saveResumeRecord(request.resume || {})
+            .then((saved) => sendResponse({ status: 'success', data: saved }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'delete_resume') {
+        deleteResume(request.resumeId)
+            .then(() => sendResponse({ status: 'success' }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_applications') {
+        db.applications.toArray()
+            .then((rows) => sendResponse({ status: 'success', data: rows }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'create_application') {
+        (async () => {
+            const id = await createApplication({
+                profile_id: request.profile_id,
+                vacancy_id: request.vacancy_id,
+                resume_id: request.resume_id || null,
+                cover_letter_id: request.cover_letter_id || null,
+                match_score: request.match_score ?? null,
+            });
+            if (request.status && request.status !== 'Applied') {
+                await setApplicationStatus(id, request.status);
+            }
+            if (request.notes !== undefined) {
+                await db.applications.update(id, { notes: request.notes || null });
+            }
+            const created = await db.applications.get(id);
+            sendResponse({ status: 'success', data: created });
+        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'update_application') {
+        (async () => {
+            if (request.status) {
+                await setApplicationStatus(request.id, request.status);
+            }
+            if (request.notes !== undefined) {
+                await db.applications.update(request.id, { notes: request.notes || null });
+            }
+            const updated = await db.applications.get(request.id);
+            sendResponse({ status: 'success', data: updated });
         })().catch((err) => sendResponse({ status: 'error', message: err.message }));
         return true;
     }
