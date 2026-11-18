@@ -4,14 +4,13 @@
     <meta charset="UTF-8">
     <title>AutoOffer Popup</title>
     <link rel="stylesheet" href="popup.css">
-    <script src="/kit.js" defer></script>
 </head>
 <body>
 <div class="header-container">
     <div class="brand-row">
         <h3 data-i18n="popupTitle">AutoOffer</h3>
         <div class="lang-container">
-            <select id="lang-select">
+            <select id="lang-select" aria-label="Language">
                 <option value="en">EN</option>
                 <option value="lt">LT</option>
                 <option value="ru">RU</option>
@@ -44,7 +43,7 @@
             <button id="open-pwa-runner-btn" class="text-toggle-btn">Manage in Dashboard →</button>
         </div>
         <div class="form-group">
-            <label>Select Job Configuration:</label>
+            <label for="job-select">Select Job Configuration:</label>
             <select id="job-select" class="form-select">
                 <option value="">Quick Run (Saved Selection)</option>
             </select>
@@ -55,21 +54,21 @@
             <textarea id="target-websites" rows="2" style="display: none;"></textarea>
         </div>
         <div class="form-group">
-            <label>Profile:</label>
+            <label for="runner-profile-select">Profile:</label>
             <div id="runner-profile-display" class="summary-value-box">Default Profile</div>
             <select id="runner-profile-select" class="form-select" style="margin-top: 4px;"></select>
         </div>
         <div class="form-group">
-            <label>Target Roles:</label>
+            <label>Target Roles & Filters:</label>
             <div id="runner-roles-display" class="summary-value-box">—</div>
         </div>
         <div class="form-group">
-            <label>Page Limit:</label>
+            <label for="pagination-limit">Page Limit:</label>
             <input type="number" id="pagination-limit" min="1" max="50" value="2" />
         </div>
         <div class="button-group">
             <button id="start-automation" class="primary-action-btn">Start Automation</button>
-            <button id="stop-automation">Stop</button>
+            <button id="stop-automation" class="secondary-btn">Stop</button>
         </div>
         <div id="automation-status" class="status-box">Ready</div>
         <p id="status"></p>
@@ -82,13 +81,22 @@
             <h4>Embedded Platforms & Selectors</h4>
             <span id="platform-count-badge" class="count-tag">0 platforms</span>
         </div>
+        <div id="platforms-feedback" class="inline-feedback" style="display: none;"></div>
         <div id="platforms-registry-list" class="platforms-list accordion-list"></div>
     </div>
 
     <div class="pane-section">
         <h4>Dashboard & Storage</h4>
+        <div class="form-group">
+            <label for="extension-id-display">Extension ID (for PWA Connection):</label>
+            <div class="inline-input-group">
+                <input type="text" id="extension-id-display" readonly />
+                <button id="copy-ext-id-btn" class="secondary-btn" type="button">Copy</button>
+            </div>
+        </div>
         <button id="open-pwa-btn" class="primary-action-btn">Open Full Dashboard & Settings</button>
         <button id="clear-db" data-i18n="clearDatabase">Clear Vacancies Database</button>
+        <div id="clear-db-feedback" class="inline-feedback" style="display: none;"></div>
     </div>
 </div>
 
