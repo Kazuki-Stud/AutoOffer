@@ -8,13 +8,19 @@ import {
     getSetting,
     newId,
     nowIso,
+    rollbackSelector,
     saveVacancy,
     setDefaultProfile,
     setSetting,
 } from './database/repository.js';
 import { seedDatabase } from './database/seed.js';
 import { SETTING_KEYS } from './database/validation.js';
-import { syncRegistrySelectors, syncVacancyToServer, syncWhitelist } from './apiClient.js';
+import {
+    submitSelectorProposal,
+    syncRegistrySelectors,
+    syncVacancyToServer,
+    syncWhitelist,
+} from './apiClient.js';
 
 const ELEMENT_TYPES = {
     CONTAINER:     '30000000-0000-4000-8000-000000000001',
@@ -25,7 +31,18 @@ const ELEMENT_TYPES = {
     PAGINATION:    '30000000-0000-4000-8000-000000000006',
     DESCRIPTION:   '30000000-0000-4000-8000-000000000007',
 };
-const TASK_LIST_ID = '20000000-0000-4000-8000-000000000001';
+const TASK_IDS = {
+    LIST:   '20000000-0000-4000-8000-000000000001',
+    DETAIL: '20000000-0000-4000-8000-000000000002',
+    SEARCH: '20000000-0000-4000-8000-000000000003',
+    FORM:   '20000000-0000-4000-8000-000000000004',
+};
+
+function taskForElementType(elementTypeId) {
+    if (elementTypeId === ELEMENT_TYPES.DESCRIPTION) return TASK_IDS.DETAIL;
+    if (elementTypeId === ELEMENT_TYPES.SEARCH_INPUT || elementTypeId === ELEMENT_TYPES.SEARCH_BUTTON) return TASK_IDS.SEARCH;
+    return TASK_IDS.LIST;
+}
 
 let activeAutomationSession = null;
 
@@ -63,6 +80,12 @@ function parseLinks(rawText) {
     };
 }
 
+function toStringArray(val) {
+    if (Array.isArray(val)) return val.map((s) => String(s).trim()).filter(Boolean);
+    if (typeof val === 'string') return val.split(',').map((s) => s.trim()).filter(Boolean);
+    return [];
+}
+
 function waitForTabLoad(tabId) {
     return new Promise((resolve, reject) => {
         chrome.tabs.get(tabId, (tab) => {
@@ -79,10 +102,12 @@ function waitForTabLoad(tabId) {
     });
 }
 
-function waitForNavigationOrDomChange(tabId, triggerActionFn) {
+function waitForNavigationOrDomChange(tabId, triggerActionFn, timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
         let settled = false;
+        let timer = null;
         function cleanup() {
+            clearTimeout(timer);
             chrome.tabs.onUpdated.removeListener(onUpdatedListener);
             chrome.webNavigation.onCompleted.removeListener(onNavCompleted);
         }
@@ -97,6 +122,7 @@ function waitForNavigationOrDomChange(tabId, triggerActionFn) {
         }
         chrome.tabs.onUpdated.addListener(onUpdatedListener);
         chrome.webNavigation.onCompleted.addListener(onNavCompleted);
+        timer = setTimeout(finish, timeoutMs);
 
         triggerActionFn().then((actionResult) => {
             if (actionResult && (actionResult.navigated || actionResult.domMutated)) finish();
@@ -115,7 +141,7 @@ async function sendTabMessage(tabId, message) {
             if (chrome.runtime.lastError) {
                 const errMsg = chrome.runtime.lastError.message || '';
                 if (errMsg.includes('back/forward cache') || errMsg.includes('message channel is closed') || errMsg.includes('message port closed')) {
-                    return resolve({ navigated: true, success: true });
+                    return resolve({ navigated: true, advanced: true, success: true });
                 }
                 return reject(new Error(errMsg));
             }
@@ -130,9 +156,12 @@ async function findPlatformByHostname(hostname) {
     return all.find((p) => cleanHost === p.code || cleanHost.endsWith('.' + p.code)) || null;
 }
 
-async function getSelectorsForHostname(hostname) {
+async function getSelectorRowsForHostname(hostname) {
     const activeList = await db.selectors.where('is_active').equals(1).toArray();
-    const matching = activeList.filter((item) => item.url_pattern && hostname.includes(item.url_pattern));
+    return activeList.filter((item) => item.url_pattern && hostname.includes(item.url_pattern));
+}
+
+function rowsToSelectorMap(matching) {
     const map = {
         [ELEMENT_TYPES.CONTAINER]: 'container',
         [ELEMENT_TYPES.TITLE]: 'title',
@@ -150,9 +179,14 @@ async function getSelectorsForHostname(hostname) {
     return Object.keys(result).length > 0 ? result : null;
 }
 
+async function getSelectorsForHostname(hostname) {
+    return rowsToSelectorMap(await getSelectorRowsForHostname(hostname));
+}
+
 async function saveSpecificSelector(platformId, hostname, elementTypeId, selectorString, source = 'manual') {
+    const taskId = taskForElementType(elementTypeId);
     const existing = (await db.selectors.where('[platform_id+task_id+element_type_id]')
-        .equals([platformId, TASK_LIST_ID, elementTypeId]).toArray())
+        .equals([platformId, taskId, elementTypeId]).toArray())
         .find((s) => (s.url_pattern ?? null) === hostname);
 
     if (existing) {
@@ -169,7 +203,7 @@ async function saveSpecificSelector(platformId, hostname, elementTypeId, selecto
         await db.selectors.add({
             id: newId(),
             platform_id: platformId,
-            task_id: TASK_LIST_ID,
+            task_id: taskId,
             element_type_id: elementTypeId,
             url_pattern: hostname,
             selector_kind: 'css',
@@ -183,6 +217,21 @@ async function saveSpecificSelector(platformId, hostname, elementTypeId, selecto
     }
 }
 
+async function cacheHeuristicSelectors(platformId, hostname, g) {
+    if (!platformId || !g) return;
+    const mapping = [
+        [ELEMENT_TYPES.CONTAINER, g.container],
+        [ELEMENT_TYPES.TITLE, g.title],
+        [ELEMENT_TYPES.LINK, g.link],
+        [ELEMENT_TYPES.SEARCH_INPUT, g.searchInput],
+        [ELEMENT_TYPES.PAGINATION, g.pagination],
+        [ELEMENT_TYPES.DESCRIPTION, g.description],
+    ];
+    for (const [type, val] of mapping) {
+        if (val) await saveSpecificSelector(platformId, hostname, type, val, 'heuristic');
+    }
+}
+
 async function autoFixPlatformSelectors(platformId, hostname, url) {
     let tab = null;
     try {
@@ -190,18 +239,7 @@ async function autoFixPlatformSelectors(platformId, hostname, url) {
         await waitForTabLoad(tab.id);
         const guessRes = await sendTabMessage(tab.id, { action: 'auto_guess_selectors_internal' });
         if (guessRes && guessRes.success && guessRes.selectors) {
-            const g = guessRes.selectors;
-            const mapping = [
-                [ELEMENT_TYPES.CONTAINER, g.container],
-                [ELEMENT_TYPES.TITLE, g.title],
-                [ELEMENT_TYPES.LINK, g.link],
-                [ELEMENT_TYPES.SEARCH_INPUT, g.searchInput],
-                [ELEMENT_TYPES.PAGINATION, g.pagination],
-                [ELEMENT_TYPES.DESCRIPTION, g.description],
-            ];
-            for (const [type, val] of mapping) {
-                if (val) await saveSpecificSelector(platformId, hostname, type, val, 'heuristic');
-            }
+            await cacheHeuristicSelectors(platformId, hostname, guessRes.selectors);
             return { success: true };
         }
         return { success: false, error: 'Could not automatically determine selectors.' };
@@ -210,6 +248,61 @@ async function autoFixPlatformSelectors(platformId, hostname, url) {
     } finally {
         if (tab?.id) chrome.tabs.remove(tab.id).catch(() => {});
     }
+}
+
+/**
+ * US 2.2 (rollback) + US 1.2 (automatic heuristic discovery & caching).
+ */
+async function resolveWorkingSelectors(tabId, hostname, platformId) {
+    let rows = await getSelectorRowsForHostname(hostname);
+    let selectors = rowsToSelectorMap(rows);
+
+    if (selectors?.container && selectors?.title && selectors?.link) {
+        try {
+            const verifyRes = await sendTabMessage(tabId, { action: 'validate_selectors', selectors });
+            if (verifyRes?.isValid) return selectors;
+
+            // US 2.2: attempt rollback to previous version if any rule has a previous_selector_string
+            let rolledBackAny = false;
+            for (const r of rows) {
+                if (r.previous_selector_string && await rollbackSelector(r.id)) {
+                    rolledBackAny = true;
+                }
+            }
+            if (rolledBackAny) {
+                selectors = await getSelectorsForHostname(hostname);
+                if (selectors?.container && selectors?.title && selectors?.link) {
+                    const recheck = await sendTabMessage(tabId, { action: 'validate_selectors', selectors });
+                    if (recheck?.isValid) return selectors;
+                }
+            }
+        } catch {}
+    }
+
+    // US 1.2: run heuristic discovery on page and cache discovered selectors
+    try {
+        const guessRes = await sendTabMessage(tabId, { action: 'auto_guess_selectors_internal' });
+        if (guessRes?.success && guessRes.selectors) {
+            const check = await sendTabMessage(tabId, { action: 'validate_selectors', selectors: guessRes.selectors });
+            if (check?.isValid) {
+                await cacheHeuristicSelectors(platformId, hostname, guessRes.selectors);
+                return guessRes.selectors;
+            }
+        }
+    } catch {}
+
+    return selectors || {
+        container: '[data-testid*="job" i], article, li, div[class*="job" i], div[class*="card" i]',
+        title: 'h2, h3, a[class*="title" i], [class*="jobTitle" i], [data-testid*="title" i]',
+        link: 'a[href*="job"], a[href*="career"], a',
+    };
+}
+
+function matchesFilters(text, keywords, locations) {
+    const hay = (text || '').toLowerCase();
+    const kwOk = !keywords.length || keywords.some((k) => hay.includes(k.toLowerCase()));
+    const locOk = !locations.length || locations.some((l) => hay.includes(l.toLowerCase()));
+    return kwOk && locOk;
 }
 
 async function persistAndSyncVacancies(hostname, vacancies, { source = 'auto' } = {}) {
@@ -230,21 +323,6 @@ async function persistAndSyncVacancies(hostname, vacancies, { source = 'auto' } 
     }
 }
 
-async function resolveWorkingSelectors(tabId, hostname) {
-    const selectors = await getSelectorsForHostname(hostname);
-    if (selectors?.container && selectors?.title && selectors?.link) {
-        try {
-            const verifyRes = await sendTabMessage(tabId, { action: 'validate_selectors', selectors });
-            if (verifyRes?.isValid) return selectors;
-        } catch {}
-    }
-    return selectors || {
-        container: '[data-testid*="job" i], article, li, div[class*="job" i], div[class*="card" i]',
-        title: 'h2, h3, a[class*="title" i], [class*="jobTitle" i], [data-testid*="title" i]',
-        link: 'a[href*="job"], a[href*="career"], a',
-    };
-}
-
 async function calculateStorageWeight() {
     let totalBytes = 0;
     for (const table of [db.local_vacancies, db.platforms_dict, db.selectors, db.personal_data, db.resumes, db.automation_jobs, db.applications]) {
@@ -262,7 +340,27 @@ const randomDelay = (minMs = 1500, maxMs = 3500) =>
     new Promise((r) => setTimeout(r, minMs + Math.random() * (maxMs - minMs)));
 
 async function runAutomationPipeline(config) {
-    const { websites, roles, paginationLimit, fieldsMode = 'all' } = config;
+    const {
+        websites = [],
+        roles = [],
+        locations = [],
+        keywords = [],
+        paginationLimit,
+        fieldsMode = 'all',
+    } = config;
+
+    const cleanRoles = toStringArray(roles);
+    const cleanLocations = toStringArray(locations);
+    const cleanKeywords = toStringArray(keywords);
+
+    // US 1.4 validation
+    if (!cleanRoles.length) {
+        throw new Error('At least one target role is required.');
+    }
+    if (!Number.isInteger(paginationLimit) || paginationLimit < 1) {
+        throw new Error('Page limit must be at least 1.');
+    }
+
     await syncWhitelist();
 
     let tab = null;
@@ -276,6 +374,7 @@ async function runAutomationPipeline(config) {
             const hostname = new URL(targetUrl).hostname;
             const platform = await findPlatformByHostname(hostname);
 
+            // US 1.1 & BA 2.8: skip automated scraping unless board has permission_status === 'granted'
             if (!platform || platform.permission_status !== 'granted') {
                 chrome.runtime.sendMessage({
                     action: 'automation_skipped_board',
@@ -289,7 +388,7 @@ async function runAutomationPipeline(config) {
             await waitForTabLoad(tabId);
             const collected = [];
 
-            for (const role of roles) {
+            for (const role of cleanRoles) {
                 if (!activeAutomationSession || activeAutomationSession.abort) break;
                 const existingSelectors = await getSelectorsForHostname(hostname);
                 await waitForNavigationOrDomChange(tabId, () =>
@@ -297,7 +396,7 @@ async function runAutomationPipeline(config) {
                 );
                 await waitForTabLoad(tabId);
 
-                const workingSelectors = await resolveWorkingSelectors(tabId, hostname);
+                const workingSelectors = await resolveWorkingSelectors(tabId, hostname, platform.id);
                 let pagesProcessed = 0;
                 while (pagesProcessed < paginationLimit) {
                     if (!activeAutomationSession || activeAutomationSession.abort) break;
@@ -314,25 +413,35 @@ async function runAutomationPipeline(config) {
                         return pageOut;
                     });
                     await waitForTabLoad(tabId);
-                    if (!pageOut?.advanced) break;
+                    if (!pageOut?.advanced && !pageOut?.navigated) break;
                 }
             }
 
             if (collected.length > 0) {
                 if (fieldsMode === 'all') {
+                    const detailSel = (await getSelectorsForHostname(hostname))?.description;
                     for (const vacancy of collected) {
                         if (!activeAutomationSession || activeAutomationSession.abort) break;
                         await randomDelay(1500, 3500);
                         try {
                             await chrome.tabs.update(tabId, { url: vacancy.url });
                             await waitForTabLoad(tabId);
-                            const detailRes = await sendTabMessage(tabId, { action: 'extract_detail_description' });
+                            const detailRes = await sendTabMessage(tabId, {
+                                action: 'extract_detail_description',
+                                descriptionSelector: detailSel,
+                            });
                             if (detailRes?.description) vacancy.description = detailRes.description;
                         } catch { vacancy.description = ''; }
+
+                        const fullText = `${vacancy.fullPositionName || ''} ${vacancy.cardText || ''} ${vacancy.description || ''}`;
+                        if (!matchesFilters(fullText, cleanKeywords, cleanLocations)) continue;
                         await persistAndSyncVacancies(hostname, [vacancy], { source: 'auto' });
                     }
                 } else {
-                    await persistAndSyncVacancies(hostname, collected, { source: 'auto' });
+                    const filtered = collected.filter((v) =>
+                        matchesFilters(`${v.fullPositionName || ''} ${v.cardText || ''}`, cleanKeywords, cleanLocations)
+                    );
+                    await persistAndSyncVacancies(hostname, filtered, { source: 'auto' });
                 }
             }
         }
@@ -370,6 +479,8 @@ async function hydrateProfile(profileRow) {
         headline: resume?.title || '',
         skills: skillRows.filter(Boolean).map((s) => s.name).join(', '),
         roles: (prefs?.roles || []).join(', '),
+        locations: (prefs?.locations || []).join(', '),
+        keywords: (prefs?.keywords || []).join(', '),
     };
 }
 
@@ -462,17 +573,23 @@ async function saveProfileRecord(incoming) {
         }
     }
 
-    if (incoming.roles !== undefined) {
-        const rolesArr = (Array.isArray(incoming.roles) ? incoming.roles : String(incoming.roles).split(','))
-            .map((s) => s.trim()).filter(Boolean);
+    if (incoming.roles !== undefined || incoming.locations !== undefined || incoming.keywords !== undefined) {
+        const rolesArr = toStringArray(incoming.roles);
+        const locsArr = toStringArray(incoming.locations);
+        const kwArr = toStringArray(incoming.keywords);
         const existingPrefs = await db.search_preferences.where('profile_id').equals(profileId).first();
         if (rolesArr.length > 0) {
             if (existingPrefs) {
-                await db.search_preferences.update(existingPrefs.id, { roles: rolesArr, updated_at: now });
+                await db.search_preferences.update(existingPrefs.id, {
+                    roles: rolesArr,
+                    locations: locsArr,
+                    keywords: kwArr,
+                    updated_at: now,
+                });
             } else {
                 await db.search_preferences.add({
                     id: newId(), profile_id: profileId, roles: rolesArr,
-                    locations: [], keywords: [], urls: [], platform_ids: [], page_limit: 2, updated_at: now,
+                    locations: locsArr, keywords: kwArr, urls: [], platform_ids: [], page_limit: 2, updated_at: now,
                 });
             }
         } else if (existingPrefs) {
@@ -561,6 +678,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    // US 2.3 & US 3.7: share active selectors / form mappings for a platform
+    if (request.action === 'share_platform_selectors') {
+        (async () => {
+            const rows = (await db.selectors.where('is_active').equals(1).toArray())
+                .filter((s) => s.platform_id === request.platformId && s.selector_string?.trim());
+            if (!rows.length) {
+                return sendResponse({ success: false, error: 'No active selectors configured for this platform.' });
+            }
+            let submittedCount = 0;
+            for (const s of rows) {
+                await submitSelectorProposal({
+                    platformId: s.platform_id,
+                    taskId: s.task_id,
+                    elementTypeId: s.element_type_id,
+                    urlPattern: s.url_pattern || null,
+                    kind: s.selector_kind || 'css',
+                    selectorString: s.selector_string,
+                });
+                submittedCount++;
+            }
+            sendResponse({ success: true, submittedCount });
+        })().catch((err) => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    // US 1.5: Manual "Save vacancy" button on the user's active tab (works on any website)
     if (request.action === 'save_current_vacancy') {
         (async () => {
             const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });

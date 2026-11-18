@@ -32,6 +32,8 @@ async function getHydratedProfile(profileId = null) {
         headline: resume?.title || '',
         skills: skillRows.filter(Boolean).map((s) => s.name).join(', '),
         roles: (prefs?.roles || []).join(', '),
+        locations: (prefs?.locations || []).join(', '),
+        keywords: (prefs?.keywords || []).join(', '),
     };
 }
 
@@ -95,26 +97,23 @@ function initTabs() {
     });
 }
 
-async function loadProfileDropdown(preferredId = '') {
+async function loadProfileDropdown() {
     const selectEl = document.getElementById('runner-profile-select');
     if (!selectEl) return;
-    const def = await ensureDefaultProfile();
+    await ensureDefaultProfile();
     const profiles = await db.user_profiles.toArray();
+    const currentVal = selectEl.value;
     selectEl.innerHTML = '';
-
     for (const prof of profiles) {
         const pData = await db.personal_data.where('profile_id').equals(prof.id).first();
         const opt = document.createElement('option');
         opt.value = prof.id;
         const fullName = pData ? `${pData.first_name || ''} ${pData.last_name || ''}`.trim() : '';
-        opt.textContent = `${fullName || prof.name || 'Profile'}${prof.is_default ? ' (Default)' : ''}`;
+        opt.textContent = fullName || prof.name || 'Default Profile';
         selectEl.appendChild(opt);
     }
-
-    if (preferredId && profiles.some((p) => p.id === preferredId)) {
-        selectEl.value = preferredId;
-    } else {
-        selectEl.value = def.id;
+    if (currentVal && profiles.some((p) => p.id === currentVal)) {
+        selectEl.value = currentVal;
     }
 }
 
@@ -166,7 +165,14 @@ async function renderRunnerSummary(websitesStr, profileId) {
     }
     if (rolesDisplay) {
         const activeJob = currentCustomJobs.find((j) => j.id === document.getElementById('job-select')?.value);
-        rolesDisplay.textContent = activeJob?.roles || pObj.roles || pObj.skills || 'Not configured (set in Dashboard)';
+        const rolesVal = activeJob?.roles || pObj.roles || pObj.skills || '';
+        const locVal = activeJob?.locations || pObj.locations || '';
+        const kwVal = activeJob?.keywords || pObj.keywords || '';
+        const parts = [];
+        if (rolesVal) parts.push(`Roles: ${rolesVal}`);
+        if (locVal) parts.push(`Locations: ${locVal}`);
+        if (kwVal) parts.push(`Keywords: ${kwVal}`);
+        rolesDisplay.textContent = parts.length ? parts.join(' | ') : 'Not configured (set in Dashboard)';
     }
 }
 
@@ -220,15 +226,13 @@ async function renderPlatformsRegistryList() {
         useBtn.textContent = 'Use';
         useBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            const jobSelect = document.getElementById('job-select');
-            if (jobSelect) jobSelect.value = '';
             const area = document.getElementById('target-websites');
             const lines = area.value.trim().split('\n').filter(Boolean);
             const target = p.url || ('https://' + p.code);
             if (!lines.includes(target)) {
                 lines.push(target);
                 area.value = lines.join('\n');
-                await chrome.storage.local.set({ automation_job_id: '', automation_websites: area.value });
+                await chrome.storage.local.set({ automation_websites: area.value });
                 await renderRunnerSummary(area.value, document.getElementById('runner-profile-select').value);
             }
             document.getElementById('tab-btn-jobs')?.click();
@@ -247,7 +251,27 @@ async function renderPlatformsRegistryList() {
             });
         });
 
-        actionsDiv.append(useBtn, autoFixBtn);
+        // US 2.3 & US 3.7: share selectors / field mappings with the central registry
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'action-btn-sm';
+        shareBtn.textContent = 'Share';
+        shareBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            shareBtn.disabled = true;
+            shareBtn.textContent = '...';
+            chrome.runtime.sendMessage({ action: 'share_platform_selectors', platformId: p.id }, (res) => {
+                shareBtn.disabled = false;
+                if (res?.success) {
+                    shareBtn.textContent = `Sent (${res.submittedCount})`;
+                    setTimeout(() => { shareBtn.textContent = 'Share'; }, 2500);
+                } else {
+                    shareBtn.textContent = 'Share';
+                    alert(res?.error || 'Could not submit selectors.');
+                }
+            });
+        });
+
+        actionsDiv.append(useBtn, autoFixBtn, shareBtn);
         summaryEl.append(titleWrapper, actionsDiv);
         detailsEl.appendChild(summaryEl);
 
@@ -292,7 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const langSelect = document.getElementById('lang-select');
     if (langSelect) langSelect.value = currentLang;
 
-    await loadProfileDropdown(data.automation_profile_id || '');
+    await loadProfileDropdown();
     await loadCustomJobs();
 
     const jobSelect = document.getElementById('job-select');
@@ -301,6 +325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (data.automation_websites) document.getElementById('target-websites').value = data.automation_websites;
     if (data.automation_limit) document.getElementById('pagination-limit').value = data.automation_limit;
+    if (data.automation_profile_id) document.getElementById('runner-profile-select').value = data.automation_profile_id;
 
     await renderRunnerSummary(
         document.getElementById('target-websites').value,
@@ -330,7 +355,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('pagination-limit')?.addEventListener('change', (e) => {
-        chrome.storage.local.set({ automation_limit: parseInt(e.target.value, 10) || 2 });
+        const val = parseInt(e.target.value, 10);
+        if (Number.isInteger(val) && val >= 1) {
+            chrome.storage.local.set({ automation_limit: val });
+        }
     });
 });
 
@@ -343,6 +371,7 @@ document.getElementById('lang-select')?.addEventListener('change', async (e) => 
     await applyTranslations(e.target.value);
 });
 
+// US 1.5 manual Save Vacancy button
 document.getElementById('save-current-vacancy-btn')?.addEventListener('click', () => {
     const autoStatus = document.getElementById('automation-status');
     if (autoStatus) autoStatus.innerText = 'Saving current vacancy...';
@@ -355,18 +384,33 @@ document.getElementById('save-current-vacancy-btn')?.addEventListener('click', (
 
 document.getElementById('start-automation')?.addEventListener('click', async () => {
     const websitesText = document.getElementById('target-websites').value.trim();
-    const limit = parseInt(document.getElementById('pagination-limit').value, 10) || 1;
+    const rawLimit = document.getElementById('pagination-limit').value;
+    const limit = Number(rawLimit);
     const profileId = document.getElementById('runner-profile-select').value;
     const activeJob = currentCustomJobs.find((j) => j.id === document.getElementById('job-select').value);
 
     const pObj = await getHydratedProfile(profileId || null);
     const rolesText = (activeJob?.roles || pObj.roles || pObj.skills || '').trim();
+    const locationsText = (activeJob?.locations || pObj.locations || '').trim();
+    const keywordsText = (activeJob?.keywords || pObj.keywords || '').trim();
+
     const websites = websitesText.split('\n').map((s) => s.trim()).filter(Boolean);
     const roles = rolesText.split(',').map((s) => s.trim()).filter(Boolean);
+    const locations = locationsText.split(',').map((s) => s.trim()).filter(Boolean);
+    const keywords = keywordsText.split(',').map((s) => s.trim()).filter(Boolean);
     const autoStatus = document.getElementById('automation-status');
 
-    if (!websites.length || !roles.length) {
-        if (autoStatus) autoStatus.innerText = 'Select websites and set target roles in Dashboard first.';
+    // US 1.4: reject empty roles, missing websites, or page limit < 1 with a clear message
+    if (!websites.length) {
+        if (autoStatus) autoStatus.innerText = 'Error: Select at least one website first.';
+        return;
+    }
+    if (!roles.length) {
+        if (autoStatus) autoStatus.innerText = 'Error: Role list is empty. Set target roles in Dashboard.';
+        return;
+    }
+    if (!Number.isInteger(limit) || limit < 1) {
+        if (autoStatus) autoStatus.innerText = 'Error: Page limit must be at least 1.';
         return;
     }
 
@@ -378,6 +422,8 @@ document.getElementById('start-automation')?.addEventListener('click', async () 
         config: {
             websites,
             roles,
+            locations,
+            keywords,
             paginationLimit: limit,
             fieldsMode: activeJob?.fields_mode || 'all',
             jobTitle: activeJob?.title || 'Quick Automation',
