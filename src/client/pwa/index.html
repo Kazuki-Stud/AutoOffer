@@ -19,6 +19,7 @@
             <div class="header-actions">
                 <nav class="pwa-nav">
                     <button id="nav-btn-vacancies" class="pwa-nav-btn active" data-view="view-vacancies">Vacancies</button>
+                    <button id="nav-btn-jobs" class="pwa-nav-btn" data-view="view-jobs">Jobs & Automation</button>
                     <button id="nav-btn-profile" class="pwa-nav-btn" data-view="view-profile">Profile</button>
                     <button id="nav-btn-settings" class="pwa-nav-btn" data-view="view-settings">Settings & Sync</button>
                 </nav>
@@ -85,13 +86,80 @@
         </div>
     </div>
 
+    <div id="view-jobs" class="pwa-view" style="display: none;">
+        <div class="pwa-card">
+            <div class="card-header-bar">
+                <h2 id="pwa-job-form-heading">Create Automation Job</h2>
+                <span id="pwa-jobs-source-tag" class="tag-status">Extension Synced</span>
+            </div>
+            <div class="profile-grid">
+                <div class="form-field">
+                    <label>Job Title</label>
+                    <input type="text" id="pwa-job-title" placeholder="e.g. Frontend React Search" />
+                </div>
+                <div class="form-field">
+                    <label>Profile to Use</label>
+                    <select id="pwa-job-profile" class="form-select"></select>
+                </div>
+                <div class="form-field full-width">
+                    <label>Target Platforms</label>
+                    <div id="pwa-job-platforms-picker" class="chips-grid"></div>
+                </div>
+                <div class="form-field full-width">
+                    <label>Target Roles (comma-separated, overrides profile roles if set)</label>
+                    <input type="text" id="pwa-job-roles" placeholder="Frontend Developer, React, TypeScript" />
+                </div>
+                <div class="form-field">
+                    <label>Fields Extraction</label>
+                    <select id="pwa-job-fields" class="form-select">
+                        <option value="all">All Fields (Title, URL, Details)</option>
+                        <option value="minimum">Minimum Fields (Title, URL)</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Page Limit</label>
+                    <input type="number" id="pwa-job-limit" min="1" max="50" value="2" />
+                </div>
+            </div>
+            <div class="profile-actions-bar">
+                <button id="pwa-save-job-btn" class="primary-btn">Save Job</button>
+                <button id="pwa-cancel-job-btn" class="secondary-btn" style="display: none;">Cancel Edit</button>
+                <span id="pwa-job-status" class="status-msg"></span>
+            </div>
+        </div>
+
+        <div class="pwa-card">
+            <div class="card-header-bar">
+                <h2>Saved Automation Jobs</h2>
+                <span id="pwa-jobs-count" class="tag-status">0 jobs</span>
+            </div>
+            <div id="pwa-jobs-list" class="jobs-list"></div>
+        </div>
+    </div>
+
     <div id="view-profile" class="pwa-view" style="display: none;">
         <div class="pwa-card">
             <div class="card-header-bar">
-                <h2>Candidate Profile & Default Resume</h2>
-                <span class="tag-status">Device Local (Dexie v7)</span>
+                <h2>Candidate Profiles & Default Resume</h2>
+                <span id="pwa-profile-source-tag" class="tag-status">Device Local (Dexie v7)</span>
+            </div>
+            <div class="profile-toolbar">
+                <select id="pwa-profile-select" class="form-select"></select>
+                <button id="pwa-new-profile-btn" class="secondary-btn">+ New Profile</button>
+                <button id="pwa-delete-profile-btn" class="clear-button">Delete Profile</button>
             </div>
             <div class="profile-grid">
+                <div class="form-field">
+                    <label>Profile Label</label>
+                    <input type="text" id="pwa-prof-label" placeholder="e.g. Backend Profile" />
+                </div>
+                <div class="form-field">
+                    <label>Default Profile</label>
+                    <label class="inline-check">
+                        <input type="checkbox" id="pwa-prof-default" />
+                        <span>Use as default profile</span>
+                    </label>
+                </div>
                 <div class="form-field">
                     <label>First Name</label>
                     <input type="text" id="pwa-prof-firstname" placeholder="First Name" />
@@ -115,6 +183,10 @@
                 <div class="form-field full-width">
                     <label>Resume Variant Title / Headline</label>
                     <input type="text" id="pwa-prof-headline" placeholder="Backend Architecture 2026" />
+                </div>
+                <div class="form-field full-width">
+                    <label>Target Roles (comma-separated)</label>
+                    <input type="text" id="pwa-prof-roles" placeholder="Backend Developer, Java Developer" />
                 </div>
                 <div class="form-field full-width">
                     <label>Portfolio / Professional Links (comma-separated URLs)</label>
@@ -156,7 +228,7 @@
         <div class="pwa-card">
             <div class="card-header-bar">
                 <h2>Synchronization & Privacy Options</h2>
-                <span class="tag-status">Extension Bridge</span>
+                <span id="pwa-settings-source-tag" class="tag-status">Extension Bridge</span>
             </div>
             <div class="sync-form-grid">
                 <div class="form-field">
@@ -188,9 +260,16 @@
                     <input type="url" id="server-url-input" placeholder="http://localhost:8080" autocomplete="off" />
                 </div>
                 <div class="form-field">
-                    <label>
+                    <label>Submission Mode</label>
+                    <select id="submission-mode-select" class="form-select">
+                        <option value="semi_automated">Semi-Automated (Highlight & Confirm)</option>
+                        <option value="manual">Manual Only</option>
+                    </select>
+                </div>
+                <div class="form-field full-width">
+                    <label class="inline-check">
                         <input type="checkbox" id="private-use-only-toggle" />
-                        Private use only (do not send vacancies/URLs to server)
+                        <span>Private use only (do not send vacancies or URLs to server)</span>
                     </label>
                 </div>
             </div>

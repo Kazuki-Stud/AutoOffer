@@ -27,7 +27,7 @@ export async function ensureRegisteredDevice() {
 
 async function deviceFetch(path, options = {}) {
     const { pseudonymousId, token } = await ensureRegisteredDevice();
-    const res = await fetch(`${await baseUrl()}${path}`, {
+    return fetch(`${await baseUrl()}${path}`, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
@@ -36,23 +36,57 @@ async function deviceFetch(path, options = {}) {
             ...(options.headers || {}),
         },
     });
-    return res;
 }
 
-/** US 1.1: refresh platform whitelist permission_status before automated collection. */
+/** US 1.1: refresh platform whitelist permission_status and insert newly added server boards. */
 export async function syncWhitelist() {
     try {
-        const res = await fetch(`${await baseUrl()}/api/registry/whitelist`);
+        const base = await baseUrl();
+        const res = await fetch(`${base}/api/registry/whitelist`);
         if (!res.ok) return false;
         const rows = await res.json();
+        if (!Array.isArray(rows)) return false;
+
+        const localCodes = new Set((await db.platforms_dict.toArray()).map((p) => p.code));
+        const hasMissing = rows.some((r) => !localCodes.has(r.platformCode ?? r.platform_code));
+
+        const idByCode = new Map();
+        if (hasMissing) {
+            try {
+                const bootRes = await fetch(`${base}/api/dictionaries/bootstrap`);
+                if (bootRes.ok) {
+                    const boot = await bootRes.json();
+                    for (const p of boot.platforms || []) {
+                        if (p.code && p.id) idByCode.set(p.code, p.id);
+                    }
+                }
+            } catch {}
+        }
+
         const now = nowIso();
         await db.transaction('rw', db.platforms_dict, async () => {
             for (const r of rows) {
                 const code = r.platformCode ?? r.platform_code;
                 const perm = r.permissionStatus ?? r.permission_status ?? 'none';
+                if (!code) continue;
+
                 const existing = await db.platforms_dict.where('code').equals(code).first();
                 if (existing) {
-                    await db.platforms_dict.update(existing.id, { permission_status: perm, last_checked_at: now });
+                    await db.platforms_dict.update(existing.id, {
+                        name: r.name || existing.name,
+                        url: r.url || existing.url,
+                        permission_status: perm,
+                        last_checked_at: now,
+                    });
+                } else {
+                    await db.platforms_dict.add({
+                        id: idByCode.get(code) || crypto.randomUUID(),
+                        name: r.name || code,
+                        code,
+                        url: r.url || `https://${code}`,
+                        permission_status: perm,
+                        last_checked_at: now,
+                    });
                 }
             }
         });

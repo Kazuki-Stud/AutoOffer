@@ -1,9 +1,19 @@
 import { db } from './database/database.js';
 import { migrateLegacySecrets } from './database/crypto.js';
 import {
-    ensureDefaultProfile, getSetting, newId, nowIso, saveVacancy
+    deleteProfileCascade,
+    deleteVacancy,
+    ensureDefaultProfile,
+    getOrCreateByName,
+    getSetting,
+    newId,
+    nowIso,
+    saveVacancy,
+    setDefaultProfile,
+    setSetting,
 } from './database/repository.js';
 import { seedDatabase } from './database/seed.js';
+import { SETTING_KEYS } from './database/validation.js';
 import { syncRegistrySelectors, syncVacancyToServer, syncWhitelist } from './apiClient.js';
 
 const ELEMENT_TYPES = {
@@ -34,6 +44,24 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         syncWhitelist().then(syncRegistrySelectors).catch(console.error);
     }
 });
+
+function isSafeHttpUrl(raw) {
+    try {
+        const u = new URL(raw);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
+function parseLinks(rawText) {
+    const urls = (rawText || '').split(/[\s,]+/).map((s) => s.trim()).filter(isSafeHttpUrl);
+    return {
+        github: urls.find((u) => u.includes('github.com')) || null,
+        linkedin: urls.find((u) => u.includes('linkedin.com')) || null,
+        website: urls.find((u) => !u.includes('github.com') && !u.includes('linkedin.com')) || null,
+    };
+}
 
 function waitForTabLoad(tabId) {
     return new Promise((resolve, reject) => {
@@ -219,7 +247,7 @@ async function resolveWorkingSelectors(tabId, hostname) {
 
 async function calculateStorageWeight() {
     let totalBytes = 0;
-    for (const table of [db.local_vacancies, db.platforms_dict, db.selectors, db.personal_data, db.resumes, db.automation_jobs]) {
+    for (const table of [db.local_vacancies, db.platforms_dict, db.selectors, db.personal_data, db.resumes, db.automation_jobs, db.applications]) {
         try {
             totalBytes += new Blob([JSON.stringify(await table.toArray())]).size;
         } catch {}
@@ -248,7 +276,6 @@ async function runAutomationPipeline(config) {
             const hostname = new URL(targetUrl).hostname;
             const platform = await findPlatformByHostname(hostname);
 
-            // US 1.1 & BA 2.8: skip automated scraping unless board has permission_status === 'granted'
             if (!platform || platform.permission_status !== 'granted') {
                 chrome.runtime.sendMessage({
                     action: 'automation_skipped_board',
@@ -317,38 +344,182 @@ async function runAutomationPipeline(config) {
     }
 }
 
-async function saveProfileRecord(incoming) {
-    const profile = await ensureDefaultProfile();
-    const clean = {
-        first_name: incoming.first_name?.trim() || 'User',
-        last_name: incoming.last_name?.trim() || 'Candidate',
-        email: incoming.email?.trim() || 'user@example.com',
-        phone: incoming.phone?.trim() || null,
-        location: incoming.location?.trim() || null,
-        website: incoming.website?.trim() || null,
-        github: incoming.github?.trim() || null,
-        linkedin: incoming.linkedin?.trim() || null,
-        telegram: incoming.telegram?.trim() || null,
-        education: incoming.education?.trim() || null,
-        updated_at: nowIso(),
+// ---- Profile & Settings helpers (shared with PWA bridge) --------------------
+async function hydrateProfile(profileRow) {
+    const pData = await db.personal_data.where('profile_id').equals(profileRow.id).first();
+    const resume = await db.resumes.where('profile_id').equals(profileRow.id).first();
+    const prefs = await db.search_preferences.where('profile_id').equals(profileRow.id).first();
+    const skillRows = resume?.skill_ids?.length ? await db.skills.bulkGet(resume.skill_ids) : [];
+    const links = pData ? [pData.github, pData.linkedin, pData.website].filter(Boolean).join(', ') : '';
+
+    return {
+        profile_id: profileRow.id,
+        profile_name: profileRow.name,
+        is_default: profileRow.is_default,
+        first_name: pData?.first_name || '',
+        last_name: pData?.last_name || '',
+        email: pData?.email || '',
+        phone: pData?.phone || '',
+        location: pData?.location || '',
+        github: pData?.github || null,
+        linkedin: pData?.linkedin || null,
+        website: pData?.website || null,
+        telegram: pData?.telegram || null,
+        education: pData?.education || null,
+        links,
+        headline: resume?.title || '',
+        skills: skillRows.filter(Boolean).map((s) => s.name).join(', '),
+        roles: (prefs?.roles || []).join(', '),
     };
-    const existing = await db.personal_data.where('profile_id').equals(profile.id).first();
-    if (existing) {
-        await db.personal_data.update(existing.id, clean);
-    } else {
-        await db.personal_data.add({ id: newId(), profile_id: profile.id, ...clean, created_at: nowIso() });
-    }
 }
 
+async function listHydratedProfiles() {
+    await ensureDefaultProfile();
+    const profiles = await db.user_profiles.toArray();
+    return Promise.all(profiles.map(hydrateProfile));
+}
+
+async function saveProfileRecord(incoming) {
+    const now = nowIso();
+    let profileId = incoming.profile_id || null;
+
+    if (profileId) {
+        const existingProf = await db.user_profiles.get(profileId);
+        if (!existingProf) {
+            await db.user_profiles.add({
+                id: profileId,
+                name: incoming.profile_name?.trim() || `${incoming.first_name || 'Profile'} ${incoming.last_name || ''}`.trim(),
+                is_default: incoming.is_default ? 1 : 0,
+                created_at: now,
+                updated_at: now,
+            });
+        } else if (incoming.profile_name) {
+            await db.user_profiles.update(profileId, { name: incoming.profile_name.trim(), updated_at: now });
+        }
+    } else if (incoming.create_new) {
+        profileId = newId();
+        await db.user_profiles.add({
+            id: profileId,
+            name: incoming.profile_name?.trim() || `${incoming.first_name || 'New'} ${incoming.last_name || 'Profile'}`.trim(),
+            is_default: incoming.is_default ? 1 : 0,
+            created_at: now,
+            updated_at: now,
+        });
+    } else {
+        const def = await ensureDefaultProfile();
+        profileId = def.id;
+        if (incoming.profile_name) {
+            await db.user_profiles.update(profileId, { name: incoming.profile_name.trim(), updated_at: now });
+        }
+    }
+
+    if (incoming.is_default === 1 || incoming.is_default === true) {
+        await setDefaultProfile(profileId);
+    }
+
+    const parsedLinks = incoming.links !== undefined
+        ? parseLinks(incoming.links)
+        : {
+            github: incoming.github?.trim() || null,
+            linkedin: incoming.linkedin?.trim() || null,
+            website: incoming.website?.trim() || null,
+        };
+
+    const cleanPersonal = {
+        first_name: incoming.first_name?.trim() || '',
+        last_name: incoming.last_name?.trim() || '',
+        email: incoming.email?.trim() || '',
+        phone: incoming.phone?.trim() || null,
+        location: incoming.location?.trim() || null,
+        website: parsedLinks.website,
+        github: parsedLinks.github,
+        linkedin: parsedLinks.linkedin,
+        telegram: incoming.telegram?.trim() || null,
+        education: incoming.education?.trim() || null,
+        updated_at: now,
+    };
+
+    const existingPersonal = await db.personal_data.where('profile_id').equals(profileId).first();
+    if (existingPersonal) {
+        await db.personal_data.update(existingPersonal.id, cleanPersonal);
+    } else {
+        await db.personal_data.add({ id: newId(), profile_id: profileId, ...cleanPersonal, created_at: now });
+    }
+
+    if (incoming.headline !== undefined || incoming.skills !== undefined) {
+        const skillNames = [...new Set((incoming.skills || '').split(',').map((s) => s.trim()).filter(Boolean))];
+        const skillIds = [];
+        for (const name of skillNames) {
+            skillIds.push(await getOrCreateByName('skills', name));
+        }
+        const headline = incoming.headline?.trim() || 'Default Resume';
+        const plainText = `${headline}\nSkills: ${skillNames.join(', ')}`;
+        const existingResume = await db.resumes.where('profile_id').equals(profileId).first();
+        if (existingResume) {
+            await db.resumes.update(existingResume.id, { title: headline, plain_text: plainText, skill_ids: skillIds, updated_at: now });
+        } else {
+            await db.resumes.add({ id: newId(), profile_id: profileId, title: headline, plain_text: plainText, skill_ids: skillIds, created_at: now, updated_at: now });
+        }
+    }
+
+    if (incoming.roles !== undefined) {
+        const rolesArr = (Array.isArray(incoming.roles) ? incoming.roles : String(incoming.roles).split(','))
+            .map((s) => s.trim()).filter(Boolean);
+        const existingPrefs = await db.search_preferences.where('profile_id').equals(profileId).first();
+        if (rolesArr.length > 0) {
+            if (existingPrefs) {
+                await db.search_preferences.update(existingPrefs.id, { roles: rolesArr, updated_at: now });
+            } else {
+                await db.search_preferences.add({
+                    id: newId(), profile_id: profileId, roles: rolesArr,
+                    locations: [], keywords: [], urls: [], platform_ids: [], page_limit: 2, updated_at: now,
+                });
+            }
+        } else if (existingPrefs) {
+            await db.search_preferences.delete(existingPrefs.id);
+        }
+    }
+
+    const row = await db.user_profiles.get(profileId);
+    return hydrateProfile(row);
+}
+
+async function readAllSettings() {
+    const out = {};
+    for (const k of SETTING_KEYS) {
+        out[k] = await getSetting(k);
+    }
+    return out;
+}
+
+async function saveJobRecord(incoming) {
+    const jobData = { ...incoming };
+    if (!jobData.id) {
+        jobData.id = newId();
+        jobData.created_at = nowIso();
+        jobData.status = jobData.status || 'ready';
+        await db.automation_jobs.add(jobData);
+    } else {
+        const existing = await db.automation_jobs.get(jobData.id);
+        jobData.created_at = existing?.created_at || jobData.created_at || nowIso();
+        jobData.status = jobData.status || existing?.status || 'ready';
+        await db.automation_jobs.put(jobData);
+    }
+    return jobData;
+}
+
+// ---- Internal runtime messages (popup / content) ----------------------------
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'get_background_status') {
-        calculateStorageWeight().then((w) => sendResponse({
-            success: true,
-            isRunning: Boolean(activeAutomationSession),
-            activeJobTitle: activeAutomationSession?.config?.jobTitle || null,
-            storageWeight: w.formatted,
-            storageBytes: w.bytes,
-        })).catch((err) => sendResponse({ success: false, error: err.message }));
+        Promise.all([calculateStorageWeight(), getSetting('private_use_only')])
+            .then(([w, priv]) => sendResponse({
+                success: true,
+                isRunning: Boolean(activeAutomationSession),
+                activeJobTitle: activeAutomationSession?.config?.jobTitle || null,
+                storageWeight: w.formatted,
+                storageBytes: w.bytes,
+                privateUseOnly: Boolean(priv),
+            })).catch((err) => sendResponse({ success: false, error: err.message }));
         return true;
     }
 
@@ -365,41 +536,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'save_job') {
-        (async () => {
-            const jobData = { ...request.job };
-            if (!jobData.id) {
-                jobData.id = newId();
-                jobData.created_at = nowIso();
-                jobData.status = 'ready';
-                await db.automation_jobs.add(jobData);
-            } else {
-                await db.automation_jobs.put(jobData);
-            }
-            sendResponse({ success: true, job: jobData });
-        })().catch((err) => sendResponse({ success: false, error: err.message }));
+        saveJobRecord(request.job).then((job) => sendResponse({ success: true, job }))
+            .catch((err) => sendResponse({ success: false, error: err.message }));
         return true;
     }
 
     if (request.action === 'delete_job') {
         db.automation_jobs.delete(request.id).then(() => sendResponse({ success: true }))
-            .catch((err) => sendResponse({ success: false, error: err.message }));
-        return true;
-    }
-
-    if (request.action === 'get_profile_data') {
-        db.personal_data.toCollection().first().then((profile) => sendResponse({ success: true, profile: profile || null }))
-            .catch((err) => sendResponse({ success: false, error: err.message }));
-        return true;
-    }
-
-    if (request.action === 'save_profile_data') {
-        saveProfileRecord(request.profile).then(() => sendResponse({ success: true }))
-            .catch((err) => sendResponse({ success: false, error: err.message }));
-        return true;
-    }
-
-    if (request.action === 'update_platform_mode') {
-        db.platforms_dict.update(request.platformId, { mode: request.mode }).then(() => sendResponse({ success: true }))
             .catch((err) => sendResponse({ success: false, error: err.message }));
         return true;
     }
@@ -418,7 +561,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    // US 1.5: Manual "Save vacancy" button on the user's active tab (works on any website)
     if (request.action === 'save_current_vacancy') {
         (async () => {
             const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -462,6 +604,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
+// ---- External bridge for PWA (Single Source of Truth) ----------------------
 chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
     if (request.action === 'get_vacancies') {
         db.local_vacancies.toArray().then((vacancies) => {
@@ -493,17 +636,94 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
         return true;
     }
 
+    if (request.action === 'clear_vacancies') {
+        (async () => {
+            const rows = await db.local_vacancies.toArray();
+            let cleared = 0;
+            let skipped = 0;
+            for (const r of rows) {
+                try { await deleteVacancy(r.id); cleared++; } catch { skipped++; }
+            }
+            sendResponse({ status: 'success', data: { cleared, skipped } });
+        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_platforms') {
+        db.platforms_dict.toArray()
+            .then((rows) => sendResponse({ status: 'success', data: rows }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_settings') {
+        readAllSettings()
+            .then((data) => sendResponse({ status: 'success', data }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'save_settings') {
+        (async () => {
+            for (const [k, v] of Object.entries(request.settings || {})) {
+                if (SETTING_KEYS.includes(k)) await setSetting(k, v);
+            }
+            sendResponse({ status: 'success', data: await readAllSettings() });
+        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_jobs') {
+        db.automation_jobs.toArray()
+            .then((rows) => sendResponse({ status: 'success', data: rows }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'save_job') {
+        saveJobRecord(request.job)
+            .then((job) => sendResponse({ status: 'success', data: job }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'delete_job') {
+        db.automation_jobs.delete(request.id)
+            .then(() => sendResponse({ status: 'success' }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_profiles') {
+        listHydratedProfiles()
+            .then((list) => sendResponse({ status: 'success', data: list }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
     if (request.action === 'get_profile') {
-        db.personal_data.toCollection().first()
-            .then((p) => sendResponse({ status: 'success', data: p || null }))
+        ensureDefaultProfile()
+            .then(hydrateProfile)
+            .then((p) => sendResponse({ status: 'success', data: p }))
             .catch((err) => sendResponse({ status: 'error', message: err.message }));
         return true;
     }
 
     if (request.action === 'save_profile') {
-        saveProfileRecord(request.profile)
-            .then(() => sendResponse({ status: 'success' }))
+        saveProfileRecord(request.profile || {})
+            .then((saved) => sendResponse({ status: 'success', data: saved }))
             .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'delete_profile') {
+        (async () => {
+            const count = await db.user_profiles.count();
+            if (count <= 1) throw new Error('Cannot delete the only profile.');
+            await deleteProfileCascade(request.profileId);
+            await ensureDefaultProfile();
+            sendResponse({ status: 'success' });
+        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
         return true;
     }
 

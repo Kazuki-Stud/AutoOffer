@@ -95,6 +95,7 @@ body {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 3px;
+    flex-wrap: wrap;
 }
 
 .pwa-nav-btn {
@@ -213,7 +214,7 @@ body {
 }
 
 .search-input-wrap input,
-.form-field input,
+.form-field input:not([type="checkbox"]),
 .form-field textarea,
 .form-select {
     width: 100%;
@@ -232,7 +233,7 @@ body {
 }
 
 .search-input-wrap input:focus,
-.form-field input:focus,
+.form-field input:not([type="checkbox"]):focus,
 .form-field textarea:focus,
 .form-select:focus {
     border-color: var(--color-primary);
@@ -278,6 +279,7 @@ body {
     margin-top: 24px;
     padding-top: 18px;
     border-top: 1px solid var(--border-color);
+    flex-wrap: wrap;
 }
 
 .status-msg {
@@ -503,4 +505,90 @@ body {
 
 .sync-status-indicator.error {
     color: #f87171;
+}
+.profile-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.profile-toolbar .form-select {
+    flex: 1;
+    min-width: 200px;
+}
+
+.inline-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 8px 0;
+}
+
+.inline-check input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.chips-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.platform-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 9999px;
+    border: 1px solid var(--border-color);
+    background: var(--input-bg);
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+}
+
+.platform-chip.selected {
+    border-color: var(--color-primary);
+    background: rgba(59, 130, 246, 0.16);
+    color: var(--text-primary);
+}
+
+.jobs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.job-row-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--input-bg);
+    flex-wrap: wrap;
+}
+
+.job-row-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.job-row-actions {
+    display: flex;
+    gap: 8px;
 }
