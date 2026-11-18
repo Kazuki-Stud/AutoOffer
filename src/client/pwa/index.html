@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoOffer Hub</title>
-    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%image.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%icon-192.png">
+    <link rel="apple-touch-icon" href="%BASE_URL%icon-192.png">
     <link rel="stylesheet" href="index.css">
     <script src="%BASE_URL%kit.js" defer></script>
 </head>
@@ -13,14 +16,16 @@
     <header class="app-header">
         <div class="header-top-row">
             <div class="brand-group">
+                <img src="%BASE_URL%image.svg" alt="AutoOffer logo" class="header-brand-logo" width="30" height="30" />
                 <h1 class="header-brand-title">AutoOffer</h1>
                 <span class="hub-badge">Local Hub</span>
             </div>
             <div class="header-actions">
-                <nav class="pwa-nav">
+                <nav class="pwa-nav" aria-label="Main navigation">
                     <button id="nav-btn-vacancies" class="pwa-nav-btn active" data-view="view-vacancies">Vacancies</button>
+                    <button id="nav-btn-applications" class="pwa-nav-btn" data-view="view-applications">Applications</button>
                     <button id="nav-btn-jobs" class="pwa-nav-btn" data-view="view-jobs">Jobs & Automation</button>
-                    <button id="nav-btn-profile" class="pwa-nav-btn" data-view="view-profile">Profile</button>
+                    <button id="nav-btn-profile" class="pwa-nav-btn" data-view="view-profile">Profile & Resumes</button>
                     <button id="nav-btn-settings" class="pwa-nav-btn" data-view="view-settings">Settings & Sync</button>
                 </nav>
                 <button id="theme-toggle-btn" class="theme-toggle-pill" aria-label="Toggle theme" title="Switch Theme">
@@ -78,11 +83,62 @@
         </main>
 
         <div class="pwa-card">
-            <div class="card-header-bar">
-                <h2>Market Skill Hotwords (Server OLAP)</h2>
-                <button id="load-hotwords-btn" class="secondary-btn">Load Analytics</button>
+            <div class="card-header-bar analytics-header-bar">
+                <div>
+                    <h2>Skills Analytics (Market Demand)</h2>
+                    <span class="status-msg">Most frequent skills for the selected role</span>
+                </div>
+                <div class="analytics-controls">
+                    <select id="hotwords-position-select" class="form-select" aria-label="Filter skills by role">
+                        <option value="">All Positions / Roles</option>
+                    </select>
+                    <button id="load-hotwords-btn" class="secondary-btn">Load Analytics</button>
+                </div>
             </div>
-            <div id="hotwords-list" class="status-msg">Click "Load Analytics" to query public skill demand.</div>
+            <div id="hotwords-status" class="status-msg">Select a role and click "Load Analytics" to query public skill demand.</div>
+            <div id="hotwords-chart" class="hotwords-chart-wrap" aria-live="polite"></div>
+        </div>
+    </div>
+
+    <div id="view-applications" class="pwa-view" style="display: none;">
+        <div class="pwa-card">
+            <div class="card-header-bar">
+                <h2>Application Lifecycle Tracker</h2>
+                <span id="applications-count-badge" class="tag-status">0 applications</span>
+            </div>
+            <div class="view-controls-bar" style="margin-bottom: 16px;">
+                <div class="search-input-wrap">
+                    <input type="text" id="applications-search-input" placeholder="Filter by company, role, resume or notes..." autocomplete="off" />
+                </div>
+                <select id="applications-status-filter" class="form-select" style="max-width: 200px;" aria-label="Filter applications by status">
+                    <option value="">All Statuses</option>
+                    <option value="Applied">Applied</option>
+                    <option value="Screening">Screening</option>
+                    <option value="Interview">Interview</option>
+                    <option value="Offered">Offered</option>
+                    <option value="Rejected">Rejected</option>
+                </select>
+            </div>
+            <div id="applications-empty" class="empty-state" style="display: none; margin: 0;">
+                <h3>No Applications Tracked Yet</h3>
+                <p>Change a vacancy status in the Vacancies tab or submit via Review & Apply to start tracking your pipeline.</p>
+            </div>
+            <div class="applications-table-wrap">
+                <table class="applications-table" id="applications-table">
+                    <thead>
+                    <tr>
+                        <th>Company</th>
+                        <th>Role / Position</th>
+                        <th>Applied</th>
+                        <th>Resume Variant</th>
+                        <th>Match Score</th>
+                        <th>Status</th>
+                        <th>Notes</th>
+                    </tr>
+                    </thead>
+                    <tbody id="applications-tbody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -148,11 +204,11 @@
     <div id="view-profile" class="pwa-view" style="display: none;">
         <div class="pwa-card">
             <div class="card-header-bar">
-                <h2>Candidate Profiles & Default Resume</h2>
+                <h2>Candidate Profiles</h2>
                 <span id="pwa-profile-source-tag" class="tag-status">Device Local (Dexie v7)</span>
             </div>
             <div class="profile-toolbar">
-                <select id="pwa-profile-select" class="form-select"></select>
+                <select id="pwa-profile-select" class="form-select" aria-label="Select candidate profile"></select>
                 <button id="pwa-new-profile-btn" class="secondary-btn">+ New Profile</button>
                 <button id="pwa-delete-profile-btn" class="clear-button">Delete Profile</button>
             </div>
@@ -189,10 +245,6 @@
                     <input type="text" id="pwa-prof-location" placeholder="Vilnius, Lithuania" />
                 </div>
                 <div class="form-field full-width">
-                    <label>Resume Variant Title / Headline</label>
-                    <input type="text" id="pwa-prof-headline" placeholder="Backend Architecture 2026" />
-                </div>
-                <div class="form-field full-width">
                     <label>Target Roles (comma-separated)</label>
                     <input type="text" id="pwa-prof-roles" placeholder="Backend Developer, Java Developer" />
                 </div>
@@ -208,14 +260,55 @@
                     <label>Portfolio / Professional Links (comma-separated URLs)</label>
                     <textarea id="pwa-prof-links" rows="2" placeholder="https://github.com/..., https://linkedin.com/in/..."></textarea>
                 </div>
-                <div class="form-field full-width">
-                    <label>Skills Overview (comma-separated)</label>
-                    <input type="text" id="pwa-prof-skills" placeholder="JavaScript, Node.js, Python, PostgreSQL, Docker" />
-                </div>
             </div>
             <div class="profile-actions-bar">
                 <button id="pwa-save-profile-btn" class="primary-btn">Save Profile Changes</button>
                 <span id="pwa-profile-status" class="status-msg"></span>
+            </div>
+        </div>
+
+        <div class="pwa-card">
+            <div class="card-header-bar">
+                <h2>Resume Variants (Local Only)</h2>
+                <span id="pwa-resumes-count" class="tag-status">0 variants</span>
+            </div>
+            <div id="pwa-resumes-list" class="resume-variants-list"></div>
+            <div class="profile-toolbar" style="margin-top: 16px;">
+                <select id="pwa-resume-select" class="form-select" aria-label="Select resume variant"></select>
+                <button id="pwa-new-resume-btn" class="secondary-btn">+ New Resume Variant</button>
+                <button id="pwa-delete-resume-btn" class="clear-button">Delete Variant</button>
+            </div>
+            <div class="profile-grid">
+                <div class="form-field">
+                    <label>Variant Title / Name</label>
+                    <input type="text" id="pwa-resume-title" placeholder="e.g. Backend Architecture 2026" />
+                </div>
+                <div class="form-field">
+                    <label>Skills (comma-separated)</label>
+                    <input type="text" id="pwa-resume-skills" placeholder="Java 21, Spring Boot, PostgreSQL, Docker" />
+                </div>
+                <div class="form-field full-width">
+                    <label>Summary / Core Achievements</label>
+                    <textarea id="pwa-resume-summary" rows="2" placeholder="10+ years building distributed backend systems..."></textarea>
+                </div>
+                <div class="form-field full-width">
+                    <label>Full Resume Plain Text</label>
+                    <textarea id="pwa-resume-text" rows="6" placeholder="Experience, projects, education, certifications..."></textarea>
+                </div>
+                <div class="form-field full-width">
+                    <label>Optional Attached Resume File (PDF / DOCX / TXT, stored locally)</label>
+                    <div class="file-upload-row">
+                        <input type="file" id="pwa-resume-file" accept=".pdf,.doc,.docx,.txt,.md" />
+                        <span id="pwa-resume-file-info" class="status-msg">No file attached</span>
+                        <button id="pwa-resume-clear-file-btn" class="secondary-btn" type="button" style="display: none;">Clear File</button>
+                    </div>
+                </div>
+            </div>
+            <div class="profile-actions-bar">
+                <button id="pwa-save-resume-btn" class="primary-btn">Save Resume Variant</button>
+                <button id="pwa-export-pdf-btn" class="secondary-btn" type="button">Export PDF</button>
+                <button id="pwa-export-doc-btn" class="secondary-btn" type="button">Export Word (.doc)</button>
+                <span id="pwa-resume-status" class="status-msg"></span>
             </div>
         </div>
     </div>
@@ -303,6 +396,7 @@
     </div>
 
     <ao-modal id="vacancy-modal"></ao-modal>
+    <iframe id="print-resume-frame" title="Resume Print Frame" style="position:fixed;right:0;bottom:0;width:0;height:0;border:0;"></iframe>
 </div>
 
 <script type="module" src="./index.js"></script>

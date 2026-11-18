@@ -86,6 +86,7 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 .pwa-nav {
@@ -104,7 +105,7 @@ body {
     color: var(--text-muted);
     font-size: 0.82rem;
     font-weight: 600;
-    padding: 6px 14px;
+    padding: 6px 12px;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -177,6 +178,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
     border-bottom: 1px solid var(--border-color);
     padding-bottom: 14px;
     margin-bottom: 20px;
@@ -210,13 +213,14 @@ body {
 .search-input-wrap {
     position: relative;
     flex: 1;
-    min-width: 260px;
+    min-width: 220px;
 }
 
 .search-input-wrap input,
-.form-field input:not([type="checkbox"]),
+.form-field input:not([type="checkbox"]):not([type="file"]),
 .form-field textarea,
-.form-select {
+.form-select,
+.inline-notes-input {
     width: 100%;
     background: var(--input-bg);
     border: 1px solid var(--border-color);
@@ -226,6 +230,7 @@ body {
     color: var(--input-text);
     outline: none;
     transition: border-color 0.2s ease;
+    font-family: inherit;
 }
 
 .search-input-wrap input {
@@ -235,7 +240,8 @@ body {
 .search-input-wrap input:focus,
 .form-field input:not([type="checkbox"]):focus,
 .form-field textarea:focus,
-.form-select:focus {
+.form-select:focus,
+.inline-notes-input:focus {
     border-color: var(--color-primary);
 }
 
@@ -285,6 +291,7 @@ body {
 .status-msg {
     font-size: 0.82rem;
     font-weight: 500;
+    color: var(--text-secondary);
 }
 
 .metrics-grid {
@@ -351,6 +358,9 @@ body {
     .header-actions {
         justify-content: space-between;
     }
+    .pwa-card {
+        padding: 16px;
+    }
 }
 
 .vacancy-item {
@@ -401,6 +411,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
     font-size: 0.8rem;
     color: var(--text-muted);
     border-top: 1px solid var(--border-color);
@@ -506,6 +518,7 @@ body {
 .sync-status-indicator.error {
     color: #f87171;
 }
+
 .profile-toolbar {
     display: flex;
     gap: 10px;
@@ -591,4 +604,201 @@ body {
 .job-row-actions {
     display: flex;
     gap: 8px;
+}
+
+/* Multi-Resume Variants (US 5.1) */
+.resume-variants-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.resume-variant-card {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.resume-variant-card:hover {
+    border-color: var(--color-primary);
+    transform: translateY(-1px);
+}
+
+.resume-variant-card.active {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.resume-variant-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.resume-variant-meta {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.resume-variant-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: auto;
+    padding-top: 6px;
+}
+
+.btn-xs {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    border-radius: 6px;
+}
+
+.file-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Applications Table & Responsive 360px Cards (US 5.3 & US 8.1) */
+.applications-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.applications-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+}
+
+.applications-table th {
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.applications-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+    color: var(--text-primary);
+}
+
+.applications-table tbody tr:hover {
+    background: var(--bg-surface-hover);
+}
+
+.app-role-link {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--color-primary);
+    font-weight: 600;
+    font-size: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.app-role-link:hover {
+    text-decoration: underline;
+}
+
+.inline-notes-input {
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    min-width: 150px;
+}
+
+@media (max-width: 768px) {
+    .applications-table-wrap {
+        overflow-x: visible;
+    }
+    .applications-table thead {
+        display: none;
+    }
+    .applications-table,
+    .applications-table tbody,
+    .applications-table tr,
+    .applications-table td {
+        display: block;
+        width: 100%;
+    }
+    .applications-table tr {
+        background: var(--input-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 12px;
+    }
+    .applications-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 0;
+        border-bottom: 1px solid var(--border-subtle);
+        text-align: right;
+    }
+    .applications-table td:last-child {
+        border-bottom: none;
+    }
+    .applications-table td::before {
+        content: attr(data-label);
+        font-size: 0.74rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        text-align: left;
+        flex-shrink: 0;
+    }
+    .applications-table td .form-select,
+    .applications-table td .inline-notes-input {
+        max-width: 190px;
+    }
+}
+
+/* Skills Analytics Chart (US 6.1 & US 6.2) */
+.analytics-header-bar {
+    align-items: flex-end;
+}
+
+.analytics-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.analytics-controls .form-select {
+    min-width: 210px;
+}
+
+.hotwords-chart-wrap {
+    margin-top: 14px;
+    width: 100%;
+}
+
+.hotwords-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.header-brand-logo {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    object-fit: contain;
+    flex-shrink: 0;
 }

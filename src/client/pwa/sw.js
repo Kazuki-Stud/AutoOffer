@@ -1,9 +1,12 @@
-const CACHE_NAME = 'autooffer-pwa-v4';
+const CACHE_NAME = 'autooffer-pwa-v5';
 const ASSETS = [
     './',
     './index.html',
     './kit.js',
-    './manifest.webmanifest'
+    './manifest.webmanifest',
+    './image.svg',
+    './icon-192.png',
+    './icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
