@@ -164,7 +164,7 @@ function waitForTabLoad(tabId) {
     });
 }
 
-function waitForNavigationOrDomChange(tabId, triggerActionFn, timeoutMs = 10000) {
+function waitForNavigationOrDomChange(tabId, triggerActionFn, timeoutMs = 100) {
     return new Promise((resolve, reject) => {
         let settled = false;
         let timer = null;
@@ -232,6 +232,7 @@ function rowsToSelectorMap(matching) {
         [ELEMENT_TYPES.SEARCH_BUTTON]: 'searchButton',
         [ELEMENT_TYPES.PAGINATION]: 'pagination',
         [ELEMENT_TYPES.DESCRIPTION]: 'description',
+        [ELEMENT_TYPES.COMPANY]: 'company',
     };
     const result = {};
     for (const item of matching) {
@@ -375,14 +376,21 @@ async function persistVacanciesLocally(hostname, vacancies, { source = 'auto', n
     const platform = await findPlatformByHostname(hostname);
     for (const item of vacancies) {
         const hasDesc = Boolean(item.description && item.description.trim().length > 0);
-        await saveVacancy({
-                platform_id: platform ? platform.id : null,
-                source_host: platform ? null : hostname,
-                full_position_name: item.fullPositionName || 'Untitled Position',
-                url: item.url,
-                description: hasDesc ? item.description.trim() : null,
-                status: hasDesc ? 'complete' : 'new',
-            }, { source });
+        let company_id = null;
+        if (item.companyName && item.companyName.trim()) {
+            company_id = await getOrCreateByName('companies_dict', item.companyName.trim().slice(0, 255));
+        }
+        const payload = {
+            platform_id: platform ? platform.id : null,
+            source_host: platform ? null : hostname,
+            full_position_name: item.fullPositionName || 'Untitled Position',
+            url: item.url,
+            description: hasDesc ? item.description.trim() : null,
+            status: hasDesc ? 'complete' : 'new',
+        };
+        if (company_id) payload.company_id = company_id;
+        if (item.postedAt) payload.posted_at = item.postedAt;
+        await saveVacancy(payload, { source });
     }
     if (notify) {
         await notifyPwaTabsDataUpdated({ reason: 'vacancies_grabbed' });
@@ -416,7 +424,7 @@ async function manualPushVacanciesToServer() {
         if (ok) pushed++;
         else skipped++;
     }
-    if (pushed > 0) notifyPwaTabsDataUpdated();
+    if (pushed > 0) await notifyPwaTabsDataUpdated({ reason: 'vacancies_updated' });
     return { pushed, skipped, privateUseOnly: false };
 }
 
@@ -433,7 +441,7 @@ async function calculateStorageWeight() {
     return { bytes: totalBytes, formatted };
 }
 
-const randomDelay = (minMs = 1500, maxMs = 3500) =>
+const randomDelay = (minMs = 0, maxMs = 5) =>
     new Promise((r) => setTimeout(r, minMs + Math.random() * (maxMs - minMs)));
 
 async function runAutomationPipeline(config) {
@@ -513,7 +521,9 @@ async function runAutomationPipeline(config) {
 
             if (collected.length > 0) {
                 if (fieldsMode === 'all') {
-                    const detailSel = (await getSelectorsForHostname(hostname))?.description;
+                    const hostSelectors = await getSelectorsForHostname(hostname);
+                    const detailSel = hostSelectors?.description;
+                    const companySel = hostSelectors?.company;
                     for (const vacancy of collected) {
                         if (!activeAutomationSession || activeAutomationSession.abort) break;
                         await randomDelay(1500, 3500);
@@ -521,10 +531,13 @@ async function runAutomationPipeline(config) {
                             await chrome.tabs.update(tabId, { url: vacancy.url });
                             await waitForTabLoad(tabId);
                             const detailRes = await sendTabMessage(tabId, {
-                                action: 'extract_detail_description',
-                                descriptionSelector: detailSel,
+                                    action: 'extract_detail_description',
+                                    descriptionSelector: detailSel,
+                                    companySelector: companySel,
                             });
                             if (detailRes?.description) vacancy.description = detailRes.description;
+                            if (detailRes?.companyName && !vacancy.companyName) vacancy.companyName = detailRes.companyName;
+                            if (detailRes?.postedAt && !vacancy.postedAt) vacancy.postedAt = detailRes.postedAt;
                         } catch { vacancy.description = ''; }
 
                         const fullText = `${vacancy.fullPositionName || ''} ${vacancy.cardText || ''} ${vacancy.description || ''}`;
@@ -1115,12 +1128,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 return sendResponse({ success: false, error: 'Open a job posting page first.' });
             }
             const hostname = new URL(activeTab.url).hostname;
-            const detail = await sendTabMessage(activeTab.id, { action: 'extract_detail_description' });
+            const hostSelectors = await getSelectorsForHostname(hostname);
+            const detail = await sendTabMessage(activeTab.id, {
+                    action: 'extract_detail_description',
+                    descriptionSelector: hostSelectors?.description,
+                    companySelector: hostSelectors?.company,
+            });
             await persistVacanciesLocally(hostname, [{
-                fullPositionName: request.title || activeTab.title || 'Saved Vacancy',
-                url: activeTab.url,
-                description: detail?.description || '',
-            }], { source: 'manual' });
+                        fullPositionName: request.title || activeTab.title || 'Saved Vacancy',
+                        url: activeTab.url,
+                        description: detail?.description || '',
+                        companyName: detail?.companyName || null,
+                        postedAt: detail?.postedAt || null,
+                }], { source: 'manual' });
             sendResponse({ success: true });
         })().catch((err) => sendResponse({ success: false, error: err.message }));
         return true;
@@ -1182,36 +1202,45 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
     }
 
     if (request.action === 'get_vacancies') {
-        db.local_vacancies.toArray().then((vacancies) => {
-            let filtered = vacancies;
-            if (request.role && request.role !== 'all') {
-                const targetRole = request.role.toLowerCase();
-                filtered = filtered.filter((v) => v.full_position_name?.toLowerCase().includes(targetRole));
-            }
-            if (request.dateRange && request.dateRange !== 'all') {
-                const days = request.dateRange === 'today' ? 1 : request.dateRange === '7days' ? 7 : 30;
-                const cutoff = Date.now() - days * 86400000;
-                filtered = filtered.filter((v) => {
-                    const t = new Date(v.created_at).getTime();
-                    return !isNaN(t) && t >= cutoff;
+        Promise.all([db.local_vacancies.toArray(), db.companies_dict.toArray()])
+        .then(([vacancies, companies]) => {
+                const companyById = new Map(companies.map((c) => [c.id, c.name]));
+                let filtered = vacancies;
+                if (request.role && request.role !== 'all') {
+                    const targetRole = request.role.toLowerCase();
+                    filtered = filtered.filter((v) => v.full_position_name?.toLowerCase().includes(targetRole));
+                }
+                if (request.dateRange && request.dateRange !== 'all') {
+                    const days = request.dateRange === 'today' ? 1 : request.dateRange === '7days' ? 7 : 30;
+                    const cutoff = Date.now() - days * 86400000;
+                    filtered = filtered.filter((v) => {
+                            const t = new Date(v.posted_at || v.created_at).getTime();
+                            return !isNaN(t) && t >= cutoff;
+                    });
+                }
+                const enriched = filtered.map((v) => {
+                        const company_name = v.company_id ? (companyById.get(v.company_id) || null) : null;
+                        if (request.fieldsMode === 'minimum') {
+                            return {
+                                id: v.id,
+                                platform_id: v.platform_id || null,
+                                source_host: v.source_host || null,
+                                company_id: v.company_id || null,
+                                company_name,
+                                full_position_name: v.full_position_name,
+                                url: v.url,
+                                posted_at: v.posted_at || null,
+                                status: 'new',
+                                source: v.source || 'auto',
+                                skill_ids: Array.isArray(v.skill_ids) ? v.skill_ids : [],
+                                created_at: v.created_at,
+                                updated_at: v.updated_at || v.created_at,
+                                sync_level: v.sync_level || 'none',
+                            };
+                        }
+                        return { ...v, company_name };
                 });
-            }
-            if (request.fieldsMode === 'minimum') {
-                filtered = filtered.map((v) => ({
-                    id: v.id,
-                    platform_id: v.platform_id || null,
-                    source_host: v.source_host || null,
-                    full_position_name: v.full_position_name,
-                    url: v.url,
-                    status: 'new',
-                    source: v.source || 'auto',
-                    skill_ids: Array.isArray(v.skill_ids) ? v.skill_ids : [],
-                    created_at: v.created_at,
-                    updated_at: v.updated_at || v.created_at,
-                    sync_level: v.sync_level || 'none',
-                }));
-            }
-            sendResponse({ status: 'success', data: filtered });
+                sendResponse({ status: 'success', data: enriched });
         }).catch((err) => sendResponse({ status: 'error', message: err.message }));
         return true;
     }
@@ -1224,7 +1253,7 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
             for (const r of rows) {
                 try { await deleteVacancy(r.id); cleared++; } catch { skipped++; }
             }
-            notifyPwaTabsDataUpdated();
+            await notifyPwaTabsDataUpdated({ reason: 'vacancies_cleared' });
             sendResponse({ status: 'success', data: { cleared, skipped } });
         })().catch((err) => sendResponse({ status: 'error', message: err.message }));
         return true;

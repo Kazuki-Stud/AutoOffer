@@ -187,8 +187,8 @@ export async function mirrorVacanciesToLocalDb(rows, { pruneRemoved = false } = 
     if (!Array.isArray(rows)) return;
     const now = nowIso();
 
-    await db.transaction('rw', [db.local_vacancies, db.applications], async () => {
-        if (pruneRemoved) {
+    await db.transaction('rw', [db.local_vacancies, db.applications, db.companies_dict], async () => {
+            if (pruneRemoved) {
             const remoteIds = new Set(rows.map((r) => optUuid(r.id)).filter(Boolean));
             const remoteUrls = new Set(rows.map((r) => r.url).filter(Boolean));
             const existing = await db.local_vacancies.toArray();
@@ -223,14 +223,28 @@ export async function mirrorVacanciesToLocalDb(rows, { pruneRemoved = false } = 
                 salary_to = salary_from;
             }
 
+            let company_id = optUuid(v.company_id);
+            if (v.company_name && String(v.company_name).trim()) {
+                const cleanCompany = String(v.company_name).trim().slice(0, 255);
+                const existingCompany = await db.companies_dict.where('name').equals(cleanCompany).first();
+                if (existingCompany) {
+                    company_id = existingCompany.id;
+                } else {
+                    const targetCompanyId = company_id || newId();
+                    await db.companies_dict.put({ id: targetCompanyId, name: cleanCompany, is_verified: 0 });
+                    company_id = targetCompanyId;
+                }
+            }
+
             const hasDesc = Boolean(v.description && v.description.trim().length > 0);
+            const postedAt = v.posted_at && !isNaN(new Date(v.posted_at).getTime()) ? v.posted_at : null;
             const record = {
                 id: optUuid(v.id) || newId(),
                 platform_id,
                 source_host: platform_id ? null : host,
                 position_id: optUuid(v.position_id),
                 full_position_name: String(v.full_position_name || 'Untitled Position').slice(0, 255),
-                company_id: optUuid(v.company_id),
+                company_id,
                 address: v.address || null,
                 region_id,
                 country_id,
@@ -243,6 +257,7 @@ export async function mirrorVacanciesToLocalDb(rows, { pruneRemoved = false } = 
                 employment_type_id: optUuid(v.employment_type_id),
                 url: v.url,
                 description: hasDesc ? v.description.trim() : null,
+                posted_at: postedAt,
                 sync_level: ['none', 'url_only', 'full'].includes(v.sync_level) ? v.sync_level : 'none',
                 source: v.source === 'manual' ? 'manual' : 'auto',
                 status: hasDesc ? (v.status === 'error' ? 'error' : 'complete') : 'new',

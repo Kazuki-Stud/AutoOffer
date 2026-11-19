@@ -110,17 +110,24 @@ export async function getOrCreateByName(table, name, extra = {}) {
 export async function saveVacancy(data, { source = 'manual' } = {}) {
   const now = nowIso();
   return db.transaction('rw', db.local_vacancies, async () => {
-    const existing = await db.local_vacancies.where('url').equals(data.url).first();
-    if (existing) {
-      await db.local_vacancies.update(existing.id, { ...data, sync_level: 'none', updated_at: now });
-      return existing.id;
-    }
-    const record = {
-      skill_ids: [], status: 'complete', ...data,
-      id: newId(), source, sync_level: 'none', created_at: now, updated_at: now,
-    };
-    await db.local_vacancies.add(record);
-    return record.id;
+      const existing = await db.local_vacancies.where('url').equals(data.url).first();
+      if (existing) {
+        const merged = {
+          ...data,
+          company_id: data.company_id ?? existing.company_id ?? null,
+          posted_at: data.posted_at ?? existing.posted_at ?? null,
+          sync_level: 'none',
+          updated_at: now,
+        };
+        await db.local_vacancies.update(existing.id, merged);
+        return existing.id;
+      }
+      const record = {
+        skill_ids: [], status: 'complete', posted_at: null, ...data,
+        id: newId(), source, sync_level: 'none', created_at: now, updated_at: now,
+      };
+      await db.local_vacancies.add(record);
+      return record.id;
   });
 }
 

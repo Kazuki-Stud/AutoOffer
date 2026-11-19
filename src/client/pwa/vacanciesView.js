@@ -43,19 +43,35 @@ function renderStats(list, weightStr = '0 KB') {
     }
 }
 
+function resolveVacancySourceLabel(item) {
+const plat = item.platform_id ? state.cachedPlatformsMap.get(item.platform_id) : null;
+if (plat) return plat.name || plat.code;
+if (item.source_host) return item.source_host.replace(/^www\./, '');
+try {
+if (item.url) return new URL(item.url).hostname.replace(/^www\./, '');
+} catch {}
+return 'Direct';
+}
+
+function resolveVacancyCompanyLabel(item) {
+const comp = item.company_id ? state.cachedCompanies.get(item.company_id) : null;
+return comp?.name || null;
+}
+
 export function openVacancyModal(item) {
-    const modal = document.getElementById('vacancy-modal');
-    if (!modal || typeof modal.open !== 'function') return;
-    let hostname = item.source_host || 'Direct';
-    try {
-        if (item.url) hostname = new URL(item.url).hostname;
-    } catch {}
+const modal = document.getElementById('vacancy-modal');
+if (!modal || typeof modal.open !== 'function') return;
+const companyName = resolveVacancyCompanyLabel(item);
+const websiteName = resolveVacancySourceLabel(item);
+const postedLabel = item.posted_at ? `Posted ${formatDate(item.posted_at)}` : 'Post date N/A';
+const sourceMeta = [companyName, websiteName, postedLabel].filter(Boolean).join(' · ');
+
     modal.open({
-            title: item.full_position_name || 'Untitled Vacancy',
-            description: item.description || '(No full description stored locally)',
-            url: isSafeHttpUrl(item.url) ? item.url : '#',
-            source: hostname,
-            rawItem: item,
+        title: item.full_position_name || 'Untitled Vacancy',
+        description: item.description || '(No full description stored locally)',
+        url: isSafeHttpUrl(item.url) ? item.url : '#',
+        source: sourceMeta,
+        rawItem: item,
     });
 }
 
@@ -106,6 +122,21 @@ function renderList(list, profileId) {
         titleEl.className = 'vacancy-title';
         titleEl.textContent = item.full_position_name || 'Untitled Position';
 
+        const subRow = document.createElement('div');
+        subRow.className = 'vacancy-company-source-row';
+        const companyName = resolveVacancyCompanyLabel(item);
+        const websiteName = resolveVacancySourceLabel(item);
+
+        const companySpan = document.createElement('span');
+        companySpan.className = 'vacancy-company';
+        companySpan.textContent = companyName || 'Company not specified';
+
+        const sourceSpan = document.createElement('span');
+        sourceSpan.className = 'vacancy-source-badge';
+        sourceSpan.textContent = websiteName;
+
+        subRow.append(companySpan, sourceSpan);
+
         const metaRow = document.createElement('div');
         metaRow.className = 'vacancy-meta-row';
 
@@ -137,17 +168,12 @@ function renderList(list, profileId) {
         const footerEl = document.createElement('div');
         footerEl.className = 'vacancy-footer';
 
-        const dateStr = formatDate(item.created_at);
-        const isComplete = item.status === 'complete' && item.description && item.description.length > 50;
-
         const dateSpan = document.createElement('span');
         dateSpan.className = 'vacancy-date';
-        dateSpan.textContent = dateStr;
-
-        const pillSpan = document.createElement('span');
-        pillSpan.className = 'ao-pill';
-        pillSpan.dataset.status = isComplete ? 'complete' : 'basic';
-        pillSpan.textContent = `${isComplete ? 'Complete' : 'Basic'} · ${item.sync_level || 'none'}`;
+        dateSpan.textContent = item.posted_at ? `Posted ${formatDate(item.posted_at)}` : 'Post date N/A';
+        dateSpan.title = item.posted_at
+        ? `Original post time: ${formatDateTime(item.posted_at)} (Synced: ${formatDateTime(item.created_at)})`
+        : `Original post date unavailable on page (Synced: ${formatDateTime(item.created_at)})`;
 
         const app = state.cachedApplications.get(item.id);
         const statusSelect = document.createElement('select');
@@ -172,8 +198,8 @@ function renderList(list, profileId) {
             await refreshDisplay();
         });
 
-        footerEl.append(dateSpan, pillSpan, statusSelect);
-        card.append(titleEl, metaRow, footerEl);
+        footerEl.append(dateSpan, statusSelect);
+        card.append(titleEl, subRow, metaRow, footerEl);
         card.addEventListener('click', () => openVacancyModal(item));
 
         grid.appendChild(card);
@@ -303,13 +329,15 @@ export async function refreshDisplay() {
     const profile = await ensureDefaultProfile();
     await syncApplicationsFromBridge();
 
-    const [allApps, companies, allResumes] = await Promise.all([
-        db.applications.toArray(),
-        db.companies_dict.toArray(),
-        db.resumes.toArray(),
+    const [allApps, companies, platforms, allResumes] = await Promise.all([
+            db.applications.toArray(),
+            db.companies_dict.toArray(),
+            db.platforms_dict.toArray(),
+            db.resumes.toArray(),
     ]);
     state.cachedAllApplications = allApps.sort((a, b) => (b.applied_at || '').localeCompare(a.applied_at || ''));
     state.cachedCompanies = new Map(companies.map((c) => [c.id, c]));
+    state.cachedPlatformsMap = new Map(platforms.map((p) => [p.id, p]));
     state.cachedResumesMap = new Map(allResumes.map((r) => [r.id, r]));
 
     const activeProfApps = state.cachedAllApplications.filter((a) => a.profile_id === (state.activeProfileId || profile.id));

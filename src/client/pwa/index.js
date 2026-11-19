@@ -56,8 +56,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.addEventListener('message', (event) => {
             if (event.source === window && event.data?.type === 'AUTOOFFER_DATA_UPDATED') {
-                if (event.data.reason === 'vacancies_grabbed') {
+                const reason = event.data.reason;
+                if (reason === 'vacancies_grabbed') {
                     syncVacanciesFromExtensionQuietly().catch(console.error);
+                } else if (reason === 'vacancies_updated') {
+                    syncVacanciesFromExtensionQuietly({ respectSetting: false }).catch(console.error);
+                } else if (reason === 'vacancies_cleared') {
+                    syncVacanciesFromExtensionQuietly({ respectSetting: false, pruneRemoved: true }).catch(console.error);
                 } else {
                     refreshDisplay().catch(console.error);
                 }

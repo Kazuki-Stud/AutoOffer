@@ -12,6 +12,7 @@ export const state = {
     cachedApplications: new Map(),
     cachedAllApplications: [],
     cachedCompanies: new Map(),
+    cachedPlatformsMap: new Map(),
     cachedResumesMap: new Map(),
     cachedPlatforms: [],
     cachedProfiles: [],

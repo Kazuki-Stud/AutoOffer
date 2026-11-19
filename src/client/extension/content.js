@@ -5,7 +5,7 @@ function waitForPageReady() {
   });
 }
 
-function observeDomMutationWithTimeout(targetNode = document.body, timeoutMs = 2000) {
+function observeDomMutationWithTimeout(targetNode = document.body, timeoutMs = 100) {
   return new Promise((resolve) => {
     if (!targetNode) return resolve(false);
     let done = false;
@@ -201,6 +201,181 @@ function validateSelectors(selectors) {
   return { isValid: true, count: validCount, samples };
 }
 
+function parsePostedDateToIso(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const cleaned = raw
+  .replace(/\u00a0/g, ' ')
+  .replace(/^(?:posted|published|updated|active|date posted)\s*[:\-]?\s*/i, '')
+  .trim();
+  if (!cleaned) return null;
+
+  const lower = cleaned.toLowerCase();
+  const now = Date.now();
+
+  if (/\b(?:just posted|just now|today|0\s*days?\s*ago)\b/.test(lower)) {
+    return new Date(now).toISOString();
+  }
+  if (/\byesterday\b/.test(lower)) {
+    return new Date(now - 86400000).toISOString();
+  }
+
+  const relMatch = lower.match(/(\d+)\s*\+?\s*(?:(minute|min|m)|(hour|hr|h)|(day|d)|(week|wk|w)|(month|mo))s?\s*(?:ago)?\b/);
+  if (relMatch && (lower.includes('ago') || /\b\d+\s*\+?\s*(?:min|hr|d|wk|w|h|m)\b/.test(lower))) {
+    const n = Number(relMatch[1]);
+    if (Number.isFinite(n) && n >= 0 && n <= 3650) {
+      let ms = 0;
+      if (relMatch[2]) ms = n * 60000;
+      else if (relMatch[3]) ms = n * 3600000;
+      else if (relMatch[4]) ms = n * 86400000;
+      else if (relMatch[5]) ms = n * 7 * 86400000;
+      else if (relMatch[6]) ms = n * 30 * 86400000;
+      if (ms > 0) return new Date(now - ms).toISOString();
+    }
+  }
+
+  if (/\d/.test(cleaned)) {
+    const parsed = new Date(cleaned);
+    const t = parsed.getTime();
+    if (!isNaN(t) && parsed.getUTCFullYear() >= 2000 && t <= now + 2 * 86400000) {
+      return parsed.toISOString();
+    }
+  }
+  return null;
+}
+
+function extractJobPostingJsonLd() {
+  const findJobPosting = (node) => {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const hit = findJobPosting(item);
+        if (hit) return hit;
+      }
+      return null;
+    }
+    const typeVal = node['@type'];
+    const isJob = typeVal === 'JobPosting' || (Array.isArray(typeVal) && typeVal.includes('JobPosting'));
+    if (isJob) return node;
+    if (Array.isArray(node['@graph'])) return findJobPosting(node['@graph']);
+    return null;
+  };
+
+  for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+    try {
+      const json = JSON.parse(script.textContent || '');
+      const job = findJobPosting(json);
+      if (job) {
+        const companyName = typeof job.hiringOrganization === 'string'
+        ? job.hiringOrganization.trim()
+        : (job.hiringOrganization?.name ? String(job.hiringOrganization.name).trim() : null);
+        const datePosted = job.datePosted ? parsePostedDateToIso(String(job.datePosted)) : null;
+        return { companyName: companyName || null, datePosted };
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function cleanCompanyText(raw) {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!text || text.length > 120) return null;
+  return text;
+}
+
+function extractCompanyFromCard(card, explicitSelector) {
+  const queries = [
+    explicitSelector,
+    '[data-testid="company-name"]',
+    '[data-testid="companyName"]',
+    '[data-automation="jobCompany"]',
+    '[class*="companyName" i]',
+    '[class*="company-name" i]',
+    'span.company',
+    'a[href*="/cmp/"]',
+    'a[href*="/company/"]',
+    '[class*="company" i]',
+    '[class*="employer" i]',
+  ].filter(Boolean);
+
+  for (const q of queries) {
+    try {
+      const el = card.querySelector(q);
+      const clean = el ? cleanCompanyText(el.textContent) : null;
+      if (clean) return clean;
+    } catch {}
+  }
+  return null;
+}
+
+function extractPostedAtFromCard(card) {
+  const timeEl = card.querySelector('time');
+  if (timeEl) {
+    const dt = parsePostedDateToIso(timeEl.getAttribute('datetime') || timeEl.textContent);
+    if (dt) return dt;
+  }
+  const dateQueries = [
+    '[data-testid="myJobsStateDate"]',
+    '[data-testid*="date" i]',
+    '[class*="posted" i]',
+    '[class*="date" i]',
+  ];
+  for (const q of dateQueries) {
+    const el = card.querySelector(q);
+    if (el) {
+      const dt = parsePostedDateToIso(el.getAttribute('datetime') || el.textContent);
+      if (dt) return dt;
+    }
+  }
+  const textMatch = (card.innerText || '').match(/\b(?:posted\s+)?(?:\d+\s*\+?\s*(?:minutes?|hours?|days?|weeks?|months?)\s+ago|just posted|today|yesterday)\b/i);
+  return textMatch ? parsePostedDateToIso(textMatch[0]) : null;
+}
+
+function extractDetailMetadata(explicitCompanySelector) {
+  const jsonLd = extractJobPostingJsonLd();
+  let companyName = jsonLd?.companyName ? cleanCompanyText(jsonLd.companyName) : null;
+
+  if (!companyName) {
+    const companyQueries = [
+      explicitCompanySelector,
+      '[data-testid="inlineHeader-companyName"]',
+      '[data-testid="company-name"]',
+      '[data-company-name]',
+      '[class*="companyName" i]',
+      '[class*="company-name" i]',
+      '[class*="employer" i]',
+      'a[href*="/cmp/"]',
+      'a[href*="/company/"]',
+    ].filter(Boolean);
+    for (const q of companyQueries) {
+      const el = querySelectorSafe(q);
+      const clean = el ? cleanCompanyText(el.textContent) : null;
+      if (clean) { companyName = clean; break; }
+    }
+  }
+  if (!companyName) {
+    const metaCo = document.querySelector('meta[name="company"], meta[property="og:site_name"]');
+    if (metaCo?.getAttribute('name') === 'company') {
+      companyName = cleanCompanyText(metaCo.getAttribute('content'));
+    }
+  }
+
+  let postedAt = jsonLd?.datePosted || null;
+  if (!postedAt) {
+    const metaDate = document.querySelector('meta[property="article:published_time"], meta[name="date"], meta[itemprop="datePosted"]');
+    if (metaDate) postedAt = parsePostedDateToIso(metaDate.getAttribute('content'));
+  }
+  if (!postedAt) {
+    for (const q of ['time[datetime]', 'time', '[data-testid="myJobsStateDate"]', '[data-testid*="date" i]', '[class*="posted" i]', '[class*="date" i]']) {
+      const el = document.querySelector(q);
+      if (el) {
+        const dt = parsePostedDateToIso(el.getAttribute('datetime') || el.textContent);
+        if (dt) { postedAt = dt; break; }
+      }
+    }
+  }
+  return { companyName, postedAt };
+}
+
 function extractCardsData(selectors) {
   const items = [];
   for (const card of document.querySelectorAll(selectors.container)) {
@@ -210,9 +385,11 @@ function extractCardsData(selectors) {
     const rawUrl = linkEl.getAttribute('href');
     if (!rawUrl) continue;
     items.push({
-      fullPositionName: titleEl.textContent.trim(),
-      url: new URL(rawUrl, window.location.origin).href,
-      cardText: (card.innerText || '').trim(),
+        fullPositionName: titleEl.textContent.trim(),
+        url: new URL(rawUrl, window.location.origin).href,
+        cardText: (card.innerText || '').trim(),
+        companyName: extractCompanyFromCard(card, selectors.company),
+        postedAt: extractPostedAtFromCard(card),
     });
   }
   return items;
@@ -263,7 +440,7 @@ async function executePagination(explicitSelector) {
 
   if (!target) return { advanced: false, domMutated: false, method: 'none' };
 
-  const mutationPromise = observeDomMutationWithTimeout(document.body, 2500);
+  const mutationPromise = observeDomMutationWithTimeout(document.body, 100);
   target.scrollIntoView({ behavior: 'smooth', block: 'center' });
   target.click();
   const domMutated = await mutationPromise;
@@ -429,7 +606,7 @@ function querySelectorSafe(sel) {
             if (submitEl && isElementVisible(submitEl) && !submitEl.disabled) {
               summary.textContent = 'Application logged! Submitting form...';
               submitEl.click();
-              setTimeout(() => banner.remove(), 1200);
+              setTimeout(() => banner.remove(), 100);
             } else {
               summary.textContent = 'Application logged as Applied! Click the page Submit button if not yet submitted.';
               confirmBtn.style.display = 'none';
@@ -581,7 +758,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         submitBtn = document.querySelector('.siteSearch-submit button, button[type="submit"], input[type="submit"], button[class*="search" i], button[aria-label*="search" i]');
       }
 
-      const mutationPromise = observeDomMutationWithTimeout(document.body, 2000);
+      const mutationPromise = observeDomMutationWithTimeout(document.body, 20);
       if (submitBtn) submitBtn.click();
       else if (inputEl.form) {
         if (typeof inputEl.form.requestSubmit === 'function') inputEl.form.requestSubmit();
@@ -628,7 +805,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     }
     if (!content && document.body) content = document.body.innerText.trim().slice(0, 5000);
-    sendResponse({ description: content });
+    const meta = extractDetailMetadata(request.companySelector);
+    sendResponse({ description: content, companyName: meta.companyName, postedAt: meta.postedAt });
     return true;
   }
 
