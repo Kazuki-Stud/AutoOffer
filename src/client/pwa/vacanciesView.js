@@ -6,7 +6,7 @@ import {
     setApplicationStatus,
 } from '../extension/database/repository.js';
 import { ENUMS } from '../extension/database/validation.js';
-import { openAiAssistantModal } from './aiView.js';
+import { openReviewApplyModal } from './aiView.js';
 import {
     calculateStorageWeight,
     callExtension,
@@ -51,12 +51,17 @@ export function openVacancyModal(item) {
         if (item.url) hostname = new URL(item.url).hostname;
     } catch {}
     modal.open({
-        title: item.full_position_name || 'Untitled Vacancy',
-        description: item.description || '(No full description stored locally)',
-        url: isSafeHttpUrl(item.url) ? item.url : '#',
-        source: hostname,
+            title: item.full_position_name || 'Untitled Vacancy',
+            description: item.description || '(No full description stored locally)',
+            url: isSafeHttpUrl(item.url) ? item.url : '#',
+            source: hostname,
+            rawItem: item,
     });
 }
+
+window.addEventListener('ao-modal-review-apply', (e) => {
+        if (e.detail) openReviewApplyModal(e.detail);
+});
 
 async function upsertApplicationStatus(existingApp, profileId, vacancyId, newStatus) {
     if (existingApp) {
@@ -121,10 +126,10 @@ function renderList(list, profileId) {
         const aiBtn = document.createElement('button');
         aiBtn.type = 'button';
         aiBtn.className = 'secondary-btn btn-xs';
-        aiBtn.textContent = 'AI Match & Letter';
+        aiBtn.textContent = 'Review & Apply';
         aiBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openAiAssistantModal(item);
+                e.stopPropagation();
+                openReviewApplyModal(item);
         });
 
         metaRow.append(linkEl, aiBtn);

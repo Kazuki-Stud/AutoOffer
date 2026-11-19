@@ -441,11 +441,11 @@
 
     <ao-modal id="vacancy-modal"></ao-modal>
 
-    <!-- US 4.1, 4.2, 4.3: AI Match & Tailored Cover Letter Dialog -->
+    <!-- US 3.3, 3.4, 3.5, 4.1, 4.2, 4.3: Review & Apply Modal -->
     <div id="ai-assistant-modal" class="ao-overlay-modal" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
         <div class="ao-modal-card ai-modal-card">
             <div class="ao-modal-header">
-                <h2 class="ao-modal-title" id="ai-modal-title">AI Match &amp; Cover Letter</h2>
+                <h2 class="ao-modal-title" id="ai-modal-title">Review &amp; Apply</h2>
                 <button id="ai-modal-close-btn" class="ao-modal-close" aria-label="Close">&times;</button>
             </div>
             <div class="ai-modal-body">
@@ -479,12 +479,41 @@
                         <label for="ai-letter-textarea" style="font-size: 0.84rem; font-weight: 600;">Tailored Cover Letter Draft (Editable)</label>
                         <span id="ai-dirty-indicator" class="status-msg"></span>
                     </div>
-                    <textarea id="ai-letter-textarea" rows="8" placeholder="Click Generate Letter to create a tailored cover letter draft..."></textarea>
+                    <textarea id="ai-letter-textarea" rows="7" placeholder="Click Generate Letter to create a tailored cover letter draft..."></textarea>
                     <div class="ai-letter-actions">
                         <button id="ai-generate-letter-btn" class="secondary-btn" type="button">Generate Letter</button>
-                        <button id="ai-save-letter-btn" class="primary-btn" type="button">Save Draft</button>
+                        <button id="ai-save-letter-btn" class="secondary-btn" type="button">Save Draft</button>
                         <span id="ai-modal-status" class="status-msg"></span>
                     </div>
+                </div>
+
+                <div class="apply-preview-panel">
+                    <div class="ai-match-header">
+                        <span class="metric-label">Profile Autofill Preview</span>
+                        <div class="apply-mode-row">
+                            <label for="apply-mode-select" class="status-msg">Mode:</label>
+                            <select id="apply-mode-select" class="form-select" style="width: auto; min-width: 190px;">
+                                <option value="semi_automated">Semi-Automated (Autofill &amp; Review)</option>
+                                <option value="manual">Manual (Open Posting Only)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="apply-profile-preview" class="apply-preview-grid"></div>
+                </div>
+
+                <div id="apply-captcha-alert" class="apply-captcha-alert" style="display: none;">
+                    <div>
+                        <strong>Captcha Detected</strong>
+                        <p class="status-msg" style="margin: 4px 0 0 0;">Solve the captcha in the focused application tab, then click Resume Autofill.</p>
+                    </div>
+                    <button id="apply-resume-autofill-btn" class="primary-btn" type="button">Resume Autofill</button>
+                </div>
+            </div>
+            <div class="ao-modal-footer">
+                <span id="apply-autofill-status" class="status-msg"></span>
+                <div class="ao-modal-footer-actions">
+                    <button id="apply-fill-form-btn" class="secondary-btn" type="button">Fill Application Form</button>
+                    <button id="apply-confirm-submit-btn" class="primary-btn" type="button">Confirm and Submit</button>
                 </div>
             </div>
         </div>

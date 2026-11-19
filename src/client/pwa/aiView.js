@@ -1,6 +1,7 @@
 import { db } from '../extension/database/database.js';
 import { saveAiConfiguration } from '../extension/database/crypto.js';
 import {
+    createApplication,
     deleteAiConfiguration,
     ensureDefaultProfile,
     getCoverLetterForVacancy,
@@ -11,14 +12,17 @@ import {
     saveCoverLetter,
     saveMatchResult,
     setActiveAiConfiguration,
+    setApplicationStatus,
 } from '../extension/database/repository.js';
 import { evaluateVacancyMatch, generateCoverLetter } from '../extension/aiClient.js';
 import { callExtension } from './bridge.js';
 import { loadResumesUI } from './profileView.js';
-import { formatDate, isSafeHttpUrl, state } from './state.js';
+import { escapeHtml, formatDate, isSafeHttpUrl, state } from './state.js';
 
 let activeAiVacancy = null;
 let activeCoverLetterId = null;
+let activeMatchScore = null;
+let activeAutofillTabId = null;
 let lastLoadedLetterText = '';
 let isLetterDirty = false;
 
@@ -231,10 +235,11 @@ export function initAiSettingsHandlers() {
 }
 
 function setMatchDisplay(match) {
-    const scorePill = document.getElementById('ai-match-score-pill');
-    const matchedEl = document.getElementById('ai-matched-skills');
-    const missingEl = document.getElementById('ai-missing-skills');
-    if (!scorePill || !matchedEl || !missingEl) return;
+const scorePill = document.getElementById('ai-match-score-pill');
+const matchedEl = document.getElementById('ai-matched-skills');
+const missingEl = document.getElementById('ai-missing-skills');
+activeMatchScore = match?.score != null ? Math.round(Number(match.score)) : null;
+if (!scorePill || !matchedEl || !missingEl) return;
 
     if (!match) {
         scorePill.dataset.status = 'basic';
@@ -316,19 +321,67 @@ async function loadAiDialogStateForResume(vacancy, resumeId) {
     }
 }
 
-export async function openAiAssistantModal(vacancy) {
-    const modal = document.getElementById('ai-assistant-modal');
-    const titleEl = document.getElementById('ai-modal-title');
-    const resumeSel = document.getElementById('ai-modal-resume-select');
-    const statusEl = document.getElementById('ai-modal-status');
-    if (!modal || !resumeSel) return;
+function getActiveProfileForApply() {
+return state.cachedProfiles.find((p) => p.profile_id === state.activeProfileId)
+|| state.cachedProfiles.find((p) => p.is_default)
+|| state.cachedProfiles[0]
+|| {};
+}
+
+function renderProfileAutofillPreview(profile) {
+const container = document.getElementById('apply-profile-preview');
+if (!container) return;
+const fields = [
+['First Name', profile.first_name || '—', false],
+['Last Name', profile.last_name || '—', false],
+['Email', profile.email || '—', false],
+['Phone', profile.phone || '—', false],
+['Location', profile.location || '—', false],
+['Links', profile.links || '—', true],
+];
+container.innerHTML = fields.map(([label, val, full]) => `
+        <div class="apply-preview-item${full ? ' full-width' : ''}">
+            <span class="apply-preview-label">${escapeHtml(label)}</span>
+            <span class="apply-preview-value">${escapeHtml(val)}</span>
+        </div>
+    `).join('');
+}
+
+function updateFillButtonLabel(mode) {
+const fillBtn = document.getElementById('apply-fill-form-btn');
+if (!fillBtn) return;
+fillBtn.textContent = mode === 'manual' ? 'Open Application Page' : 'Fill Application Form';
+}
+
+export async function openReviewApplyModal(vacancy) {
+const modal = document.getElementById('ai-assistant-modal');
+const titleEl = document.getElementById('ai-modal-title');
+const resumeSel = document.getElementById('ai-modal-resume-select');
+const statusEl = document.getElementById('ai-modal-status');
+const applyStatusEl = document.getElementById('apply-autofill-status');
+const captchaAlert = document.getElementById('apply-captcha-alert');
+const modeSel = document.getElementById('apply-mode-select');
+if (!modal || !resumeSel) return;
 
     activeAiVacancy = vacancy;
     activeCoverLetterId = null;
+    activeMatchScore = null;
+    activeAutofillTabId = null;
     lastLoadedLetterText = '';
     isLetterDirty = false;
     if (statusEl) statusEl.textContent = '';
-    if (titleEl) titleEl.textContent = `AI Match & Cover Letter: ${vacancy.full_position_name || 'Vacancy'}`;
+    if (applyStatusEl) applyStatusEl.textContent = '';
+    if (captchaAlert) captchaAlert.style.display = 'none';
+    if (titleEl) titleEl.textContent = `Review & Apply: ${vacancy.full_position_name || 'Vacancy'}`;
+
+    const activeProfile = getActiveProfileForApply();
+    renderProfileAutofillPreview(activeProfile);
+
+    const savedMode = (await getSetting('submission_mode').catch(() => 'semi_automated')) || 'semi_automated';
+    if (modeSel) {
+        modeSel.value = savedMode;
+        updateFillButtonLabel(savedMode);
+    }
 
     if (!state.cachedProfileResumes.length) await loadResumesUI();
 
@@ -367,7 +420,9 @@ async function runWithBridgeConsentRetry(fn, endpointLabel) {
     }
 }
 
-export function initAiAssistantModal() {
+export { openReviewApplyModal as openAiAssistantModal };
+
+export function initAiAssistantModal({ onApplicationLogged } = {}) {
     const modal = document.getElementById('ai-assistant-modal');
     const closeBtn = document.getElementById('ai-modal-close-btn');
     const resumeSel = document.getElementById('ai-modal-resume-select');
@@ -376,6 +431,12 @@ export function initAiAssistantModal() {
     const saveBtn = document.getElementById('ai-save-letter-btn');
     const textarea = document.getElementById('ai-letter-textarea');
     const statusEl = document.getElementById('ai-modal-status');
+    const modeSel = document.getElementById('apply-mode-select');
+    const fillBtn = document.getElementById('apply-fill-form-btn');
+    const resumeFillBtn = document.getElementById('apply-resume-autofill-btn');
+    const confirmSubmitBtn = document.getElementById('apply-confirm-submit-btn');
+    const applyStatusEl = document.getElementById('apply-autofill-status');
+    const captchaAlert = document.getElementById('apply-captcha-alert');
 
     const closeModal = () => modal?.removeAttribute('open');
     closeBtn?.addEventListener('click', closeModal);
@@ -485,38 +546,189 @@ export function initAiAssistantModal() {
         }
     });
 
-    saveBtn?.addEventListener('click', async () => {
+    async function persistCoverLetterDraftIfNeeded({ requireNonEmpty = false } = {}) {
         const resumeId = resumeSel?.value;
         const resume = state.cachedProfileResumes.find((r) => r.id === resumeId);
         const text = (textarea?.value || '').trim();
-        if (!activeAiVacancy || !resume || !text) {
-            if (statusEl) { statusEl.textContent = 'Cover letter text and resume variant are required.'; statusEl.style.color = '#f87171'; }
-            return;
+        if (!text) {
+            if (requireNonEmpty) throw new Error('Cover letter text and resume variant are required.');
+            return activeCoverLetterId;
         }
+        if (!activeAiVacancy || !resume) {
+            if (requireNonEmpty) throw new Error('Cover letter text and resume variant are required.');
+            return activeCoverLetterId;
+        }
+        if (activeCoverLetterId && !isLetterDirty) return activeCoverLetterId;
 
+        const payload = {
+            id: activeCoverLetterId || null,
+            profile_id: resume.profile_id,
+            vacancy_id: activeAiVacancy.id,
+            resume_id: resume.id,
+            title: `Cover Letter - ${activeAiVacancy.full_position_name || 'Application'}`.slice(0, 150),
+            plain_text: text,
+            skill_ids: Array.isArray(resume.skill_ids) ? resume.skill_ids : [],
+        };
+        let saved;
+        if (state.isExtensionConnected) {
+            saved = await callExtension('save_cover_letter', { coverLetter: payload });
+            await db.cover_letters.put(saved).catch(() => {});
+        } else {
+            saved = await saveCoverLetter(payload);
+        }
+        activeCoverLetterId = saved.id;
+        lastLoadedLetterText = saved.plain_text;
+        updateCoverLetterDirtyUI();
+        return saved.id;
+    }
+
+    saveBtn?.addEventListener('click', async () => {
         try {
-            const payload = {
-                id: activeCoverLetterId || null,
-                profile_id: resume.profile_id,
-                vacancy_id: activeAiVacancy.id,
-                resume_id: resume.id,
-                title: `Cover Letter - ${activeAiVacancy.full_position_name || 'Application'}`.slice(0, 150),
-                plain_text: text,
-                skill_ids: Array.isArray(resume.skill_ids) ? resume.skill_ids : [],
-            };
-            let saved;
-            if (state.isExtensionConnected) {
-                saved = await callExtension('save_cover_letter', { coverLetter: payload });
-                await db.cover_letters.put(saved).catch(() => {});
-            } else {
-                saved = await saveCoverLetter(payload);
-            }
-            activeCoverLetterId = saved.id;
-            lastLoadedLetterText = saved.plain_text;
-            updateCoverLetterDirtyUI();
+            await persistCoverLetterDraftIfNeeded({ requireNonEmpty: true });
             if (statusEl) { statusEl.textContent = 'Cover letter draft saved.'; statusEl.style.color = '#34d399'; }
         } catch (err) {
             if (statusEl) { statusEl.textContent = err.message; statusEl.style.color = '#f87171'; }
+        }
+    });
+
+    modeSel?.addEventListener('change', (e) => {
+        updateFillButtonLabel(e.target.value);
+    });
+
+    async function executeAutofill({ reuseTabId = null } = {}) {
+        if (!activeAiVacancy) return;
+        const activeProfile = getActiveProfileForApply();
+        const resumeId = resumeSel?.value || null;
+        const mode = modeSel?.value || 'semi_automated';
+        const coverLetterText = (textarea?.value || '').trim();
+
+        if (!state.isExtensionConnected) {
+            if (isSafeHttpUrl(activeAiVacancy.url)) {
+                window.open(activeAiVacancy.url, '_blank', 'noopener,noreferrer');
+            }
+            if (applyStatusEl) {
+                applyStatusEl.textContent = 'Extension disconnected — opened posting in a new tab for manual submission.';
+                applyStatusEl.style.color = 'var(--text-secondary)';
+            }
+            return;
+        }
+
+        if (fillBtn) fillBtn.disabled = true;
+        if (resumeFillBtn) resumeFillBtn.disabled = true;
+        if (applyStatusEl) {
+            applyStatusEl.textContent = mode === 'manual' ? 'Opening application page...' : 'Opening tab & autofilling form...';
+            applyStatusEl.style.color = 'var(--text-secondary)';
+        }
+
+        try {
+            await persistCoverLetterDraftIfNeeded({ requireNonEmpty: false }).catch(() => {});
+            const res = await callExtension('prepare_application_autofill', {
+                vacancyId: activeAiVacancy.id,
+                vacancyUrl: activeAiVacancy.url,
+                profileId: activeProfile.profile_id || state.activeProfileId,
+                profile: activeProfile,
+                resumeId,
+                coverLetterId: activeCoverLetterId,
+                coverLetter: coverLetterText,
+                matchScore: activeMatchScore,
+                submissionMode: mode,
+                tabId: reuseTabId,
+            }, 15000);
+
+            activeAutofillTabId = res.tabId || null;
+
+            if (res.captchaDetected) {
+                if (captchaAlert) captchaAlert.style.display = 'flex';
+                if (applyStatusEl) {
+                    applyStatusEl.textContent = 'Captcha detected — solve it in the tab, then click Resume Autofill.';
+                    applyStatusEl.style.color = '#f59e0b';
+                }
+                return;
+            }
+
+            if (captchaAlert) captchaAlert.style.display = 'none';
+            if (res.mode === 'manual') {
+                if (applyStatusEl) {
+                    applyStatusEl.textContent = 'Opened posting in manual mode. Click Confirm and Submit after applying.';
+                    applyStatusEl.style.color = '#34d399';
+                }
+                return;
+            }
+
+            const filledCount = res.filled?.length || 0;
+            const unmappedCount = res.unmapped?.length || 0;
+            if (applyStatusEl) {
+                applyStatusEl.textContent = unmappedCount
+                    ? `Filled ${filledCount} field(s) (${unmappedCount} unmapped marked in amber). Review in tab & confirm.`
+                    : `Filled ${filledCount} field(s). Review in tab & confirm submission.`;
+                applyStatusEl.style.color = '#34d399';
+            }
+        } catch (err) {
+            if (applyStatusEl) {
+                applyStatusEl.textContent = `Autofill failed: ${err.message}`;
+                applyStatusEl.style.color = '#f87171';
+            }
+        } finally {
+            if (fillBtn) fillBtn.disabled = false;
+            if (resumeFillBtn) resumeFillBtn.disabled = false;
+        }
+    }
+
+    fillBtn?.addEventListener('click', () => executeAutofill({ reuseTabId: null }));
+    resumeFillBtn?.addEventListener('click', () => executeAutofill({ reuseTabId: activeAutofillTabId }));
+
+    confirmSubmitBtn?.addEventListener('click', async () => {
+        if (!activeAiVacancy) return;
+        const activeProfile = getActiveProfileForApply();
+        const profileId = activeProfile.profile_id || state.activeProfileId || (await ensureDefaultProfile()).id;
+        const resumeId = resumeSel?.value || null;
+
+        confirmSubmitBtn.disabled = true;
+        try {
+            const coverLetterId = await persistCoverLetterDraftIfNeeded({ requireNonEmpty: false }).catch(() => activeCoverLetterId);
+            if (state.isExtensionConnected) {
+                const created = await callExtension('create_application', {
+                    profile_id: profileId,
+                    vacancy_id: activeAiVacancy.id,
+                    resume_id: resumeId,
+                    cover_letter_id: coverLetterId || null,
+                    match_score: activeMatchScore,
+                    status: 'Applied',
+                });
+                await db.applications.put(created);
+            } else {
+                const existing = await db.applications.where('[profile_id+vacancy_id]').equals([profileId, activeAiVacancy.id]).first();
+                if (existing) {
+                    await setApplicationStatus(existing.id, 'Applied');
+                    await db.applications.update(existing.id, {
+                        resume_id: resumeId ?? existing.resume_id ?? null,
+                        cover_letter_id: coverLetterId ?? existing.cover_letter_id ?? null,
+                        match_score: activeMatchScore ?? existing.match_score ?? null,
+                    });
+                } else {
+                    await createApplication({
+                        profile_id: profileId,
+                        vacancy_id: activeAiVacancy.id,
+                        resume_id: resumeId,
+                        cover_letter_id: coverLetterId || null,
+                        match_score: activeMatchScore,
+                    });
+                }
+            }
+
+            if (typeof onApplicationLogged === 'function') await onApplicationLogged();
+            if (applyStatusEl) {
+                applyStatusEl.textContent = 'Application recorded as Applied!';
+                applyStatusEl.style.color = '#34d399';
+            }
+            setTimeout(() => closeModal(), 700);
+        } catch (err) {
+            if (applyStatusEl) {
+                applyStatusEl.textContent = err.message;
+                applyStatusEl.style.color = '#f87171';
+            }
+        } finally {
+            confirmSubmitBtn.disabled = false;
         }
     });
 }

@@ -67,6 +67,7 @@ class AoModal extends HTMLElement {
                 <div class="ao-modal-footer">
                     <span id="ao-modal-source" class="ao-pill">Direct</span>
                     <div class="ao-modal-footer-actions">
+                        <button id="ao-modal-apply-btn" class="ao-btn" type="button" style="display: none;">Review &amp; Apply</button>
                         <a id="ao-modal-link" class="ao-btn" href="#" target="_blank" rel="noopener">Open Source URL</a>
                     </div>
                 </div>
@@ -74,18 +75,30 @@ class AoModal extends HTMLElement {
         `;
 
         this.querySelector('.ao-modal-close').addEventListener('click', () => this.close());
+        this.querySelector('#ao-modal-apply-btn').addEventListener('click', () => {
+                const item = this._rawItem;
+                this.close();
+                if (item) {
+                    window.dispatchEvent(new CustomEvent('ao-modal-review-apply', { detail: item }));
+                }
+        });
         this.addEventListener('click', (e) => {
-            if (e.target === this) this.close();
+                if (e.target === this) this.close();
         });
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.hasAttribute('open')) this.close();
+                if (e.key === 'Escape' && this.hasAttribute('open')) this.close();
         });
     }
 
     open(data) {
+        this._rawItem = data.rawItem || null;
         this.querySelector('#ao-modal-title').textContent = data.title || 'Untitled Vacancy';
         this.querySelector('#ao-modal-body').textContent = data.description || 'No detailed description captured.';
         this.querySelector('#ao-modal-source').textContent = data.source || 'Scraped';
+        const applyBtn = this.querySelector('#ao-modal-apply-btn');
+        if (applyBtn) {
+            applyBtn.style.display = this._rawItem ? 'inline-block' : 'none';
+        }
         const linkBtn = this.querySelector('#ao-modal-link');
         if (data.url && data.url !== '#') {
             linkBtn.href = data.url;

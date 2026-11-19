@@ -43,9 +43,16 @@ function observeDomMutationWithTimeout(targetNode = document.body, timeoutMs = 2
 
   announceExtension();
   window.addEventListener('message', (event) => {
-    if (event.source === window && event.data?.type === 'AUTOOFFER_DISCOVER_EXTENSION') {
-      announceExtension();
-    }
+      if (event.source === window && event.data?.type === 'AUTOOFFER_DISCOVER_EXTENSION') {
+        announceExtension();
+      }
+  });
+  chrome.runtime.onMessage.addListener((msg) => {
+      if (msg?.action === 'autooffer_data_updated') {
+        try {
+          window.postMessage({ type: 'AUTOOFFER_DATA_UPDATED' }, window.location.origin);
+        } catch {}
+      }
   });
 })();
 
@@ -260,76 +267,265 @@ async function executePagination(explicitSelector) {
   return { advanced: true, domMutated, method };
 }
 
-function setNativeInputValue(el, value) {
-  const proto = el.tagName === 'TEXTAREA'
-      ? window.HTMLTextAreaElement.prototype
-      : window.HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-  if (setter) setter.call(el, value);
-  else el.value = value;
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-  el.style.outline = '2px solid #2563eb';
-  el.style.outlineOffset = '2px';
+function isElementVisible(el) {
+  if (!el || !el.isConnected) return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+  return el.getClientRects().length > 0;
 }
 
-function detectCaptcha(customSelector) {
-  const queries = [
-    customSelector,
-    'iframe[src*="recaptcha"]', 'iframe[src*="hcaptcha"]', 'iframe[src*="turnstile"]',
-    '[class*="g-recaptcha"]', '[class*="h-captcha"]', '[data-sitekey]'
-  ].filter(Boolean);
-  for (const q of queries) {
-    const el = document.querySelector(q);
-    if (el && el.offsetParent !== null) return true;
-  }
-  return false;
-}
-
-function findInputByKeywords(keywords) {
-  const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="file"]):not([type="submit"]):not([type="button"]), textarea'));
-  for (const el of inputs) {
-    if (el.offsetParent === null || el.disabled || el.readOnly) continue;
-    const labelEl = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : el.closest('label');
-    const haystack = [
-      el.name, el.id, el.placeholder, el.getAttribute('aria-label'),
-      el.getAttribute('autocomplete'), labelEl?.textContent
-    ].filter(Boolean).join(' ').toLowerCase();
-    if (keywords.some((kw) => haystack.includes(kw))) return el;
-  }
-  return null;
-}
-
-function autofillApplicationForm({ profile = {}, coverLetter = '', selectors = {} }) {
-  if (detectCaptcha(selectors.captcha)) {
-    return { success: false, captchaDetected: true, filled: [], error: 'Captcha detected; user action required.' };
-  }
-
-  const mappings = [
-    ['first_name',   selectors.form_first_name,   profile.first_name,   ['first name', 'firstname', 'given-name', 'fname']],
-    ['last_name',    selectors.form_last_name,    profile.last_name,    ['last name', 'lastname', 'family-name', 'lname', 'surname']],
-    ['email',        selectors.form_email,        profile.email,        ['email', 'e-mail']],
-    ['phone',        selectors.form_phone,        profile.phone,        ['phone', 'tel', 'mobile']],
-    ['location',     selectors.form_location,     profile.location,     ['location', 'city', 'address']],
-    ['website',      selectors.form_website,      profile.website,      ['website', 'portfolio', 'personal site']],
-    ['github',       selectors.form_github,       profile.github,       ['github']],
-    ['linkedin',     selectors.form_linkedin,     profile.linkedin,     ['linkedin']],
-    ['telegram',     selectors.form_telegram,     profile.telegram,     ['telegram']],
-    ['cover_letter', selectors.form_cover_letter, coverLetter,          ['cover letter', 'cover_letter', 'motivation', 'summary']],
-  ];
-
-  const filled = [];
-  for (const [field, explicitSel, value, keywords] of mappings) {
-    if (!value) continue;
-    let el = explicitSel ? document.querySelector(explicitSel) : null;
-    if (!el) el = findInputByKeywords(keywords);
-    if (el && el.offsetParent !== null) {
-      setNativeInputValue(el, value);
-      filled.push(field);
+function querySelectorSafe(sel) {
+  const trimmed = String(sel || '').trim();
+  if (!trimmed) return null;
+  try {
+    if (/^\s*(\/|\(|\.\/)/.test(trimmed)) {
+        const res = document.evaluate(trimmed, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        return res.singleNodeValue instanceof Element ? res.singleNodeValue : null;
+      }
+      return document.querySelector(trimmed);
+    } catch {
+      return null;
     }
   }
-  return { success: true, captchaDetected: false, filled };
-}
+
+  function setNativeInputValue(el, value) {
+    const proto = el.tagName === 'TEXTAREA'
+    ? window.HTMLTextAreaElement.prototype
+    : el.tagName === 'SELECT'
+    ? window.HTMLSelectElement.prototype
+    : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.style.outline = '2px solid #2563eb';
+    el.style.outlineOffset = '2px';
+    el.setAttribute('data-ao-filled', 'true');
+    el.removeAttribute('data-ao-unmapped');
+  }
+
+  function clearAutofillHighlights() {
+    document.querySelectorAll('[data-ao-filled], [data-ao-unmapped]').forEach((el) => {
+        el.style.outline = '';
+        el.style.outlineOffset = '';
+        el.removeAttribute('data-ao-filled');
+        el.removeAttribute('data-ao-unmapped');
+    });
+  }
+
+  function detectCaptcha(customSelector) {
+    const queries = [
+      customSelector,
+      'iframe[src*="recaptcha"]', 'iframe[src*="hcaptcha"]', 'iframe[src*="turnstile"]',
+      '[class*="g-recaptcha"]', '[class*="h-captcha"]', '[data-sitekey]'
+    ].filter(Boolean);
+    for (const q of queries) {
+      const el = querySelectorSafe(q);
+      if (el && isElementVisible(el)) return true;
+    }
+    return false;
+  }
+
+  function getFieldDescriptor(el) {
+    const labelEl = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : el.closest('label');
+    return (
+      labelEl?.textContent?.trim() ||
+      el.getAttribute('aria-label') ||
+      el.placeholder ||
+      el.name ||
+      el.id ||
+      el.type ||
+      el.tagName.toLowerCase()
+    );
+  }
+
+  function findInputByKeywords(keywords, excludeSet = null) {
+    const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), textarea'));
+    for (const el of inputs) {
+      if (excludeSet?.has(el)) continue;
+      if (el.closest('#ao-autofill-banner')) continue;
+      if (!isElementVisible(el) || el.disabled || el.readOnly) continue;
+      const labelEl = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : el.closest('label');
+      const haystack = [
+        el.name, el.id, el.placeholder, el.getAttribute('aria-label'),
+        el.getAttribute('autocomplete'), labelEl?.textContent
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (keywords.some((kw) => haystack.includes(kw))) return el;
+    }
+    return null;
+  }
+
+  function attachResumeFileToInput(fileInput, resumeFile) {
+    if (!fileInput || !resumeFile?.fileDataB64) return false;
+    try {
+      const bin = atob(resumeFile.fileDataB64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const file = new File([bytes], resumeFile.fileName || 'resume.pdf', {
+          type: resumeFile.mimeType || 'application/pdf',
+      });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      fileInput.files = dt.files;
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      fileInput.style.outline = '2px solid #2563eb';
+      fileInput.style.outlineOffset = '2px';
+      fileInput.setAttribute('data-ao-filled', 'true');
+      fileInput.removeAttribute('data-ao-unmapped');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function renderAutofillBanner({ filled, unmapped, selectors, context, filledElements }) {
+    document.getElementById('ao-autofill-banner')?.remove();
+
+    const banner = document.createElement('div');
+    banner.id = 'ao-autofill-banner';
+    banner.style.cssText = [
+      'position:fixed', 'right:16px', 'bottom:16px', 'z-index:2147483647',
+      'max-width:380px', 'background:#0f172a', 'color:#f8fafc',
+      'border:1px solid #3b82f6', 'border-radius:10px', 'padding:14px 16px',
+      'box-shadow:0 12px 30px rgba(0,0,0,0.45)',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
+      'font-size:13px', 'line-height:1.45',
+    ].join(';');
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;margin-bottom:4px;color:#93c5fd;';
+    title.textContent = 'AutoOffer Semi-Automated Review';
+
+    const summary = document.createElement('div');
+    summary.style.cssText = 'margin-bottom:10px;color:#e2e8f0;';
+    summary.textContent = unmapped.length
+    ? `Filled ${filled.length} field(s). ${unmapped.length} unmapped field(s) outlined in amber for manual review.`
+    : `Filled ${filled.length} field(s). Review before confirming.`;
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.textContent = 'Confirm and Submit';
+    confirmBtn.style.cssText = 'background:#2563eb;color:#fff;border:none;border-radius:6px;padding:7px 12px;font-weight:600;font-size:12px;cursor:pointer;';
+    confirmBtn.addEventListener('click', () => {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Logging...';
+        chrome.runtime.sendMessage({ action: 'confirm_application_submission', context }, (res) => {
+            if (chrome.runtime.lastError || !res?.success) {
+              confirmBtn.disabled = false;
+              confirmBtn.textContent = 'Confirm and Submit';
+              summary.textContent = res?.error || 'Could not log application.';
+              return;
+            }
+            const firstFilled = Array.from(filledElements)[0];
+            const submitEl = (selectors?.form_submit ? querySelectorSafe(selectors.form_submit) : null)
+            || firstFilled?.form?.querySelector('button[type="submit"], input[type="submit"]');
+            if (submitEl && isElementVisible(submitEl) && !submitEl.disabled) {
+              summary.textContent = 'Application logged! Submitting form...';
+              submitEl.click();
+              setTimeout(() => banner.remove(), 1200);
+            } else {
+              summary.textContent = 'Application logged as Applied! Click the page Submit button if not yet submitted.';
+              confirmBtn.style.display = 'none';
+              cancelBtn.textContent = 'Close';
+            }
+        });
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'background:transparent;color:#cbd5e1;border:1px solid #475569;border-radius:6px;padding:7px 12px;font-weight:500;font-size:12px;cursor:pointer;';
+    cancelBtn.addEventListener('click', () => {
+        clearAutofillHighlights();
+        banner.remove();
+    });
+
+    btnRow.append(confirmBtn, cancelBtn);
+    banner.append(title, summary, btnRow);
+    document.body.appendChild(banner);
+  }
+
+  function autofillApplicationForm({
+      profile = {},
+      coverLetter = '',
+      resumeFile = null,
+      selectors = {},
+      submissionMode = 'semi_automated',
+      context = {},
+  }) {
+    clearAutofillHighlights();
+
+    if (detectCaptcha(selectors.captcha)) {
+      return {
+        success: false,
+        captchaDetected: true,
+        filled: [],
+        unmapped: [],
+        error: 'Captcha detected; please solve it and click Resume Autofill.',
+      };
+    }
+
+    const mappings = [
+      ['first_name',   selectors.form_first_name,   profile.first_name,   ['first name', 'firstname', 'given-name', 'fname']],
+      ['last_name',    selectors.form_last_name,    profile.last_name,    ['last name', 'lastname', 'family-name', 'lname', 'surname']],
+      ['email',        selectors.form_email,        profile.email,        ['email', 'e-mail']],
+      ['phone',        selectors.form_phone,        profile.phone,        ['phone', 'tel', 'mobile']],
+      ['location',     selectors.form_location,     profile.location,     ['location', 'city', 'address']],
+      ['website',      selectors.form_website,      profile.website,      ['website', 'portfolio', 'personal site']],
+      ['github',       selectors.form_github,       profile.github,       ['github']],
+      ['linkedin',     selectors.form_linkedin,     profile.linkedin,     ['linkedin']],
+      ['telegram',     selectors.form_telegram,     profile.telegram,     ['telegram']],
+      ['cover_letter', selectors.form_cover_letter, coverLetter,          ['cover letter', 'cover_letter', 'motivation', 'summary']],
+    ];
+
+    const filled = [];
+    const filledElements = new Set();
+
+    for (const [field, explicitSel, value, keywords] of mappings) {
+      if (!value) continue;
+      let el = explicitSel ? querySelectorSafe(explicitSel) : null;
+      if (!el || filledElements.has(el)) el = findInputByKeywords(keywords, filledElements);
+      if (el && isElementVisible(el) && !el.disabled && !el.readOnly) {
+        setNativeInputValue(el, value);
+        filled.push(field);
+        filledElements.add(el);
+      }
+    }
+
+    if (resumeFile?.fileDataB64) {
+      const fileEl = (selectors.form_resume_upload ? querySelectorSafe(selectors.form_resume_upload) : null)
+      || document.querySelector('input[type="file"]');
+      if (fileEl && isElementVisible(fileEl) && !fileEl.disabled && attachResumeFileToInput(fileEl, resumeFile)) {
+        filled.push('resume_upload');
+        filledElements.add(fileEl);
+      }
+    }
+
+    const unmapped = [];
+    const candidates = document.querySelectorAll(
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), textarea, select'
+    );
+    for (const el of candidates) {
+      if (filledElements.has(el) || el.closest('#ao-autofill-banner')) continue;
+      if (!isElementVisible(el) || el.disabled || el.readOnly) continue;
+      if (el.tagName !== 'SELECT' && el.type !== 'file' && el.value && el.value.trim().length > 0) continue;
+      el.style.outline = '2px dashed #f59e0b';
+      el.style.outlineOffset = '2px';
+      el.setAttribute('data-ao-unmapped', 'true');
+      el.title = 'AutoOffer: unmapped field — please review and fill manually';
+      unmapped.push(getFieldDescriptor(el));
+    }
+
+    if (submissionMode === 'semi_automated') {
+      renderAutofillBanner({ filled, unmapped, selectors, context, filledElements });
+    }
+
+    return { success: true, captchaDetected: false, filled, unmapped };
+  }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'detect_page_selectors_for_registration') {

@@ -72,6 +72,7 @@ function taskForElementType(elementTypeId) {
 }
 
 let activeAutomationSession = null;
+const pendingAutofillContexts = new Map();
 
 async function bootstrap() {
     await seedDatabase();
@@ -804,8 +805,213 @@ async function saveJobRecord(incoming) {
     return jobData;
 }
 
+async function getFormSelectorsForUrl(targetUrl) {
+    let hostname = '';
+    try {
+        hostname = new URL(targetUrl).hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+        return {};
+    }
+    const platform = await findPlatformByHostname(hostname);
+    const elementTypes = await db.selector_element_types_dict.toArray();
+    const codeByElId = new Map(elementTypes.map((e) => [e.id, e.code]));
+    const activeFormSelectors = (await db.selectors.where('is_active').equals(1).toArray())
+    .filter((s) => s.task_id === TASK_IDS.FORM);
+
+    const out = {};
+    for (const s of activeFormSelectors) {
+        const matchesHost = s.url_pattern && hostname.includes(s.url_pattern.toLowerCase());
+        const matchesPlatform = platform && s.platform_id === platform.id;
+        if (!matchesHost && !matchesPlatform) continue;
+        const code = codeByElId.get(s.element_type_id);
+        if (code && !out[code]) out[code] = s.selector_string;
+    }
+    return out;
+}
+
+async function focusTabAndWindow(tab) {
+    if (!tab?.id) return;
+    await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+    if (tab.windowId != null && chrome.windows?.update) {
+        await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+    }
+}
+
+async function findOrOpenApplicationTab(vacancyUrl, preferredTabId = null) {
+    if (preferredTabId) {
+        try {
+            const existing = await chrome.tabs.get(preferredTabId);
+            if (existing?.id) {
+                await focusTabAndWindow(existing);
+                await waitForTabLoad(existing.id);
+                return existing;
+            }
+        } catch {}
+    }
+
+    const baseTarget = vacancyUrl.split('#')[0];
+    const openTabs = await chrome.tabs.query({});
+    const match = openTabs.find((t) => t.url && t.url.split('#')[0] === baseTarget);
+    if (match?.id) {
+        await focusTabAndWindow(match);
+        await waitForTabLoad(match.id);
+        return match;
+    }
+
+    const created = await chrome.tabs.create({ url: vacancyUrl, active: true });
+    await focusTabAndWindow(created);
+    await waitForTabLoad(created.id);
+    return created;
+}
+
+async function recordSubmittedApplication({
+        profile_id,
+        vacancy_id,
+        resume_id = null,
+        cover_letter_id = null,
+        match_score = null,
+        status = 'Applied',
+        notes = undefined,
+}) {
+    const profId = profile_id || (await ensureDefaultProfile()).id;
+    const cleanScore = match_score != null ? Math.round(Math.min(100, Math.max(0, Number(match_score) || 0))) : null;
+    const existing = await db.applications.where('[profile_id+vacancy_id]').equals([profId, vacancy_id]).first();
+
+    let appId;
+    if (existing) {
+        const now = nowIso();
+        await db.applications.update(existing.id, {
+                resume_id: resume_id ?? existing.resume_id ?? null,
+                cover_letter_id: cover_letter_id ?? existing.cover_letter_id ?? null,
+                match_score: cleanScore ?? existing.match_score ?? null,
+                status: status || existing.status || 'Applied',
+                status_changed_at: now,
+                ...(notes !== undefined ? { notes: notes || null } : {}),
+        });
+        appId = existing.id;
+    } else {
+        appId = await createApplication({
+                profile_id: profId,
+                vacancy_id,
+                resume_id,
+                cover_letter_id,
+                match_score: cleanScore,
+        });
+        if (status && status !== 'Applied') {
+            await setApplicationStatus(appId, status);
+        }
+        if (notes !== undefined) {
+            await db.applications.update(appId, { notes: notes || null });
+        }
+    }
+
+    notifyPwaTabsDataUpdated();
+    return db.applications.get(appId);
+}
+
+async function prepareApplicationAutofill(req) {
+    const vacancyUrl = req.vacancyUrl || (req.vacancyId ? (await db.local_vacancies.get(req.vacancyId))?.url : null);
+    if (!isSafeHttpUrl(vacancyUrl)) {
+        throw new Error('A valid http(s) vacancy URL is required.');
+    }
+
+    const profileRow = req.profileId ? await db.user_profiles.get(req.profileId) : await ensureDefaultProfile();
+    const profileId = profileRow?.id || (await ensureDefaultProfile()).id;
+    const dbPersonal = await db.personal_data.where('profile_id').equals(profileId).first();
+    const incomingProfile = req.profile || {};
+    const parsedLinks = incomingProfile.links ? parseLinks(incomingProfile.links) : {};
+
+    const mergedProfile = {
+        first_name: incomingProfile.first_name ?? dbPersonal?.first_name ?? '',
+        last_name: incomingProfile.last_name ?? dbPersonal?.last_name ?? '',
+        email: incomingProfile.email ?? dbPersonal?.email ?? '',
+        phone: incomingProfile.phone ?? dbPersonal?.phone ?? '',
+        location: incomingProfile.location ?? dbPersonal?.location ?? '',
+        website: incomingProfile.website ?? parsedLinks.website ?? dbPersonal?.website ?? '',
+        github: incomingProfile.github ?? parsedLinks.github ?? dbPersonal?.github ?? '',
+        linkedin: incomingProfile.linkedin ?? parsedLinks.linkedin ?? dbPersonal?.linkedin ?? '',
+        telegram: incomingProfile.telegram ?? dbPersonal?.telegram ?? '',
+    };
+
+    const mode = req.submissionMode || (await getSetting('submission_mode')) || 'semi_automated';
+    const tab = await findOrOpenApplicationTab(vacancyUrl, req.tabId || null);
+
+    const context = {
+        profile_id: profileId,
+        vacancy_id: req.vacancyId || null,
+        resume_id: req.resumeId || null,
+        cover_letter_id: req.coverLetterId || null,
+        match_score: req.matchScore != null ? Math.round(Number(req.matchScore)) : null,
+    };
+    pendingAutofillContexts.set(tab.id, context);
+
+    if (mode === 'manual') {
+        return {
+            tabId: tab.id,
+            mode: 'manual',
+            captchaDetected: false,
+            filled: [],
+            unmapped: [],
+        };
+    }
+
+    let resumeFile = null;
+    if (req.resumeId) {
+        const resumeRow = await db.resumes.get(req.resumeId);
+        if (resumeRow?.file_data) {
+            const fileDataB64 = await blobToBase64(resumeRow.file_data);
+            if (fileDataB64) {
+                resumeFile = {
+                    fileName: resumeRow.file_name || 'resume.pdf',
+                    mimeType: resumeRow.mime_type || 'application/pdf',
+                    fileDataB64,
+                };
+            }
+        }
+    }
+
+    const selectors = await getFormSelectorsForUrl(vacancyUrl);
+    const payload = {
+        action: 'autofill_application_form',
+        profile: mergedProfile,
+        coverLetter: req.coverLetter || '',
+        resumeFile,
+        selectors,
+        submissionMode: mode,
+        context,
+    };
+
+    let res;
+    try {
+        res = await sendTabMessage(tab.id, payload);
+    } catch {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+        res = await sendTabMessage(tab.id, payload);
+    }
+
+    if (res?.captchaDetected) {
+        await focusTabAndWindow(tab);
+        return {
+            tabId: tab.id,
+            mode,
+            captchaDetected: true,
+            filled: res.filled || [],
+            unmapped: res.unmapped || [],
+            error: res.error || 'Captcha detected; user action required.',
+        };
+    }
+
+    return {
+        tabId: tab.id,
+        mode,
+        captchaDetected: false,
+        filled: res?.filled || [],
+        unmapped: res?.unmapped || [],
+    };
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'get_background_status') {
+        if (request.action === 'get_background_status') {
         Promise.all([calculateStorageWeight(), getSetting('private_use_only')])
             .then(([w, priv]) => sendResponse({
                 success: true,
@@ -933,6 +1139,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'stop_automation_workflow') {
         if (activeAutomationSession) { activeAutomationSession.abort = true; activeAutomationSession = null; }
         sendResponse({ success: true });
+        return true;
+    }
+
+    if (request.action === 'confirm_application_submission') {
+        (async () => {
+            const tabId = sender?.tab?.id;
+            const storedCtx = tabId ? pendingAutofillContexts.get(tabId) : null;
+            const ctx = { ...(storedCtx || {}), ...(request.context || {}) };
+            if (!ctx.vacancy_id) {
+                throw new Error('No vacancy associated with this autofill session.');
+            }
+            const application = await recordSubmittedApplication(ctx);
+            if (tabId) pendingAutofillContexts.delete(tabId);
+            sendResponse({ success: true, application });
+        })().catch((err) => sendResponse({ success: false, error: err.message }));
         return true;
     }
 });
@@ -1107,24 +1328,25 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
         return true;
     }
 
+    if (request.action === 'prepare_application_autofill') {
+        prepareApplicationAutofill(request)
+        .then((data) => sendResponse({ status: 'success', data }))
+        .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
     if (request.action === 'create_application') {
-        (async () => {
-            const id = await createApplication({
+        recordSubmittedApplication({
                 profile_id: request.profile_id,
                 vacancy_id: request.vacancy_id,
                 resume_id: request.resume_id || null,
                 cover_letter_id: request.cover_letter_id || null,
                 match_score: request.match_score ?? null,
-            });
-            if (request.status && request.status !== 'Applied') {
-                await setApplicationStatus(id, request.status);
-            }
-            if (request.notes !== undefined) {
-                await db.applications.update(id, { notes: request.notes || null });
-            }
-            const created = await db.applications.get(id);
-            sendResponse({ status: 'success', data: created });
-        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+                status: request.status || 'Applied',
+                notes: request.notes,
+        })
+        .then((created) => sendResponse({ status: 'success', data: created }))
+        .catch((err) => sendResponse({ status: 'error', message: err.message }));
         return true;
     }
 

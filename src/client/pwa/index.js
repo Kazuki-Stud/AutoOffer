@@ -51,8 +51,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     initProfilePage({ onDataChanged: refreshDisplay });
     initJobsPage({ onDataChanged: refreshDisplay });
     initAiSettingsHandlers();
-    initAiAssistantModal();
+    initAiAssistantModal({ onApplicationLogged: refreshDisplay });
     initSettingsHandlers();
+
+    window.addEventListener('message', (event) => {
+            if (event.source === window && event.data?.type === 'AUTOOFFER_DATA_UPDATED') {
+                refreshDisplay().catch(console.error);
+            }
+    });
 
     document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
         AoTheme.toggleTheme();
