@@ -27,6 +27,28 @@ function observeDomMutationWithTimeout(targetNode = document.body, timeoutMs = 2
   });
 }
 
+// Auto-pairing handshake with AutoOffer PWA pages (only shares extensionId, never personal data)
+(function initPwaDiscoveryBridge() {
+  const isAutoOfferPwa = Boolean(document.querySelector('meta[name="autooffer-pwa"]'));
+  if (!isAutoOfferPwa) return;
+
+  const announceExtension = () => {
+    try {
+      window.postMessage(
+          { type: 'AUTOOFFER_EXTENSION_AVAILABLE', extensionId: chrome.runtime.id },
+          window.location.origin
+      );
+    } catch {}
+  };
+
+  announceExtension();
+  window.addEventListener('message', (event) => {
+    if (event.source === window && event.data?.type === 'AUTOOFFER_DISCOVER_EXTENSION') {
+      announceExtension();
+    }
+  });
+})();
+
 function deriveOptimalSelector(el, scope) {
   if (!el || el === scope) return '';
   if (el.id && !/[0-9]{4,}/.test(el.id)) return '#' + CSS.escape(el.id);
@@ -238,7 +260,6 @@ async function executePagination(explicitSelector) {
   return { advanced: true, domMutated, method };
 }
 
-// US 3.1 / 3.4 / 3.5: React/Vue-safe native value setter + field highlight + captcha check
 function setNativeInputValue(el, value) {
   const proto = el.tagName === 'TEXTAREA'
       ? window.HTMLTextAreaElement.prototype
@@ -311,6 +332,14 @@ function autofillApplicationForm({ profile = {}, coverLetter = '', selectors = {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'autooffer_data_updated') {
+    if (document.querySelector('meta[name="autooffer-pwa"]')) {
+      window.postMessage({ type: 'AUTOOFFER_DATA_UPDATED' }, window.location.origin);
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
+
   if (request.action === 'detect_page_selectors_for_registration') {
     const inputEl = document.querySelector('input#q, input[name="q"], input#search-job-keyword, input[name="search"], input[type="search"], input[name*="search" i], input[placeholder*="Keywords" i], input[type="text"]');
     sendResponse({ detected: { searchInput: inputEl ? deriveOptimalSelector(inputEl, document.body) : '' } });

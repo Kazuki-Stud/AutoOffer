@@ -26,7 +26,7 @@
 
 <nav class="tab-nav">
     <button id="tab-btn-jobs" class="tab-link active" data-tab="tab-jobs">Runner</button>
-    <button id="tab-btn-websites" class="tab-link" data-tab="tab-websites">Platforms & System</button>
+    <button id="tab-btn-websites" class="tab-link" data-tab="tab-websites">Platforms &amp; System</button>
 </nav>
 
 <div id="tab-jobs" class="tab-pane active">
@@ -59,7 +59,7 @@
             <select id="runner-profile-select" class="form-select" style="margin-top: 4px;"></select>
         </div>
         <div class="form-group">
-            <label>Target Roles & Filters:</label>
+            <label>Target Roles &amp; Filters:</label>
             <div id="runner-roles-display" class="summary-value-box">—</div>
         </div>
         <div class="form-group">
@@ -78,7 +78,18 @@
 <div id="tab-websites" class="tab-pane" style="display: none;">
     <div class="pane-section">
         <div class="section-title-row">
-            <h4>Embedded Platforms & Selectors</h4>
+            <h4>Manual Server Sync</h4>
+        </div>
+        <div class="button-group" style="margin-top: 0;">
+            <button id="sync-registry-btn" class="secondary-btn" type="button">Sync Registry</button>
+            <button id="push-vacancies-btn" class="secondary-btn" type="button">Push Vacancies</button>
+        </div>
+        <div id="server-sync-feedback" class="inline-feedback" style="display: none;"></div>
+    </div>
+
+    <div class="pane-section">
+        <div class="section-title-row">
+            <h4>Embedded Platforms &amp; Selectors</h4>
             <span id="platform-count-badge" class="count-tag">0 platforms</span>
         </div>
         <div id="platforms-feedback" class="inline-feedback" style="display: none;"></div>
@@ -86,7 +97,7 @@
     </div>
 
     <div class="pane-section">
-        <h4>Dashboard & Storage</h4>
+        <h4>Dashboard &amp; Storage</h4>
         <div class="form-group">
             <label for="extension-id-display">Extension ID (for PWA Connection):</label>
             <div class="inline-input-group">
@@ -94,7 +105,7 @@
                 <button id="copy-ext-id-btn" class="secondary-btn" type="button">Copy</button>
             </div>
         </div>
-        <button id="open-pwa-btn" class="primary-action-btn">Open Full Dashboard & Settings</button>
+        <button id="open-pwa-btn" class="primary-action-btn">Open Full Dashboard &amp; Settings</button>
         <button id="clear-db" data-i18n="clearDatabase">Clear Vacancies Database</button>
         <div id="clear-db-feedback" class="inline-feedback" style="display: none;"></div>
     </div>

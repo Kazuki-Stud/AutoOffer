@@ -1,15 +1,13 @@
 import { db } from './database/database.js';
 import { migrateLegacySecrets, saveAiConfiguration } from './database/crypto.js';
 import {
+    allowedSyncLevel,
     createApplication,
     deleteAiConfiguration,
     deleteProfileCascade,
     deleteResume,
     deleteVacancy,
     ensureDefaultProfile,
-    getActiveAiConfiguration,
-    getCoverLetterForVacancy,
-    getMatchResult,
     getOrCreateByName,
     getSetting,
     hasAiConsent,
@@ -78,18 +76,30 @@ let activeAutomationSession = null;
 async function bootstrap() {
     await seedDatabase();
     await migrateLegacySecrets();
-    await syncWhitelist();
-    await syncRegistrySelectors();
+    // Ensure any legacy periodic server sync alarm is removed (manual server sync only)
+    if (chrome.alarms?.clear) {
+        chrome.alarms.clear('autooffer_registry_sync').catch(() => {});
+    }
 }
 
 chrome.runtime.onInstalled.addListener(() => { bootstrap().catch(console.error); });
 chrome.runtime.onStartup.addListener(() => { bootstrap().catch(console.error); });
-chrome.alarms.create('autooffer_registry_sync', { periodInMinutes: 5 });
-chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'autooffer_registry_sync') {
-        syncWhitelist().then(syncRegistrySelectors).catch(console.error);
-    }
-});
+
+async function notifyPwaTabsDataUpdated() {
+    try {
+        const tabs = await chrome.tabs.query({});
+        for (const tab of tabs) {
+            if (!tab.id || !tab.url) continue;
+            if (
+                tab.url.startsWith('http://localhost') ||
+                tab.url.startsWith('http://127.0.0.1') ||
+                tab.url.startsWith('https://kazuki-stud.github.io/AutoOffer')
+            ) {
+                chrome.tabs.sendMessage(tab.id, { action: 'autooffer_data_updated' }).catch(() => {});
+            }
+        }
+    } catch {}
+}
 
 function isSafeHttpUrl(raw) {
     try {
@@ -356,11 +366,12 @@ function matchesFilters(text, keywords, locations) {
     return kwOk && locOk;
 }
 
-async function persistAndSyncVacancies(hostname, vacancies, { source = 'auto' } = {}) {
+// Local-only persistence + event push to open PWA tabs (no autonomous server push)
+async function persistVacanciesLocally(hostname, vacancies, { source = 'auto' } = {}) {
     const platform = await findPlatformByHostname(hostname);
     for (const item of vacancies) {
         const hasDesc = Boolean(item.description && item.description.trim().length > 0);
-        const id = await saveVacancy({
+        await saveVacancy({
             platform_id: platform ? platform.id : null,
             source_host: platform ? null : hostname,
             full_position_name: item.fullPositionName || 'Untitled Position',
@@ -368,15 +379,44 @@ async function persistAndSyncVacancies(hostname, vacancies, { source = 'auto' } 
             description: hasDesc ? item.description.trim() : null,
             status: hasDesc ? 'complete' : 'new',
         }, { source });
-
-        const saved = await db.local_vacancies.get(id);
-        if (saved) syncVacancyToServer(saved).catch(() => {});
     }
+    notifyPwaTabsDataUpdated();
+}
+
+async function manualSyncRegistryFromServer() {
+    const whitelistOk = await syncWhitelist();
+    if (!whitelistOk) {
+        throw new Error('Could not reach backend whitelist endpoint.');
+    }
+    const selectorsApplied = await syncRegistrySelectors();
+    notifyPwaTabsDataUpdated();
+    return { whitelistSynced: true, selectorsApplied };
+}
+
+async function manualPushVacanciesToServer() {
+    if (await getSetting('private_use_only')) {
+        return { pushed: 0, skipped: 0, privateUseOnly: true };
+    }
+    const all = await db.local_vacancies.toArray();
+    let pushed = 0;
+    let skipped = 0;
+    for (const v of all) {
+        const targetLevel = await allowedSyncLevel(v);
+        if (targetLevel === 'none' || !v.platform_id || v.sync_level === targetLevel) {
+            skipped++;
+            continue;
+        }
+        const ok = await syncVacancyToServer(v);
+        if (ok) pushed++;
+        else skipped++;
+    }
+    if (pushed > 0) notifyPwaTabsDataUpdated();
+    return { pushed, skipped, privateUseOnly: false };
 }
 
 async function calculateStorageWeight() {
     let totalBytes = 0;
-    for (const table of [db.local_vacancies, db.platforms_dict, db.selectors, db.personal_data, db.resumes, db.automation_jobs, db.applications]) {
+    for (const table of [db.local_vacancies, db.platforms_dict, db.selectors, db.personal_data, db.resumes, db.cover_letters, db.match_results, db.automation_jobs, db.applications]) {
         try {
             totalBytes += new Blob([JSON.stringify(await table.toArray())]).size;
         } catch {}
@@ -406,8 +446,6 @@ async function runAutomationPipeline(config) {
 
     if (!cleanRoles.length) throw new Error('At least one target role is required.');
     if (!Number.isInteger(paginationLimit) || paginationLimit < 1) throw new Error('Page limit must be at least 1.');
-
-    await syncWhitelist();
 
     let tab = null;
     let tabId = null;
@@ -485,13 +523,13 @@ async function runAutomationPipeline(config) {
 
                         const fullText = `${vacancy.fullPositionName || ''} ${vacancy.cardText || ''} ${vacancy.description || ''}`;
                         if (!matchesFilters(fullText, cleanKeywords, cleanLocations)) continue;
-                        await persistAndSyncVacancies(hostname, [vacancy], { source: 'auto' });
+                        await persistVacanciesLocally(hostname, [vacancy], { source: 'auto' });
                     }
                 } else {
                     const filtered = collected.filter((v) =>
                         matchesFilters(`${v.fullPositionName || ''} ${v.cardText || ''}`, cleanKeywords, cleanLocations)
                     );
-                    await persistAndSyncVacancies(hostname, filtered, { source: 'auto' });
+                    await persistVacanciesLocally(hostname, filtered, { source: 'auto' });
                 }
             }
         }
@@ -506,10 +544,10 @@ async function runAutomationPipeline(config) {
     } finally {
         if (tabId) chrome.tabs.remove(tabId).catch(() => {});
         activeAutomationSession = null;
+        notifyPwaTabsDataUpdated();
     }
 }
 
-// ---- Profile, Resume, AI & Settings helpers ---------------------------------
 async function hydrateProfile(profileRow) {
     const pData = await db.personal_data.where('profile_id').equals(profileRow.id).first();
     const resume = await db.resumes.where('profile_id').equals(profileRow.id).first();
@@ -766,7 +804,6 @@ async function saveJobRecord(incoming) {
     return jobData;
 }
 
-// ---- Internal runtime messages (popup / content) ----------------------------
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'get_background_status') {
         Promise.all([calculateStorageWeight(), getSetting('private_use_only')])
@@ -783,6 +820,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'get_storage_weight') {
         calculateStorageWeight().then((w) => sendResponse({ success: true, weight: w.formatted, bytes: w.bytes }))
+            .catch((err) => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'manual_sync_registry') {
+        manualSyncRegistryFromServer()
+            .then((res) => sendResponse({ success: true, ...res }))
+            .catch((err) => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
+    if (request.action === 'manual_push_vacancies') {
+        manualPushVacanciesToServer()
+            .then((res) => sendResponse({ success: true, ...res }))
             .catch((err) => sendResponse({ success: false, error: err.message }));
         return true;
     }
@@ -851,7 +902,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
             const hostname = new URL(activeTab.url).hostname;
             const detail = await sendTabMessage(activeTab.id, { action: 'extract_detail_description' });
-            await persistAndSyncVacancies(hostname, [{
+            await persistVacanciesLocally(hostname, [{
                 fullPositionName: request.title || activeTab.title || 'Saved Vacancy',
                 url: activeTab.url,
                 description: detail?.description || '',
@@ -862,7 +913,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'save_scraped_vacancies') {
-        persistAndSyncVacancies(request.hostname, request.vacancies || [], { source: 'manual' })
+        persistVacanciesLocally(request.hostname, request.vacancies || [], { source: 'manual' })
             .then(() => sendResponse({ success: true }))
             .catch((err) => sendResponse({ success: false, error: err.message }));
         return true;
@@ -886,8 +937,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
-// ---- External bridge for PWA (Single Source of Truth) ----------------------
 chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
+    if (request.action === 'manual_sync_registry') {
+        manualSyncRegistryFromServer()
+            .then((data) => sendResponse({ status: 'success', data }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'manual_push_vacancies') {
+        manualPushVacanciesToServer()
+            .then((data) => sendResponse({ status: 'success', data }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
     if (request.action === 'get_vacancies') {
         db.local_vacancies.toArray().then((vacancies) => {
             let filtered = vacancies;
@@ -906,11 +970,16 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
             if (request.fieldsMode === 'minimum') {
                 filtered = filtered.map((v) => ({
                     id: v.id,
+                    platform_id: v.platform_id || null,
+                    source_host: v.source_host || null,
                     full_position_name: v.full_position_name,
                     url: v.url,
+                    status: 'new',
+                    source: v.source || 'auto',
+                    skill_ids: Array.isArray(v.skill_ids) ? v.skill_ids : [],
                     created_at: v.created_at,
-                    sync_level: v.sync_level,
-                    synced: v.sync_level !== 'none',
+                    updated_at: v.updated_at || v.created_at,
+                    sync_level: v.sync_level || 'none',
                 }));
             }
             sendResponse({ status: 'success', data: filtered });
@@ -926,6 +995,7 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
             for (const r of rows) {
                 try { await deleteVacancy(r.id); cleared++; } catch { skipped++; }
             }
+            notifyPwaTabsDataUpdated();
             sendResponse({ status: 'success', data: { cleared, skipped } });
         })().catch((err) => sendResponse({ status: 'error', message: err.message }));
         return true;
@@ -1072,7 +1142,6 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
         return true;
     }
 
-    // ---- AI Configurations, Match Results & Cover Letters (Prompt 5) --------
     if (request.action === 'get_ai_configurations') {
         listAiConfigMetadata()
             .then((list) => sendResponse({ status: 'success', data: list }))
