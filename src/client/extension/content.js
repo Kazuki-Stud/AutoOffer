@@ -50,7 +50,10 @@ function observeDomMutationWithTimeout(targetNode = document.body, timeoutMs = 2
   chrome.runtime.onMessage.addListener((msg) => {
       if (msg?.action === 'autooffer_data_updated') {
         try {
-          window.postMessage({ type: 'AUTOOFFER_DATA_UPDATED' }, window.location.origin);
+          window.postMessage(
+            { type: 'AUTOOFFER_DATA_UPDATED', reason: msg.reason || 'general' },
+            window.location.origin
+          );
         } catch {}
       }
   });

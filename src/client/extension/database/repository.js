@@ -6,6 +6,7 @@ export const nowIso = () => new Date().toISOString();
 
 export const DEFAULT_SETTINGS = {
   private_use_only: false,
+  auto_sync_pwa_on_grab: true,
   submission_mode: 'semi_automated',
   selector_poll_interval_min: 5,
   ai_consent_given_at: null,

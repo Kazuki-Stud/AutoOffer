@@ -5,7 +5,7 @@ import { initAiAssistantModal, initAiSettingsHandlers } from './aiView.js';
 import { detectExtensionStatus, setSyncStatus, setupExtensionAutoPairing } from './bridge.js';
 import { initJobsPage, loadJobsUI, loadPlatforms } from './jobsView.js';
 import { initProfilePage, loadProfilesUI } from './profileView.js';
-import { initSettingsHandlers, loadSettingsUI } from './settingsView.js';
+import { initSettingsHandlers, loadSettingsUI, syncVacanciesFromExtensionQuietly } from './settingsView.js';
 import { setVal, state } from './state.js';
 import {
     loadHotwords,
@@ -56,7 +56,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.addEventListener('message', (event) => {
             if (event.source === window && event.data?.type === 'AUTOOFFER_DATA_UPDATED') {
-                refreshDisplay().catch(console.error);
+                if (event.data.reason === 'vacancies_grabbed') {
+                    syncVacanciesFromExtensionQuietly().catch(console.error);
+                } else {
+                    refreshDisplay().catch(console.error);
+                }
             }
     });
 
@@ -89,10 +93,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         setSyncStatus(`Local DB error: ${err.message}`, 'error');
     }
 
-    await setupExtensionAutoPairing();
+    await setupExtensionAutoPairing({
+onPaired: async () => {
+await loadSettingsUI().catch(() => {});
+await syncVacanciesFromExtensionQuietly().catch(() => {});
+},
+});
 
     try { await detectExtensionStatus(); } catch (err) { console.error(err); }
     try { await loadSettingsUI(); } catch (err) { console.error(err); }
+    try { await syncVacanciesFromExtensionQuietly(); } catch (err) { console.error(err); }
     try { await loadPlatforms(); } catch (err) { console.error(err); }
     try { await loadProfilesUI(); } catch (err) { console.error(err); }
     try { await loadJobsUI(); } catch (err) { console.error(err); }

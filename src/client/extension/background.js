@@ -86,21 +86,24 @@ async function bootstrap() {
 chrome.runtime.onInstalled.addListener(() => { bootstrap().catch(console.error); });
 chrome.runtime.onStartup.addListener(() => { bootstrap().catch(console.error); });
 
-async function notifyPwaTabsDataUpdated() {
+async function notifyPwaTabsDataUpdated({ reason = 'general' } = {}) {
     try {
+        if (reason === 'vacancies_grabbed' && (await getSetting('auto_sync_pwa_on_grab')) === false) {
+            return;
+        }
         const tabs = await chrome.tabs.query({});
         for (const tab of tabs) {
             if (!tab.id || !tab.url) continue;
             if (
                 tab.url.startsWith('http://localhost') ||
-                tab.url.startsWith('http://127.0.0.1') ||
-                tab.url.startsWith('https://kazuki-stud.github.io/AutoOffer')
-            ) {
-                chrome.tabs.sendMessage(tab.id, { action: 'autooffer_data_updated' }).catch(() => {});
+                    tab.url.startsWith('http://127.0.0.1') ||
+                        tab.url.startsWith('https://kazuki-stud.github.io/AutoOffer')
+                        ) {
+                            chrome.tabs.sendMessage(tab.id, { action: 'autooffer_data_updated', reason }).catch(() => {});
+                        }
+                    }
+                } catch {}
             }
-        }
-    } catch {}
-}
 
 function isSafeHttpUrl(raw) {
     try {
@@ -367,21 +370,23 @@ function matchesFilters(text, keywords, locations) {
     return kwOk && locOk;
 }
 
-// Local-only persistence + event push to open PWA tabs (no autonomous server push)
-async function persistVacanciesLocally(hostname, vacancies, { source = 'auto' } = {}) {
+// Local-only persistence + optional event push to open PWA tabs (no autonomous server push)
+async function persistVacanciesLocally(hostname, vacancies, { source = 'auto', notify = true } = {}) {
     const platform = await findPlatformByHostname(hostname);
     for (const item of vacancies) {
         const hasDesc = Boolean(item.description && item.description.trim().length > 0);
         await saveVacancy({
-            platform_id: platform ? platform.id : null,
-            source_host: platform ? null : hostname,
-            full_position_name: item.fullPositionName || 'Untitled Position',
-            url: item.url,
-            description: hasDesc ? item.description.trim() : null,
-            status: hasDesc ? 'complete' : 'new',
-        }, { source });
+                platform_id: platform ? platform.id : null,
+                source_host: platform ? null : hostname,
+                full_position_name: item.fullPositionName || 'Untitled Position',
+                url: item.url,
+                description: hasDesc ? item.description.trim() : null,
+                status: hasDesc ? 'complete' : 'new',
+            }, { source });
     }
-    notifyPwaTabsDataUpdated();
+    if (notify) {
+        await notifyPwaTabsDataUpdated({ reason: 'vacancies_grabbed' });
+    }
 }
 
 async function manualSyncRegistryFromServer() {
@@ -524,17 +529,18 @@ async function runAutomationPipeline(config) {
 
                         const fullText = `${vacancy.fullPositionName || ''} ${vacancy.cardText || ''} ${vacancy.description || ''}`;
                         if (!matchesFilters(fullText, cleanKeywords, cleanLocations)) continue;
-                        await persistVacanciesLocally(hostname, [vacancy], { source: 'auto' });
+                        await persistVacanciesLocally(hostname, [vacancy], { source: 'auto', notify: false });
                     }
                 } else {
                     const filtered = collected.filter((v) =>
                         matchesFilters(`${v.fullPositionName || ''} ${v.cardText || ''}`, cleanKeywords, cleanLocations)
                     );
-                    await persistVacanciesLocally(hostname, filtered, { source: 'auto' });
+                    await persistVacanciesLocally(hostname, filtered, { source: 'auto', notify: false });
                 }
             }
         }
 
+        const wasAborted = Boolean(activeAutomationSession?.abort);
         const completionMessage = processedBoards === 0 && skippedHosts.length > 0
             ? `Skipped ${skippedHosts.join(', ')}: no automated permission granted. Use "Save Current Vacancy" on open tabs.`
             : skippedHosts.length > 0
@@ -542,10 +548,12 @@ async function runAutomationPipeline(config) {
                 : 'Automation completed successfully.';
 
         chrome.runtime.sendMessage({ action: 'automation_completed', message: completionMessage }).catch(() => {});
+        if (!wasAborted) {
+            await notifyPwaTabsDataUpdated({ reason: 'vacancies_grabbed' });
+        }
     } finally {
         if (tabId) chrome.tabs.remove(tabId).catch(() => {});
         activeAutomationSession = null;
-        notifyPwaTabsDataUpdated();
     }
 }
 

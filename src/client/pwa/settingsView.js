@@ -29,14 +29,32 @@ export async function loadSettingsUI() {
 
     const serverUrl = settings ? settings.server_base_url : await getSetting('server_base_url');
     const privOnly = settings ? settings.private_use_only : await getSetting('private_use_only');
+    const autoSync = settings ? settings.auto_sync_pwa_on_grab : await getSetting('auto_sync_pwa_on_grab');
     const subMode = settings ? settings.submission_mode : await getSetting('submission_mode');
 
     setVal('server-url-input', serverUrl || 'http://localhost:8080');
     const privToggle = document.getElementById('private-use-only-toggle');
     if (privToggle) privToggle.checked = Boolean(privOnly);
+    const autoSyncToggle = document.getElementById('auto-sync-pwa-toggle');
+    if (autoSyncToggle) autoSyncToggle.checked = autoSync !== false;
     setVal('submission-mode-select', subMode || 'semi_automated');
 
     await loadAiConfigUI();
+}
+
+export async function syncVacanciesFromExtensionQuietly() {
+if (!state.isExtensionConnected || !getExtensionId()) return false;
+const autoSync = await getSetting('auto_sync_pwa_on_grab').catch(() => true);
+if (autoSync === false) return false;
+try {
+const rows = await callExtension('get_vacancies', { role: 'all', dateRange: 'all', fieldsMode: 'all' }, 10000);
+await mirrorVacanciesToLocalDb(rows || [], { pruneRemoved: false });
+await refreshDisplay();
+setSyncStatus(`Auto-synced ${(rows || []).length} vacancies.`, 'success');
+return true;
+} catch {
+return false;
+}
 }
 
 export async function syncFromExtension() {
@@ -109,6 +127,9 @@ export function initSettingsHandlers() {
     );
     document.getElementById('private-use-only-toggle')?.addEventListener('change', (e) =>
         saveSingleSetting('private_use_only', e.target.checked).catch((err) => setSyncStatus(err.message, 'error'))
+    );
+    document.getElementById('auto-sync-pwa-toggle')?.addEventListener('change', (e) =>
+        saveSingleSetting('auto_sync_pwa_on_grab', e.target.checked).catch((err) => setSyncStatus(err.message, 'error'))
     );
     document.getElementById('submission-mode-select')?.addEventListener('change', (e) =>
         saveSingleSetting('submission_mode', e.target.value).catch((err) => setSyncStatus(err.message, 'error'))

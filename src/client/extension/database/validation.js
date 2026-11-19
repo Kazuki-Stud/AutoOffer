@@ -128,6 +128,7 @@ const PLAIN_SECRET_FIELDS = {
 
 const SETTING_RULES = {
   private_use_only:           (v) => typeof v === 'boolean',
+  auto_sync_pwa_on_grab:      (v) => typeof v === 'boolean',
   submission_mode:            (v) => ENUMS.submission_mode.includes(v),
   selector_poll_interval_min: (v) => Number.isInteger(v) && v >= 1 && v <= 60,
   ai_consent_given_at:        (v) => v === null || ISO_RE.test(v),
