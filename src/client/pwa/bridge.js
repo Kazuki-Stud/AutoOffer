@@ -63,7 +63,7 @@ export function setSyncStatus(text, type = 'normal') {
 }
 
 export function updateSourceTags() {
-    const label = state.isExtensionConnected ? 'Extension Source of Truth (Auto-Synced)' : 'Standalone Local (Dexie v7)';
+    const label = state.isExtensionConnected ? 'Extension Source of Truth (Manual Sync)' : 'Standalone Local (Dexie v7)';
     for (const id of ['pwa-jobs-source-tag', 'pwa-profile-source-tag', 'pwa-settings-source-tag']) {
         const el = document.getElementById(id);
         if (el) el.textContent = label;
@@ -85,7 +85,7 @@ export async function detectExtensionStatus() {
     if (!extId) {
         state.isExtensionConnected = false;
         if (banner) banner.style.display = 'block';
-        setSyncStatus('Searching for Extension...', 'normal');
+        setSyncStatus('Set Extension ID in Settings', 'normal');
         updateSourceTags();
         return false;
     }
@@ -94,7 +94,7 @@ export async function detectExtensionStatus() {
         await callExtension('get_storage_weight', {}, 2500);
         state.isExtensionConnected = true;
         if (banner) banner.style.display = 'none';
-        setSyncStatus('Extension Auto-Paired', 'success');
+        setSyncStatus('Extension Paired (Manual Sync)', 'success');
         updateSourceTags();
         return true;
     } catch {
@@ -106,7 +106,7 @@ export async function detectExtensionStatus() {
     }
 }
 
-export function setupExtensionAutoPairing({ onPaired, onDataUpdated } = {}) {
+export function setupExtensionAutoPairing({ onPaired } = {}) {
     return new Promise((resolve) => {
         let resolved = false;
         const finish = (id) => {
@@ -131,12 +131,6 @@ export function setupExtensionAutoPairing({ onPaired, onDataUpdated } = {}) {
                 if (prevId !== discoveredId || !state.isExtensionConnected) {
                     const connected = await detectExtensionStatus();
                     if (connected && typeof onPaired === 'function') await onPaired();
-                }
-            }
-
-            if (event.data.type === 'AUTOOFFER_DATA_UPDATED') {
-                if (state.isExtensionConnected && typeof onDataUpdated === 'function') {
-                    await onDataUpdated();
                 }
             }
         });

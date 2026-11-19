@@ -5,7 +5,7 @@ import { initAiAssistantModal, initAiSettingsHandlers } from './aiView.js';
 import { detectExtensionStatus, setSyncStatus, setupExtensionAutoPairing } from './bridge.js';
 import { initJobsPage, loadJobsUI, loadPlatforms } from './jobsView.js';
 import { initProfilePage, loadProfilesUI } from './profileView.js';
-import { autoSyncAll, initSettingsHandlers, lastAutoSyncAt, loadSettingsUI } from './settingsView.js';
+import { initSettingsHandlers, loadSettingsUI } from './settingsView.js';
 import { setVal, state } from './state.js';
 import {
     loadHotwords,
@@ -61,8 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('ao-theme-changed', updateThemeToggleUI);
 
     document.getElementById('quick-refresh-btn')?.addEventListener('click', () => {
-        if (state.isExtensionConnected) autoSyncAll({ silent: false }).catch(console.error);
-        else refreshDisplay().catch(console.error);
+        refreshDisplay().catch(console.error);
     });
     document.getElementById('load-hotwords-btn')?.addEventListener('click', () => loadHotwords().catch(console.error));
     document.getElementById('hotwords-position-select')?.addEventListener('change', () => loadHotwords().catch(console.error));
@@ -84,35 +83,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         setSyncStatus(`Local DB error: ${err.message}`, 'error');
     }
 
-    await setupExtensionAutoPairing({
-        onPaired: () => autoSyncAll({ silent: true }),
-        onDataUpdated: () => autoSyncAll({ silent: true }),
-    });
+    await setupExtensionAutoPairing();
 
     try { await detectExtensionStatus(); } catch (err) { console.error(err); }
-
-    if (state.isExtensionConnected) {
-        await autoSyncAll({ silent: true });
-    } else {
-        try { await loadSettingsUI(); } catch (err) { console.error(err); }
-        try { await loadPlatforms(); } catch (err) { console.error(err); }
-        try { await loadProfilesUI(); } catch (err) { console.error(err); }
-        try { await loadJobsUI(); } catch (err) { console.error(err); }
-        try { await refreshDisplay(); } catch (err) { console.error(err); }
-    }
+    try { await loadSettingsUI(); } catch (err) { console.error(err); }
+    try { await loadPlatforms(); } catch (err) { console.error(err); }
+    try { await loadProfilesUI(); } catch (err) { console.error(err); }
+    try { await loadJobsUI(); } catch (err) { console.error(err); }
+    try { await refreshDisplay(); } catch (err) { console.error(err); }
 
     populateAnalyticsPositions().catch(() => {});
-
-    const triggerThrottledSync = () => {
-        if (!state.isExtensionConnected || document.visibilityState !== 'visible') return;
-        if (Date.now() - lastAutoSyncAt < 3000) return;
-        autoSyncAll({ silent: true }).catch(() => {});
-    };
-    window.addEventListener('focus', triggerThrottledSync);
-    document.addEventListener('visibilitychange', triggerThrottledSync);
-    setInterval(() => {
-        if (state.isExtensionConnected && document.visibilityState === 'visible') {
-            autoSyncAll({ silent: true }).catch(() => {});
-        }
-    }, 20000);
 });

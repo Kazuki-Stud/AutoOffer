@@ -108,4 +108,12 @@ EXCEPTION WHEN check_violation THEN RAISE NOTICE 'OK (e): MD5-style hash refused
 END;
 END $$;
 
+-- Grant Indeed permission in local/dev test seed after running the non-whitelisted constraint check above
+UPDATE platforms_dict
+   SET permission_status = 'granted',
+       permission_granted_at = now(),
+       permission_reference = 'local test run permission',
+       approved_by_admin_id = 'f0000000-0000-4000-8000-000000000001'
+ WHERE id = '10000000-0000-4000-8000-000000000001';
+
 SELECT refresh_skill_hotwords();

@@ -332,14 +332,6 @@ function autofillApplicationForm({ profile = {}, coverLetter = '', selectors = {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'autooffer_data_updated') {
-    if (document.querySelector('meta[name="autooffer-pwa"]')) {
-      window.postMessage({ type: 'AUTOOFFER_DATA_UPDATED' }, window.location.origin);
-    }
-    sendResponse({ ok: true });
-    return true;
-  }
-
   if (request.action === 'detect_page_selectors_for_registration') {
     const inputEl = document.querySelector('input#q, input[name="q"], input#search-job-keyword, input[name="search"], input[type="search"], input[name*="search" i], input[placeholder*="Keywords" i], input[type="text"]');
     sendResponse({ detected: { searchInput: inputEl ? deriveOptimalSelector(inputEl, document.body) : '' } });

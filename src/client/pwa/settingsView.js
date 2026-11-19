@@ -16,9 +16,6 @@ import { loadProfilesUI } from './profileView.js';
 import { getVal, setVal, state } from './state.js';
 import { populateAnalyticsPositions, refreshDisplay } from './vacanciesView.js';
 
-let autoSyncInFlight = false;
-export let lastAutoSyncAt = 0;
-
 export async function loadSettingsUI() {
     let settings = null;
     if (state.isExtensionConnected) {
@@ -42,37 +39,6 @@ export async function loadSettingsUI() {
     await loadAiConfigUI();
 }
 
-export async function autoSyncAll({ silent = true } = {}) {
-    if (!state.isExtensionConnected || autoSyncInFlight) return false;
-    autoSyncInFlight = true;
-    try {
-        const rows = await callExtension('get_vacancies', {
-            role: 'all',
-            dateRange: 'all',
-            fieldsMode: 'all',
-        }, 8000);
-        await mirrorVacanciesToLocalDb(rows || [], { pruneRemoved: true });
-        await loadSettingsUI();
-        await loadPlatforms();
-        await loadProfilesUI();
-        await loadJobsUI();
-        await refreshDisplay();
-        lastAutoSyncAt = Date.now();
-        setSyncStatus(
-            silent
-                ? `Auto-Synced (${(rows || []).length} vacancies)`
-                : `Auto-synced ${(rows || []).length} vacancies.`,
-            'success'
-        );
-        return true;
-    } catch (err) {
-        if (!silent) setSyncStatus(`Sync failed: ${err.message}`, 'error');
-        return false;
-    } finally {
-        autoSyncInFlight = false;
-    }
-}
-
 export async function syncFromExtension() {
     const extId = getExtensionId();
     const role = getVal('sync-role-input').trim() || 'all';
@@ -92,7 +58,6 @@ export async function syncFromExtension() {
         await loadProfilesUI();
         await loadJobsUI();
         await refreshDisplay();
-        lastAutoSyncAt = Date.now();
         setSyncStatus(`Synchronized ${(rows || []).length} vacancies.`, 'success');
     } catch (err) {
         setSyncStatus(`Sync failed: ${err.message}`, 'error');
@@ -134,8 +99,7 @@ export function initSettingsHandlers() {
 
     document.getElementById('extension-id-input')?.addEventListener('change', async (e) => {
         localStorage.setItem('autooffer_extension_id', e.target.value.trim());
-        const connected = await detectExtensionStatus();
-        if (connected) await autoSyncAll({ silent: false });
+        await detectExtensionStatus();
     });
 
     document.getElementById('server-url-input')?.addEventListener('change', (e) =>

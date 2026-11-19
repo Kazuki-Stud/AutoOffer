@@ -5,9 +5,9 @@ const sid = (p, n) => `${p}0000000-0000-4000-8000-${String(n).padStart(12, '0')}
 const now = () => new Date().toISOString();
 
 const PLATFORMS = [
-    [1, 'Indeed',           'indeed.com',         'https://www.indeed.com'],
-    [2, 'ZipRecruiter',     'ziprecruiter.com',   'https://www.ziprecruiter.com'],
-    [3, 'We Work Remotely', 'weworkremotely.com', 'https://weworkremotely.com'],
+    [1, 'Indeed',           'indeed.com',         'https://www.indeed.com',         'granted'],
+    [2, 'ZipRecruiter',     'ziprecruiter.com',   'https://www.ziprecruiter.com',   'none'],
+    [3, 'We Work Remotely', 'weworkremotely.com', 'https://weworkremotely.com',     'none'],
 ];
 const TASKS = [
     [1, 'parse_vacancy_list', 'Parse Vacancy List'], [2, 'parse_vacancy_detail', 'Parse Vacancy Detail'],
@@ -73,8 +73,8 @@ export async function seedDatabase() {
     if ((await db.platforms_dict.count()) > 0) return;
     const ts = now();
     await db.transaction('rw', db.tables, async () => {
-        await db.platforms_dict.bulkAdd(PLATFORMS.map(([n, name, code, url]) =>
-            ({ id: sid('1', n), name, code, url, permission_status: 'none' })));
+        await db.platforms_dict.bulkAdd(PLATFORMS.map(([n, name, code, url, permission_status]) =>
+            ({ id: sid('1', n), name, code, url, permission_status })));
         await db.selector_tasks_dict.bulkAdd(TASKS.map(([n, code, name]) => ({ id: sid('2', n), code, name })));
         await db.selector_element_types_dict.bulkAdd(ELEMENTS.map(([n, code, name]) => ({ id: sid('3', n), code, name })));
         await db.currencies_dict.bulkAdd([[1,'USD','US Dollar'],[2,'EUR','Euro'],[3,'GBP','British Pound'],[4,'PLN','Polish Zloty']]
