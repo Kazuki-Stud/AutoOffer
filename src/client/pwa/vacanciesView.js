@@ -58,19 +58,83 @@ const comp = item.company_id ? state.cachedCompanies.get(item.company_id) : null
 return comp?.name || null;
 }
 
+const KNOWN_SKILLS = [
+'JavaScript', 'TypeScript', 'Java', 'Python', 'C#', 'C++', '.NET', 'Golang',
+'Rust', 'PHP', 'Ruby', 'Swift', 'Kotlin', 'SQL', 'PostgreSQL', 'MySQL',
+'MongoDB', 'Redis', 'Elasticsearch', 'Spring Boot', 'Spring', 'Node.js',
+'Express', 'NestJS', 'React', 'Angular', 'Vue', 'Next.js', 'HTML', 'CSS',
+'Tailwind', 'Sass', 'GraphQL', 'REST', 'gRPC', 'Docker', 'Kubernetes',
+'Terraform', 'Ansible', 'AWS', 'Azure', 'GCP', 'Linux', 'Git', 'CI/CD',
+'GitHub Actions', 'Jenkins', 'Kafka', 'RabbitMQ', 'Microservices',
+'Playwright', 'Selenium', 'Cypress', 'Jest', 'JUnit', 'Figma', 'Jira',
+'Agile', 'Scrum', 'Machine Learning', 'PyTorch', 'TensorFlow', 'LLM',
+];
+
+const SKILL_PATTERNS = KNOWN_SKILLS.map((name) => {
+const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+return [name, new RegExp(`(?<![a-z0-9+#.])${esc}(?![a-z0-9+#.])`, 'i')];
+});
+
+export function extractVacancySkills(item) {
+const out = [];
+const seen = new Set();
+const push = (val) => {
+const clean = String(val || '').trim();
+if (!clean) return;
+const low = clean.toLowerCase();
+if (!seen.has(low)) {
+seen.add(low);
+out.push(clean);
+}
+};
+
+    if (Array.isArray(item.skill_ids)) {
+        for (const id of item.skill_ids) {
+            const name = state.cachedSkillsMap.get(id);
+            if (name) push(name);
+        }
+    }
+    const hay = `${item.full_position_name || ''}\n${item.description || ''}`;
+    for (const [name, re] of SKILL_PATTERNS) {
+        if (re.test(hay)) push(name);
+    }
+    return out;
+}
+
 export function openVacancyModal(item) {
 const modal = document.getElementById('vacancy-modal');
 if (!modal || typeof modal.open !== 'function') return;
 const companyName = resolveVacancyCompanyLabel(item);
 const websiteName = resolveVacancySourceLabel(item);
-const postedLabel = item.posted_at ? `Posted ${formatDate(item.posted_at)}` : 'Post date N/A';
-const sourceMeta = [companyName, websiteName, postedLabel].filter(Boolean).join(' · ');
+const postedLabel = item.posted_at ? formatDate(item.posted_at) : 'Unavailable';
+const app = state.cachedApplications.get(item.id);
+const match = state.cachedMatchByVacancy.get(item.id);
+const skills = extractVacancySkills(item);
+
+    const metaItems = [
+        { label: 'Company', value: companyName || 'Not specified' },
+        { label: 'Source Website', value: websiteName },
+        { label: 'Posted Date', value: postedLabel },
+        { label: 'Application Status', value: app ? app.status : 'Not Applied' },
+    ];
+    if (match?.score != null) {
+        metaItems.push({ label: 'AI Match Score', value: `${match.score}%` });
+    }
+    if (item.address) {
+        metaItems.push({ label: 'Location', value: item.address });
+    }
+    if (item.salary_from != null || item.salary_to != null) {
+        const range = [item.salary_from, item.salary_to].filter((n) => n != null).join(' – ');
+        metaItems.push({ label: 'Salary', value: range });
+    }
 
     modal.open({
         title: item.full_position_name || 'Untitled Vacancy',
         description: item.description || '(No full description stored locally)',
         url: isSafeHttpUrl(item.url) ? item.url : '#',
-        source: sourceMeta,
+        source: [companyName, websiteName].filter(Boolean).join(' · '),
+        metaItems,
+        skills,
         rawItem: item,
     });
 }
@@ -103,9 +167,12 @@ async function upsertApplicationStatus(existingApp, profileId, vacancyId, newSta
 }
 
 function renderList(list, profileId) {
-    const grid = document.getElementById('vacancies-grid');
-    const emptyState = document.getElementById('empty-state');
-    if (!grid) return;
+const grid = document.getElementById('vacancies-grid');
+const emptyState = document.getElementById('empty-state');
+if (!grid) return;
+
+    const isListMode = state.vacanciesViewMode === 'list';
+    grid.className = isListMode ? 'vacancies-list' : 'vacancies-grid';
 
     grid.innerHTML = '';
     if (!list.length) {
@@ -137,6 +204,26 @@ function renderList(list, profileId) {
 
         subRow.append(companySpan, sourceSpan);
 
+        const skills = extractVacancySkills(item);
+        let skillsEl = null;
+        if (skills.length) {
+            skillsEl = document.createElement('div');
+            skillsEl.className = 'vacancy-skills-preview';
+            const shown = skills.slice(0, isListMode ? 6 : 4);
+            for (const sk of shown) {
+                const chip = document.createElement('span');
+                chip.className = 'skill-chip-sm';
+                chip.textContent = sk;
+                skillsEl.appendChild(chip);
+            }
+            if (skills.length > shown.length) {
+                const more = document.createElement('span');
+                more.className = 'skill-chip-sm';
+                more.textContent = `+${skills.length - shown.length}`;
+                skillsEl.appendChild(more);
+            }
+        }
+
         const metaRow = document.createElement('div');
         metaRow.className = 'vacancy-meta-row';
 
@@ -159,8 +246,8 @@ function renderList(list, profileId) {
         aiBtn.className = 'secondary-btn btn-xs';
         aiBtn.textContent = 'Review & Apply';
         aiBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                openReviewApplyModal(item);
+            e.stopPropagation();
+            openReviewApplyModal(item);
         });
 
         metaRow.append(linkEl, aiBtn);
@@ -172,8 +259,8 @@ function renderList(list, profileId) {
         dateSpan.className = 'vacancy-date';
         dateSpan.textContent = item.posted_at ? `Posted ${formatDate(item.posted_at)}` : 'Post date N/A';
         dateSpan.title = item.posted_at
-        ? `Original post time: ${formatDateTime(item.posted_at)} (Synced: ${formatDateTime(item.created_at)})`
-        : `Original post date unavailable on page (Synced: ${formatDateTime(item.created_at)})`;
+            ? `Original post time: ${formatDateTime(item.posted_at)} (Synced: ${formatDateTime(item.created_at)})`
+            : `Original post date unavailable on page (Synced: ${formatDateTime(item.created_at)})`;
 
         const app = state.cachedApplications.get(item.id);
         const statusSelect = document.createElement('select');
@@ -199,11 +286,109 @@ function renderList(list, profileId) {
         });
 
         footerEl.append(dateSpan, statusSelect);
-        card.append(titleEl, subRow, metaRow, footerEl);
-        card.addEventListener('click', () => openVacancyModal(item));
 
+        if (isListMode) {
+            const mainCol = document.createElement('div');
+            mainCol.className = 'vacancy-list-main';
+            mainCol.append(titleEl, subRow);
+            if (item.description) {
+                const snippet = document.createElement('p');
+                snippet.className = 'vacancy-snippet';
+                snippet.textContent = item.description.replace(/\s+/g, ' ').trim();
+                mainCol.appendChild(snippet);
+            }
+            if (skillsEl) mainCol.appendChild(skillsEl);
+
+            const asideCol = document.createElement('div');
+            asideCol.className = 'vacancy-list-aside';
+            asideCol.append(metaRow, footerEl);
+
+            card.append(mainCol, asideCol);
+        } else {
+            card.append(titleEl, subRow);
+            if (skillsEl) card.appendChild(skillsEl);
+            card.append(metaRow, footerEl);
+        }
+
+        card.addEventListener('click', () => openVacancyModal(item));
         grid.appendChild(card);
     }
+}
+
+function populateSourceFilterDropdown(vacancies) {
+const selectEl = document.getElementById('filter-source-select');
+if (!selectEl) return;
+const prev = selectEl.value;
+const sources = new Set();
+for (const v of vacancies) {
+sources.add(resolveVacancySourceLabel(v));
+}
+const sorted = [...sources].filter(Boolean).sort((a, b) => a.localeCompare(b));
+selectEl.innerHTML = '<option value="">All Websites</option>';
+for (const s of sorted) {
+const opt = document.createElement('option');
+opt.value = s;
+opt.textContent = s;
+selectEl.appendChild(opt);
+}
+if (prev && sorted.includes(prev)) selectEl.value = prev;
+}
+
+export function applyVacanciesFiltersAndRender(profileId = state.activeProfileId) {
+const filterText = getVal('filter-input').toLowerCase().trim();
+const sourceFilter = getVal('filter-source-select');
+const appStatusFilter = getVal('filter-app-status-select');
+const dateFilter = getVal('filter-date-select') || 'all';
+const sortBy = getVal('filter-sort-select') || 'posted_desc';
+
+    let cutoff = 0;
+    if (dateFilter !== 'all') {
+        const days = dateFilter === 'today' ? 1 : dateFilter === '7days' ? 7 : 30;
+        cutoff = Date.now() - days * 86400000;
+    }
+
+    const filtered = state.cachedVacancies.filter((v) => {
+        if (sourceFilter && resolveVacancySourceLabel(v) !== sourceFilter) return false;
+
+        const app = state.cachedApplications.get(v.id);
+        if (appStatusFilter === 'none' && app) return false;
+        if (appStatusFilter && appStatusFilter !== 'none' && app?.status !== appStatusFilter) return false;
+
+        if (cutoff > 0) {
+            const ts = new Date(v.posted_at || v.created_at).getTime();
+            if (isNaN(ts) || ts < cutoff) return false;
+        }
+
+        if (filterText) {
+            const company = resolveVacancyCompanyLabel(v) || '';
+            const skillsText = extractVacancySkills(v).join(' ');
+            const hay = `${v.full_position_name || ''} ${company} ${skillsText} ${v.description || ''}`.toLowerCase();
+            if (!hay.includes(filterText)) return false;
+        }
+        return true;
+    });
+
+    filtered.sort((a, b) => {
+        if (sortBy === 'title_asc') {
+            return (a.full_position_name || '').localeCompare(b.full_position_name || '');
+        }
+        if (sortBy === 'company_asc') {
+            return (resolveVacancyCompanyLabel(a) || 'zzz').localeCompare(resolveVacancyCompanyLabel(b) || 'zzz');
+        }
+        if (sortBy === 'updated_desc') {
+            return (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || '');
+        }
+        return (b.posted_at || b.created_at || '').localeCompare(a.posted_at || a.created_at || '');
+    });
+
+    const countEl = document.getElementById('vacancies-filter-count');
+    if (countEl) {
+        countEl.textContent = filtered.length === state.cachedVacancies.length
+            ? `${filtered.length} shown`
+            : `${filtered.length} of ${state.cachedVacancies.length} shown`;
+    }
+
+    renderList(filtered, profileId);
 }
 
 export function renderApplicationsTable() {
@@ -329,16 +514,28 @@ export async function refreshDisplay() {
     const profile = await ensureDefaultProfile();
     await syncApplicationsFromBridge();
 
-    const [allApps, companies, platforms, allResumes] = await Promise.all([
+    const [allApps, companies, platforms, allResumes, allSkills, allMatches] = await Promise.all([
             db.applications.toArray(),
             db.companies_dict.toArray(),
             db.platforms_dict.toArray(),
             db.resumes.toArray(),
+            db.skills.toArray(),
+            db.match_results.toArray(),
     ]);
     state.cachedAllApplications = allApps.sort((a, b) => (b.applied_at || '').localeCompare(a.applied_at || ''));
     state.cachedCompanies = new Map(companies.map((c) => [c.id, c]));
     state.cachedPlatformsMap = new Map(platforms.map((p) => [p.id, p]));
+    state.cachedSkillsMap = new Map(allSkills.map((s) => [s.id, s.name]));
     state.cachedResumesMap = new Map(allResumes.map((r) => [r.id, r]));
+
+    const matchMap = new Map();
+    for (const m of allMatches) {
+        const prev = matchMap.get(m.vacancy_id);
+        if (!prev || (m.created_at || '') > (prev.created_at || '')) {
+            matchMap.set(m.vacancy_id, m);
+        }
+    }
+    state.cachedMatchByVacancy = matchMap;
 
     const activeProfApps = state.cachedAllApplications.filter((a) => a.profile_id === (state.activeProfileId || profile.id));
     state.cachedApplications = new Map(activeProfApps.map((a) => [a.vacancy_id, a]));
@@ -346,14 +543,8 @@ export async function refreshDisplay() {
     const weightInfo = await calculateStorageWeight();
     renderStats(state.cachedVacancies, weightInfo.formatted);
 
-    const filterText = getVal('filter-input').toLowerCase().trim();
-    const listToRender = filterText
-        ? state.cachedVacancies.filter((v) =>
-            (v.full_position_name && v.full_position_name.toLowerCase().includes(filterText)) ||
-            (v.description && v.description.toLowerCase().includes(filterText))
-        )
-        : state.cachedVacancies;
-    renderList(listToRender, state.activeProfileId || profile.id);
+    populateSourceFilterDropdown(state.cachedVacancies);
+    applyVacanciesFiltersAndRender(state.activeProfileId || profile.id);
     renderApplicationsTable();
     updateMetricsView(state.cachedVacancies.length, weightInfo.formatted);
 }

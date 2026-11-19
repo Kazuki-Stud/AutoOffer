@@ -158,31 +158,87 @@ function requestAiConsentModal(endpointLabel) {
     });
 }
 
-export function initAiSettingsHandlers() {
-    const providerSel = document.getElementById('ai-provider-select');
-    const endpointInput = document.getElementById('ai-endpoint-input');
-    const modelInput = document.getElementById('ai-model-input');
-    const apiKeyInput = document.getElementById('ai-apikey-input');
-    const activeToggle = document.getElementById('ai-active-toggle');
-    const saveBtn = document.getElementById('save-ai-config-btn');
-    const statusEl = document.getElementById('ai-config-status');
-    if (!providerSel || !saveBtn) return;
+const AI_MODEL_PRESETS = {
+openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'o4-mini'],
+gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+local: ['llama3.2', 'llama3.1', 'qwen2.5:7b', 'mistral', 'gemma3:4b', 'deepseek-r1:8b'],
+local_cosine: ['local-cosine'],
+};
 
-    providerSel.addEventListener('change', () => {
-        const val = providerSel.value;
+export function initAiSettingsHandlers() {
+const providerSel = document.getElementById('ai-provider-select');
+const modelSel = document.getElementById('ai-model-select');
+const endpointInput = document.getElementById('ai-endpoint-input');
+const modelInput = document.getElementById('ai-model-input');
+const apiKeyInput = document.getElementById('ai-apikey-input');
+const activeToggle = document.getElementById('ai-active-toggle');
+const saveBtn = document.getElementById('save-ai-config-btn');
+const statusEl = document.getElementById('ai-config-status');
+if (!providerSel || !saveBtn) return;
+
+    const populateModelPresets = (provider) => {
+        const models = AI_MODEL_PRESETS[provider] || AI_MODEL_PRESETS.openai;
+        if (modelSel) {
+            modelSel.innerHTML = '';
+            for (const m of models) {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                modelSel.appendChild(opt);
+            }
+            if (provider !== 'local_cosine') {
+                const customOpt = document.createElement('option');
+                customOpt.value = '__custom__';
+                customOpt.textContent = 'Custom model name...';
+                modelSel.appendChild(customOpt);
+            }
+            modelSel.disabled = provider === 'local_cosine';
+            modelSel.value = models[0];
+        }
+        if (modelInput) {
+            modelInput.disabled = provider === 'local_cosine';
+            modelInput.value = models[0];
+        }
+    };
+
+    const applyProviderDefaults = (val) => {
         if (val === 'openai') {
             if (endpointInput) { endpointInput.disabled = false; endpointInput.value = 'https://api.openai.com/v1/chat/completions'; }
-            if (apiKeyInput) apiKeyInput.disabled = false;
-            if (modelInput) modelInput.value = 'gpt-4o-mini';
+            if (apiKeyInput) { apiKeyInput.disabled = false; apiKeyInput.placeholder = 'sk-...'; }
+        } else if (val === 'gemini') {
+            if (endpointInput) { endpointInput.disabled = false; endpointInput.value = 'https://generativelanguage.googleapis.com/v1beta'; }
+            if (apiKeyInput) { apiKeyInput.disabled = false; apiKeyInput.placeholder = 'AIza...'; }
         } else if (val === 'local') {
             if (endpointInput) { endpointInput.disabled = false; endpointInput.value = 'http://localhost:11434/v1/chat/completions'; }
-            if (apiKeyInput) apiKeyInput.disabled = false;
-            if (modelInput) modelInput.value = 'llama3.2';
+            if (apiKeyInput) { apiKeyInput.disabled = false; apiKeyInput.placeholder = 'Optional for local server'; }
         } else {
             if (endpointInput) { endpointInput.value = ''; endpointInput.disabled = true; }
             if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.disabled = true; }
-            if (modelInput) modelInput.value = 'local-cosine';
         }
+        populateModelPresets(val);
+    };
+
+    applyProviderDefaults(providerSel.value);
+
+    providerSel.addEventListener('change', () => {
+        applyProviderDefaults(providerSel.value);
+    });
+
+    modelSel?.addEventListener('change', () => {
+        if (!modelInput) return;
+        if (modelSel.value === '__custom__') {
+            modelInput.value = '';
+            modelInput.focus();
+        } else {
+            modelInput.value = modelSel.value;
+        }
+    });
+
+    modelInput?.addEventListener('input', () => {
+        if (!modelSel) return;
+        const typed = modelInput.value.trim();
+        const presets = AI_MODEL_PRESETS[providerSel.value] || [];
+        modelSel.value = presets.includes(typed) ? typed : '__custom__';
     });
 
     saveBtn.addEventListener('click', async () => {
@@ -200,8 +256,8 @@ export function initAiSettingsHandlers() {
             if (statusEl) { statusEl.textContent = 'Enter a valid http(s) AI endpoint URL.'; statusEl.style.color = '#f87171'; }
             return;
         }
-        if (provider_name === 'openai' && !api_key) {
-            if (statusEl) { statusEl.textContent = 'API key is required for remote OpenAI-compatible providers.'; statusEl.style.color = '#f87171'; }
+        if ((provider_name === 'openai' || provider_name === 'gemini') && !api_key) {
+            if (statusEl) { statusEl.textContent = 'API key is required for remote AI providers.'; statusEl.style.color = '#f87171'; }
             return;
         }
 

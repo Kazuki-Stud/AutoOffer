@@ -49,7 +49,7 @@ const autoSync = await getSetting('auto_sync_pwa_on_grab').catch(() => true);
 if (autoSync === false) return false;
 }
 try {
-const rows = await callExtension('get_vacancies', { role: 'all', dateRange: 'all', fieldsMode: 'all' }, 500);
+const rows = await callExtension('get_vacancies', { role: 'all', dateRange: 'all', fieldsMode: 'all' }, 10000);
 await mirrorVacanciesToLocalDb(rows || [], { pruneRemoved });
 await refreshDisplay();
 setSyncStatus(`Auto-synced ${(rows || []).length} vacancies.`, 'success');
@@ -70,7 +70,7 @@ export async function syncFromExtension() {
 
     setSyncStatus('Connecting to extension...', 'active');
     try {
-        const rows = await callExtension('get_vacancies', { role, dateRange, fieldsMode }, 500);
+        const rows = await callExtension('get_vacancies', { role, dateRange, fieldsMode }, 10000);
         await mirrorVacanciesToLocalDb(rows || [], { pruneRemoved: false });
         await detectExtensionStatus();
         await loadSettingsUI();

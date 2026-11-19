@@ -6,8 +6,25 @@ import { getVal, setVal, state, toStringArray } from './state.js';
 export async function loadPlatforms() {
     if (state.isExtensionConnected) {
         try {
-            state.cachedPlatforms = await callExtension('get_platforms');
-            await db.platforms_dict.bulkPut(state.cachedPlatforms);
+            const remote = await callExtension('get_platforms');
+            if (Array.isArray(remote) && remote.length) {
+                await db.transaction('rw', db.platforms_dict, async () => {
+                        for (const p of remote) {
+                            const byCode = await db.platforms_dict.where('code').equals(p.code).first();
+                            if (byCode && byCode.id !== p.id) {
+                                await db.platforms_dict.update(byCode.id, {
+                                        name: p.name,
+                                        url: p.url,
+                                        permission_status: p.permission_status,
+                                        last_checked_at: p.last_checked_at,
+                                });
+                            } else {
+                                await db.platforms_dict.put(p);
+                            }
+                        }
+                });
+            }
+            state.cachedPlatforms = await db.platforms_dict.toArray();
             return state.cachedPlatforms;
         } catch {}
     }

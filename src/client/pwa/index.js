@@ -1,4 +1,5 @@
 import { AoTheme } from './ui.js';
+import { db } from '../extension/database/database.js';
 import { migrateLegacySecrets } from '../extension/database/crypto.js';
 import { seedDatabase } from '../extension/database/seed.js';
 import { initAiAssistantModal, initAiSettingsHandlers } from './aiView.js';
@@ -8,6 +9,7 @@ import { initProfilePage, loadProfilesUI } from './profileView.js';
 import { initSettingsHandlers, loadSettingsUI, syncVacanciesFromExtensionQuietly } from './settingsView.js';
 import { setVal, state } from './state.js';
 import {
+    applyVacanciesFiltersAndRender,
     loadHotwords,
     populateAnalyticsPositions,
     refreshDisplay,
@@ -41,7 +43,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateThemeToggleUI();
 
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js').then((reg) => reg.update()).catch(() => {});
+        if (import.meta.env.PROD) {
+            navigator.serviceWorker.register('./sw.js').then((reg) => reg.update()).catch(() => {});
+        } else {
+            navigator.serviceWorker.getRegistrations()
+            .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+            .catch(() => {});
+        }
     }
     if (navigator.storage?.persist) {
         navigator.storage.persist().catch(() => {});
@@ -82,7 +90,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('hotwords-position-select')?.addEventListener('change', () => loadHotwords().catch(console.error));
     document.getElementById('applications-search-input')?.addEventListener('input', renderApplicationsTable);
     document.getElementById('applications-status-filter')?.addEventListener('change', renderApplicationsTable);
-    document.getElementById('filter-input')?.addEventListener('input', () => refreshDisplay().catch(console.error));
+    const rerenderFilteredVacancies = () => applyVacanciesFiltersAndRender(state.activeProfileId);
+document.getElementById('filter-input')?.addEventListener('input', rerenderFilteredVacancies);
+document.getElementById('filter-source-select')?.addEventListener('change', rerenderFilteredVacancies);
+document.getElementById('filter-app-status-select')?.addEventListener('change', rerenderFilteredVacancies);
+document.getElementById('filter-date-select')?.addEventListener('change', rerenderFilteredVacancies);
+document.getElementById('filter-sort-select')?.addEventListener('change', rerenderFilteredVacancies);
+document.getElementById('clear-filters-btn')?.addEventListener('click', () => {
+setVal('filter-input', '');
+setVal('filter-source-select', '');
+setVal('filter-app-status-select', '');
+setVal('filter-date-select', 'all');
+setVal('filter-sort-select', 'posted_desc');
+rerenderFilteredVacancies();
+});
+
+    const syncViewModeButtons = () => {
+        document.getElementById('view-mode-grid-btn')?.classList.toggle('active', state.vacanciesViewMode !== 'list');
+        document.getElementById('view-mode-list-btn')?.classList.toggle('active', state.vacanciesViewMode === 'list');
+    };
+    syncViewModeButtons();
+    for (const btnId of ['view-mode-grid-btn', 'view-mode-list-btn']) {
+        document.getElementById(btnId)?.addEventListener('click', (e) => {
+            const layout = e.currentTarget.getAttribute('data-layout') === 'list' ? 'list' : 'grid';
+            state.vacanciesViewMode = layout;
+            localStorage.setItem('ao_vacancies_layout', layout);
+            syncViewModeButtons();
+            rerenderFilteredVacancies();
+        });
+    }
 
     const urlExtId = new URLSearchParams(window.location.search).get('extId')?.trim();
     if (urlExtId) localStorage.setItem('autooffer_extension_id', urlExtId);
@@ -98,20 +134,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         setSyncStatus(`Local DB error: ${err.message}`, 'error');
     }
 
-    await setupExtensionAutoPairing({
-onPaired: async () => {
-await loadSettingsUI().catch(() => {});
-await syncVacanciesFromExtensionQuietly().catch(() => {});
-},
-});
+    // Render locally cached data immediately so slow/unreachable extension never leaves PWA blank
+await Promise.allSettled([
+db.platforms_dict.toArray().then((rows) => { state.cachedPlatforms = rows; }),
+loadSettingsUI(),
+loadProfilesUI(),
+loadJobsUI(),
+refreshDisplay(),
+]);
 
-    try { await detectExtensionStatus(); } catch (err) { console.error(err); }
-    try { await loadSettingsUI(); } catch (err) { console.error(err); }
-    try { await syncVacanciesFromExtensionQuietly(); } catch (err) { console.error(err); }
-    try { await loadPlatforms(); } catch (err) { console.error(err); }
-    try { await loadProfilesUI(); } catch (err) { console.error(err); }
-    try { await loadJobsUI(); } catch (err) { console.error(err); }
-    try { await refreshDisplay(); } catch (err) { console.error(err); }
+    let syncInFlight = null;
+    const runExtensionSync = async () => {
+        if (syncInFlight) return syncInFlight;
+        syncInFlight = (async () => {
+            const connected = await detectExtensionStatus().catch(() => false);
+            if (!connected) return;
+            await Promise.allSettled([
+                loadSettingsUI(),
+                loadPlatforms(),
+                loadProfilesUI(),
+                loadJobsUI(),
+            ]);
+            await syncVacanciesFromExtensionQuietly().catch(console.error);
+            await refreshDisplay().catch(console.error);
+        })().finally(() => {
+            syncInFlight = null;
+        });
+        return syncInFlight;
+    };
 
+    setupExtensionAutoPairing({ onPaired: runExtensionSync });
+    runExtensionSync().catch(console.error);
     populateAnalyticsPositions().catch(() => {});
 });

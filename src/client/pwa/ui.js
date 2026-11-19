@@ -93,25 +93,111 @@ class AoModal extends HTMLElement {
     open(data) {
         this._rawItem = data.rawItem || null;
         this.querySelector('#ao-modal-title').textContent = data.title || 'Untitled Vacancy';
-        this.querySelector('#ao-modal-body').textContent = data.description || 'No detailed description captured.';
         this.querySelector('#ao-modal-source').textContent = data.source || 'Scraped';
-        const applyBtn = this.querySelector('#ao-modal-apply-btn');
-        if (applyBtn) {
-            applyBtn.style.display = this._rawItem ? 'inline-block' : 'none';
+
+        const bodyEl = this.querySelector('#ao-modal-body');
+        bodyEl.innerHTML = '';
+
+        const metaItems = Array.isArray(data.metaItems) ? data.metaItems.filter((m) => m && m.value) : [];
+        if (metaItems.length) {
+            const metaGrid = document.createElement('div');
+            metaGrid.className = 'ao-modal-meta-grid';
+            for (const m of metaItems) {
+                const cell = document.createElement('div');
+                cell.className = 'ao-modal-meta-item';
+                cell.innerHTML = `
+                <span class="ao-modal-meta-label">${escapeHtml(m.label)}</span>
+                <span class="ao-modal-meta-value">${escapeHtml(m.value)}</span>
+            `;
+            metaGrid.appendChild(cell);
         }
-        const linkBtn = this.querySelector('#ao-modal-link');
-        if (data.url && data.url !== '#') {
-            linkBtn.href = data.url;
-            linkBtn.style.display = 'inline-block';
-        } else {
-            linkBtn.style.display = 'none';
-        }
-        this.setAttribute('open', '');
+        bodyEl.appendChild(metaGrid);
     }
+
+    const skills = Array.isArray(data.skills) ? data.skills.filter(Boolean) : [];
+    if (skills.length) {
+        const skillsSec = document.createElement('div');
+        skillsSec.className = 'ao-modal-section';
+        const heading = document.createElement('h3');
+        heading.className = 'ao-modal-section-title';
+        heading.textContent = 'Detected & Tagged Skills';
+        const row = document.createElement('div');
+        row.className = 'skill-chips-row';
+        for (const sk of skills) {
+            const chip = document.createElement('span');
+            chip.className = 'skill-chip-sm';
+            chip.textContent = sk;
+            row.appendChild(chip);
+        }
+        skillsSec.append(heading, row);
+        bodyEl.appendChild(skillsSec);
+    }
+
+    const descSec = document.createElement('div');
+    descSec.className = 'ao-modal-section';
+    const descHeading = document.createElement('h3');
+    descHeading.className = 'ao-modal-section-title';
+    descHeading.textContent = 'Job Description';
+    const descContent = document.createElement('div');
+    descContent.className = 'ao-modal-desc';
+    descContent.innerHTML = formatDescriptionHtml(data.description || 'No detailed description captured.');
+    descSec.append(descHeading, descContent);
+    bodyEl.appendChild(descSec);
+
+    const applyBtn = this.querySelector('#ao-modal-apply-btn');
+    if (applyBtn) {
+        applyBtn.style.display = this._rawItem ? 'inline-block' : 'none';
+    }
+    const linkBtn = this.querySelector('#ao-modal-link');
+    if (data.url && data.url !== '#') {
+        linkBtn.href = data.url;
+        linkBtn.style.display = 'inline-block';
+    } else {
+        linkBtn.style.display = 'none';
+    }
+    this.setAttribute('open', '');
+}
 
     close() {
         this.removeAttribute('open');
     }
+}
+
+function formatDescriptionHtml(raw) {
+const lines = String(raw || '').replace(/\r\n/g, '\n').split('\n');
+const out = [];
+let listItems = [];
+
+    const flushList = () => {
+        if (listItems.length) {
+            out.push(`<ul>${listItems.map((li) => `<li>${escapeHtml(li)}</li>`).join('')}</ul>`);
+            listItems = [];
+        }
+    };
+
+    const headingRe = /^(?:about(?:\s+the)?\s+(?:role|job|company|team|us)|responsibilities|requirements|qualifications|preferred\s+qualifications|what\s+you(?:'|’)ll\s+do|what\s+we\s+offer|benefits|perks|skills|tech\s+stack|nice\s+to\s+have|overview|summary)\b/i;
+
+    for (const line of lines) {
+        const t = line.trim();
+        if (!t) {
+            flushList();
+            continue;
+        }
+        const bulletMatch = t.match(/^(?:[•●▪◦\-*]|\d+[.)])\s+(.+)$/);
+        if (bulletMatch) {
+            listItems.push(bulletMatch[1].trim());
+            continue;
+        }
+        flushList();
+        const isHeading = (t.length <= 70 && /:$/.test(t)) || (t.length <= 50 && headingRe.test(t));
+        if (isHeading) {
+            out.push(`<h4>${escapeHtml(t.replace(/:$/, ''))}</h4>`);
+        } else {
+            out.push(`<p>${escapeHtml(t)}</p>`);
+        }
+    }
+    flushList();
+    return out.join('') || `<p>${escapeHtml(raw)}</p>`;
 }
 
 if (!customElements.get('ao-stats')) customElements.define('ao-stats', AoStats);

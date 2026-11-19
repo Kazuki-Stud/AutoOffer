@@ -56,7 +56,7 @@
 
         <div class="view-controls-bar">
             <div class="search-input-wrap">
-                <input type="text" id="filter-input" placeholder="Search vacancies by title or description..." autocomplete="off" />
+                <input type="text" id="filter-input" placeholder="Search by title, company, skills or description..." autocomplete="off" />
                 <span class="search-input-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
@@ -64,7 +64,40 @@
                     </svg>
                 </span>
             </div>
+            <div class="view-mode-toggle" role="group" aria-label="Vacancies layout">
+                <button id="view-mode-grid-btn" class="view-mode-btn active" type="button" data-layout="grid" title="Grid view">Grid</button>
+                <button id="view-mode-list-btn" class="view-mode-btn" type="button" data-layout="list" title="List view">List</button>
+            </div>
             <button id="quick-refresh-btn" class="secondary-btn">Refresh List</button>
+        </div>
+
+        <div class="vacancies-filters-bar">
+            <select id="filter-source-select" class="form-select" aria-label="Filter by website">
+                <option value="">All Websites</option>
+            </select>
+            <select id="filter-app-status-select" class="form-select" aria-label="Filter by application status">
+                <option value="">All Statuses</option>
+                <option value="none">Not Applied</option>
+                <option value="Applied">Applied</option>
+                <option value="Screening">Screening</option>
+                <option value="Interview">Interview</option>
+                <option value="Offered">Offered</option>
+                <option value="Rejected">Rejected</option>
+            </select>
+            <select id="filter-date-select" class="form-select" aria-label="Filter by post date">
+                <option value="all">All Post Dates</option>
+                <option value="today">Posted Today</option>
+                <option value="7days">Last 7 Days</option>
+                <option value="30days">Last 30 Days</option>
+            </select>
+            <select id="filter-sort-select" class="form-select" aria-label="Sort vacancies">
+                <option value="posted_desc">Sort: Newest Posted</option>
+                <option value="updated_desc">Sort: Recently Synced</option>
+                <option value="title_asc">Sort: Title (A–Z)</option>
+                <option value="company_asc">Sort: Company (A–Z)</option>
+            </select>
+            <button id="clear-filters-btn" class="secondary-btn" type="button">Reset</button>
+            <span id="vacancies-filter-count" class="status-msg"></span>
         </div>
 
         <main class="content-area">
@@ -347,13 +380,18 @@
                     <label for="ai-provider-select">AI Provider Mode</label>
                     <select id="ai-provider-select" class="form-select">
                         <option value="openai">OpenAI-Compatible HTTPS Endpoint</option>
+                        <option value="gemini">Google Gemini AI</option>
                         <option value="local">Local Model (Ollama / LM Studio)</option>
                         <option value="local_cosine">Offline Local Similarity (No LLM Call)</option>
                     </select>
                 </div>
                 <div class="form-field">
-                    <label for="ai-model-input">Model Name</label>
-                    <input type="text" id="ai-model-input" placeholder="gpt-4o-mini or llama3.2" value="gpt-4o-mini" />
+                    <label for="ai-model-select">Preset Model</label>
+                    <select id="ai-model-select" class="form-select"></select>
+                </div>
+                <div class="form-field">
+                    <label for="ai-model-input">Model Name (or write custom name)</label>
+                    <input type="text" id="ai-model-input" placeholder="Pick a preset or enter custom model name" value="gpt-4o-mini" />
                 </div>
                 <div class="form-field full-width">
                     <label for="ai-endpoint-input">API Endpoint URL</label>

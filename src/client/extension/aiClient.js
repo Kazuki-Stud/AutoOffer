@@ -202,17 +202,81 @@ async function ensureConsentIfRemote(cfg, requestConsentFn) {
     throw new AiConsentRequiredError();
 }
 
+function isGeminiProvider(cfg) {
+const endpoint = (cfg.api_endpoint || '').toLowerCase();
+if (endpoint.includes('/openai')) return false;
+return cfg.provider_name === 'gemini' || endpoint.includes('generativelanguage.googleapis.com');
+}
+
+function resolveGeminiEndpoint(cfg) {
+let raw = (cfg.api_endpoint || '').trim().replace(/\/+$/, '');
+if (!raw) raw = 'https://generativelanguage.googleapis.com/v1beta';
+if (raw.includes(':generateContent')) return raw;
+if (raw.endsWith('/models')) return `${raw}/${encodeURIComponent(cfg.model_name)}:generateContent`;
+return `${raw}/models/${encodeURIComponent(cfg.model_name)}:generateContent`;
+}
+
 function resolveChatEndpoint(cfg) {
-    const raw = (cfg.api_endpoint || '').trim().replace(/\/+$/, '');
-    if (!raw) return 'https://api.openai.com/v1/chat/completions';
-    if (raw.endsWith('/chat/completions') || raw.endsWith('/api/chat')) return raw;
-    if (raw.endsWith('/v1')) return `${raw}/chat/completions`;
-    return `${raw}/v1/chat/completions`;
+const raw = (cfg.api_endpoint || '').trim().replace(/\/+$/, '');
+if (!raw) return 'https://api.openai.com/v1/chat/completions';
+if (raw.endsWith('/chat/completions') || raw.endsWith('/api/chat')) return raw;
+if (raw.endsWith('/v1')) return `${raw}/chat/completions`;
+return `${raw}/v1/chat/completions`;
+}
+
+async function callGeminiChat(cfg, apiKey, { systemPrompt, userPrompt, expectJson = false }) {
+if (!apiKey || !apiKey.trim()) {
+throw new Error('Gemini API key is required.');
+}
+const endpoint = resolveGeminiEndpoint(cfg);
+const body = {
+system_instruction: {
+parts: [{ text: systemPrompt }],
+},
+contents: [
+{
+role: 'user',
+parts: [{ text: userPrompt }],
+},
+],
+generationConfig: {
+temperature: 0.25,
+...(expectJson ? { responseMimeType: 'application/json' } : {}),
+},
+};
+
+    const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey.trim(),
+        },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Gemini API error (${res.status}): ${errText.slice(0, 200) || res.statusText}`);
+    }
+
+    const data = await res.json();
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const content = Array.isArray(parts)
+        ? parts.map((p) => p?.text || '').join('').trim()
+        : '';
+
+    if (!content) {
+        throw new Error('Gemini API returned an empty response.');
+    }
+    return content;
 }
 
 async function callLlmChat(cfg, { systemPrompt, userPrompt, expectJson = false }) {
+const apiKey = cfg.id ? await readAiApiKey(cfg.id).catch(() => null) : null;
+if (isGeminiProvider(cfg)) {
+return callGeminiChat(cfg, apiKey, { systemPrompt, userPrompt, expectJson });
+}
+
     const endpoint = resolveChatEndpoint(cfg);
-    const apiKey = cfg.id ? await readAiApiKey(cfg.id).catch(() => null) : null;
     const isOllamaNative = endpoint.endsWith('/api/chat');
 
     const headers = { 'Content-Type': 'application/json' };
