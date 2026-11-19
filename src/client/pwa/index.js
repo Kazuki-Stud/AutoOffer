@@ -1,23 +1,38 @@
 import { AoTheme } from './ui.js';
 import { db } from '../extension/database/database.js';
-import { migrateLegacySecrets } from '../extension/database/crypto.js';
+import { migrateLegacySecrets, saveAiConfiguration } from '../extension/database/crypto.js';
 import {
     createApplication,
+    deleteAiConfiguration,
     deleteProfileCascade,
     deleteResume,
     deleteVacancy,
     ensureDefaultProfile,
+    getCoverLetterForVacancy,
+    getMatchResult,
     getOrCreateByName,
     getSetting,
+    hasAiConsent,
     newId,
     nowIso,
+    recordAiConsent,
+    saveCoverLetter,
+    saveMatchResult,
     saveVacancy,
+    setActiveAiConfiguration,
     setApplicationStatus,
     setDefaultProfile,
     setSetting,
 } from '../extension/database/repository.js';
 import { seedDatabase } from '../extension/database/seed.js';
 import { ENUMS } from '../extension/database/validation.js';
+import { evaluateVacancyMatch, generateCoverLetter } from '../extension/aiClient.js';
+
+const BACKUP_EXCLUDED_TABLES = new Set([
+    'local_device_state',
+    'ai_configurations',
+    'platform_credentials',
+]);
 
 let cachedVacancies = [];
 let cachedApplications = new Map();
@@ -28,6 +43,7 @@ let cachedPlatforms = [];
 let cachedProfiles = [];
 let cachedProfileResumes = [];
 let cachedJobs = [];
+let cachedAiConfigs = [];
 
 let isExtensionConnected = false;
 let activeProfileId = null;
@@ -35,6 +51,20 @@ let activeResumeId = null;
 let pendingResumeFile = null;
 let editingJobId = null;
 const selectedJobUrls = new Set();
+
+let activeAiVacancy = null;
+let activeCoverLetterId = null;
+let lastLoadedLetterText = '';
+let isLetterDirty = false;
+
+function setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+}
+
+function getVal(id) {
+    return document.getElementById(id)?.value ?? '';
+}
 
 function isSafeHttpUrl(raw) {
     try {
@@ -55,25 +85,56 @@ function escapeHtml(str) {
 }
 
 function getExtensionId() {
-    return (document.getElementById('extension-id-input')?.value || localStorage.getItem('autooffer_extension_id') || '').trim();
+    return (getVal('extension-id-input') || localStorage.getItem('autooffer_extension_id') || '').trim();
 }
 
-function callExtension(action, payload = {}) {
+function callExtension(action, payload = {}, timeoutMs = 3500) {
     return new Promise((resolve, reject) => {
         const extId = getExtensionId();
         if (!extId || typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
             return reject(new Error('Extension unavailable'));
         }
-        chrome.runtime.sendMessage(extId, { action, ...payload }, (response) => {
-            if (chrome.runtime.lastError) {
-                return reject(new Error(chrome.runtime.lastError.message));
+        let settled = false;
+        const timer = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                reject(new Error(`Extension timeout (${action})`));
             }
-            if (!response || response.status === 'error') {
-                return reject(new Error(response?.message || 'Extension returned an error'));
+        }, timeoutMs);
+
+        try {
+            chrome.runtime.sendMessage(extId, { action, ...payload }, (response) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (chrome.runtime.lastError) {
+                    return reject(new Error(chrome.runtime.lastError.message));
+                }
+                if (!response || response.status === 'error') {
+                    const err = new Error(response?.message || 'Extension returned an error');
+                    if (response?.code) err.code = response.code;
+                    return reject(err);
+                }
+                resolve(response.data);
+            });
+        } catch (err) {
+            if (!settled) {
+                settled = true;
+                clearTimeout(timer);
+                reject(err);
             }
-            resolve(response.data);
-        });
+        }
     });
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 function formatDate(dateVal) {
@@ -145,6 +206,8 @@ async function calculateStorageWeight() {
             db.local_vacancies.toArray(),
             db.personal_data.toArray(),
             db.resumes.toArray(),
+            db.cover_letters.toArray(),
+            db.match_results.toArray(),
             db.applications.toArray(),
             db.platforms_dict.toArray(),
             db.selectors.toArray(),
@@ -174,7 +237,12 @@ function renderStats(list, weightStr = '0 KB') {
     const total = list.length;
     const withDesc = list.filter((v) => v.status === 'complete' && v.description && v.description.length > 50).length;
     const raw = `${total} | Total Vacancies\n${withDesc} | Detailed\n${weightStr} | Storage Weight`;
-    statsContainer.render(raw);
+
+    if (typeof statsContainer.render === 'function') {
+        statsContainer.render(raw);
+    } else {
+        statsContainer.textContent = raw;
+    }
 }
 
 async function syncApplicationsFromBridge() {
@@ -215,7 +283,7 @@ async function refreshDisplay() {
 
 function openVacancyModal(item) {
     const modal = document.getElementById('vacancy-modal');
-    if (!modal) return;
+    if (!modal || typeof modal.open !== 'function') return;
     let hostname = item.source_host || 'Direct';
     try {
         if (item.url) hostname = new URL(item.url).hostname;
@@ -248,6 +316,9 @@ function renderList(list, profileId) {
         titleEl.className = 'vacancy-title';
         titleEl.textContent = item.full_position_name || 'Untitled Position';
 
+        const metaRow = document.createElement('div');
+        metaRow.className = 'vacancy-meta-row';
+
         const linkEl = document.createElement('a');
         linkEl.className = 'vacancy-link';
         linkEl.href = isSafeHttpUrl(item.url) ? item.url : '#';
@@ -261,6 +332,17 @@ function renderList(list, profileId) {
             </svg>
         `;
         linkEl.addEventListener('click', (e) => e.stopPropagation());
+
+        const aiBtn = document.createElement('button');
+        aiBtn.type = 'button';
+        aiBtn.className = 'secondary-btn btn-xs';
+        aiBtn.textContent = 'AI Match & Letter';
+        aiBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openAiAssistantModal(item);
+        });
+
+        metaRow.append(linkEl, aiBtn);
 
         const footerEl = document.createElement('div');
         footerEl.className = 'vacancy-footer';
@@ -301,7 +383,7 @@ function renderList(list, profileId) {
         });
 
         footerEl.append(dateSpan, pillSpan, statusSelect);
-        card.append(titleEl, linkEl, footerEl);
+        card.append(titleEl, metaRow, footerEl);
         card.addEventListener('click', () => openVacancyModal(item));
 
         grid.appendChild(card);
@@ -331,7 +413,6 @@ async function upsertApplicationStatus(existingApp, profileId, vacancyId, newSta
     }
 }
 
-// ---- US 5.3: Applications Lifecycle Table -----------------------------------
 function renderApplicationsTable() {
     const tbody = document.getElementById('applications-tbody');
     const emptyEl = document.getElementById('applications-empty');
@@ -339,9 +420,8 @@ function renderApplicationsTable() {
     const countBadge = document.getElementById('applications-count-badge');
     if (!tbody) return;
 
-    const searchQ = (document.getElementById('applications-search-input')?.value || '').trim().toLowerCase();
-    const statusFilter = document.getElementById('applications-status-filter')?.value || '';
-
+    const searchQ = getVal('applications-search-input').trim().toLowerCase();
+    const statusFilter = getVal('applications-status-filter');
     const vacancyById = new Map(cachedVacancies.map((v) => [v.id, v]));
 
     const joined = cachedAllApplications.map((app) => {
@@ -490,7 +570,7 @@ async function detectExtensionStatus() {
     }
 
     try {
-        await callExtension('get_storage_weight');
+        await callExtension('get_storage_weight', {}, 2500);
         isExtensionConnected = true;
         if (banner) banner.style.display = 'none';
         setSyncStatus('Extension Connected', 'success');
@@ -505,7 +585,6 @@ async function detectExtensionStatus() {
     }
 }
 
-// ---- Settings ---------------------------------------------------------------
 async function loadSettingsUI() {
     let settings = null;
     if (isExtensionConnected) {
@@ -521,13 +600,12 @@ async function loadSettingsUI() {
     const privOnly = settings ? settings.private_use_only : await getSetting('private_use_only');
     const subMode = settings ? settings.submission_mode : await getSetting('submission_mode');
 
-    const serverInput = document.getElementById('server-url-input');
+    setVal('server-url-input', serverUrl || 'http://localhost:8080');
     const privToggle = document.getElementById('private-use-only-toggle');
-    const modeSelect = document.getElementById('submission-mode-select');
-
-    if (serverInput) serverInput.value = serverUrl || 'http://localhost:8080';
     if (privToggle) privToggle.checked = Boolean(privOnly);
-    if (modeSelect) modeSelect.value = subMode || 'semi_automated';
+    setVal('submission-mode-select', subMode || 'semi_automated');
+
+    await loadAiConfigUI();
 }
 
 async function saveSingleSetting(key, value) {
@@ -537,7 +615,505 @@ async function saveSingleSetting(key, value) {
     }
 }
 
-// ---- Platforms --------------------------------------------------------------
+function renderAiConfigsList() {
+    const listEl = document.getElementById('ai-configs-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    if (!cachedAiConfigs.length) {
+        listEl.innerHTML = '<div class="status-msg">No saved AI provider configurations yet. Save one above or use Offline Local Similarity.</div>';
+        return;
+    }
+
+    for (const cfg of cachedAiConfigs) {
+        const row = document.createElement('div');
+        row.className = 'ai-config-row' + (cfg.is_active ? ' active' : '');
+
+        const info = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = `${cfg.provider_name} · ${cfg.model_name}${cfg.is_active ? ' (Active)' : ''}`;
+        const meta = document.createElement('div');
+        meta.className = 'job-row-meta';
+        meta.textContent = `${cfg.api_endpoint || 'Offline Cosine'} · Key: ${cfg.has_api_key ? 'Encrypted locally' : 'None'}`;
+        info.append(title, meta);
+
+        const actions = document.createElement('div');
+        actions.className = 'job-row-actions';
+
+        if (!cfg.is_active) {
+            const actBtn = document.createElement('button');
+            actBtn.type = 'button';
+            actBtn.className = 'secondary-btn btn-xs';
+            actBtn.textContent = 'Activate';
+            actBtn.addEventListener('click', async () => {
+                if (isExtensionConnected) {
+                    cachedAiConfigs = await callExtension('set_active_ai_configuration', { id: cfg.id });
+                } else {
+                    await setActiveAiConfiguration(cfg.id);
+                    await loadAiConfigUI();
+                }
+                renderAiConfigsList();
+            });
+            actions.appendChild(actBtn);
+        }
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'clear-button btn-xs';
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', async () => {
+            if (isExtensionConnected) {
+                cachedAiConfigs = await callExtension('delete_ai_configuration', { id: cfg.id });
+            } else {
+                await deleteAiConfiguration(cfg.id);
+                await loadAiConfigUI();
+            }
+            renderAiConfigsList();
+        });
+        actions.appendChild(delBtn);
+
+        row.append(info, actions);
+        listEl.appendChild(row);
+    }
+}
+
+async function loadAiConfigUI() {
+    let consented = false;
+    let givenAt = null;
+
+    if (isExtensionConnected) {
+        try {
+            cachedAiConfigs = await callExtension('get_ai_configurations');
+            const consentInfo = await callExtension('get_ai_consent');
+            consented = Boolean(consentInfo?.consented);
+            givenAt = consentInfo?.givenAt || null;
+        } catch {}
+    } else {
+        const rows = await db.ai_configurations.toArray();
+        rows.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+        cachedAiConfigs = rows.map((c) => ({
+            id: c.id,
+            provider_name: c.provider_name,
+            api_endpoint: c.api_endpoint || null,
+            model_name: c.model_name,
+            is_active: c.is_active,
+            has_api_key: Boolean(c.api_key_enc),
+        }));
+        consented = await hasAiConsent();
+        givenAt = await getSetting('ai_consent_given_at');
+    }
+
+    const consentTag = document.getElementById('ai-consent-status-tag');
+    if (consentTag) {
+        consentTag.textContent = consented
+            ? `GDPR Opt-In: Consented (${formatDate(givenAt)})`
+            : 'GDPR Opt-In: Pending';
+    }
+    renderAiConfigsList();
+}
+
+function requestAiConsentModal(endpointLabel) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('ai-consent-modal');
+        const labelEl = document.getElementById('ai-consent-endpoint-label');
+        const acceptBtn = document.getElementById('ai-consent-accept-btn');
+        const declineBtn = document.getElementById('ai-consent-decline-btn');
+        if (!modal || !acceptBtn || !declineBtn) return resolve(false);
+
+        if (labelEl) labelEl.textContent = endpointLabel || 'Remote AI Provider';
+        modal.setAttribute('open', '');
+
+        const cleanup = (result) => {
+            modal.removeAttribute('open');
+            acceptBtn.removeEventListener('click', onAccept);
+            declineBtn.removeEventListener('click', onDecline);
+            modal.removeEventListener('click', onBackdrop);
+            resolve(result);
+        };
+        const onAccept = async () => {
+            await recordAiConsent('1.0');
+            if (isExtensionConnected) {
+                await callExtension('set_ai_consent', { version: '1.0' }).catch(() => {});
+            }
+            await loadAiConfigUI();
+            cleanup(true);
+        };
+        const onDecline = () => cleanup(false);
+        const onBackdrop = (e) => { if (e.target === modal) cleanup(false); };
+
+        acceptBtn.addEventListener('click', onAccept);
+        declineBtn.addEventListener('click', onDecline);
+        modal.addEventListener('click', onBackdrop);
+    });
+}
+
+function initAiSettingsHandlers() {
+    const providerSel = document.getElementById('ai-provider-select');
+    const endpointInput = document.getElementById('ai-endpoint-input');
+    const modelInput = document.getElementById('ai-model-input');
+    const apiKeyInput = document.getElementById('ai-apikey-input');
+    const activeToggle = document.getElementById('ai-active-toggle');
+    const saveBtn = document.getElementById('save-ai-config-btn');
+    const statusEl = document.getElementById('ai-config-status');
+    if (!providerSel || !saveBtn) return;
+
+    providerSel.addEventListener('change', () => {
+        const val = providerSel.value;
+        if (val === 'openai') {
+            if (endpointInput) { endpointInput.disabled = false; endpointInput.value = 'https://api.openai.com/v1/chat/completions'; }
+            if (apiKeyInput) apiKeyInput.disabled = false;
+            if (modelInput) modelInput.value = 'gpt-4o-mini';
+        } else if (val === 'local') {
+            if (endpointInput) { endpointInput.disabled = false; endpointInput.value = 'http://localhost:11434/v1/chat/completions'; }
+            if (apiKeyInput) apiKeyInput.disabled = false;
+            if (modelInput) modelInput.value = 'llama3.2';
+        } else {
+            if (endpointInput) { endpointInput.value = ''; endpointInput.disabled = true; }
+            if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.disabled = true; }
+            if (modelInput) modelInput.value = 'local-cosine';
+        }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const provider_name = providerSel.value;
+        const model_name = (modelInput?.value || '').trim();
+        const api_endpoint = (endpointInput?.value || '').trim() || null;
+        const api_key = (apiKeyInput?.value || '').trim();
+        const is_active = activeToggle?.checked ? 1 : 0;
+
+        if (!model_name) {
+            if (statusEl) { statusEl.textContent = 'Model name is required.'; statusEl.style.color = '#f87171'; }
+            return;
+        }
+        if (provider_name !== 'local_cosine' && (!api_endpoint || !isSafeHttpUrl(api_endpoint))) {
+            if (statusEl) { statusEl.textContent = 'Enter a valid http(s) AI endpoint URL.'; statusEl.style.color = '#f87171'; }
+            return;
+        }
+        if (provider_name === 'openai' && !api_key) {
+            if (statusEl) { statusEl.textContent = 'API key is required for remote OpenAI-compatible providers.'; statusEl.style.color = '#f87171'; }
+            return;
+        }
+
+        try {
+            if (isExtensionConnected) {
+                cachedAiConfigs = await callExtension('save_ai_configuration', {
+                    config: { provider_name, api_endpoint, api_key, model_name, is_active },
+                });
+            } else {
+                const id = await saveAiConfiguration({
+                    provider_name,
+                    api_endpoint,
+                    api_key,
+                    model_name,
+                    is_active,
+                });
+                if (is_active) await setActiveAiConfiguration(id);
+                await loadAiConfigUI();
+            }
+            if (apiKeyInput) apiKeyInput.value = '';
+            renderAiConfigsList();
+            if (statusEl) {
+                statusEl.textContent = 'AI configuration saved (key encrypted locally).';
+                statusEl.style.color = '#34d399';
+                setTimeout(() => { statusEl.textContent = ''; }, 3500);
+            }
+        } catch (err) {
+            if (statusEl) { statusEl.textContent = err.message; statusEl.style.color = '#f87171'; }
+        }
+    });
+}
+
+function setMatchDisplay(match) {
+    const scorePill = document.getElementById('ai-match-score-pill');
+    const matchedEl = document.getElementById('ai-matched-skills');
+    const missingEl = document.getElementById('ai-missing-skills');
+    if (!scorePill || !matchedEl || !missingEl) return;
+
+    if (!match) {
+        scorePill.dataset.status = 'basic';
+        scorePill.textContent = 'Not evaluated';
+        matchedEl.innerHTML = '<span class="status-msg">—</span>';
+        missingEl.innerHTML = '<span class="status-msg">—</span>';
+        return;
+    }
+
+    scorePill.dataset.status = match.score >= 70 ? 'complete' : 'basic';
+    scorePill.textContent = `${match.score}% Overlap`;
+
+    matchedEl.innerHTML = '';
+    if (match.matched_skills?.length) {
+        for (const s of match.matched_skills) {
+            const chip = document.createElement('span');
+            chip.className = 'skill-chip matched';
+            chip.textContent = s;
+            matchedEl.appendChild(chip);
+        }
+    } else {
+        matchedEl.innerHTML = '<span class="status-msg">None detected</span>';
+    }
+
+    missingEl.innerHTML = '';
+    if (match.missing_skills?.length) {
+        for (const s of match.missing_skills) {
+            const chip = document.createElement('span');
+            chip.className = 'skill-chip missing';
+            chip.textContent = s;
+            missingEl.appendChild(chip);
+        }
+    } else {
+        missingEl.innerHTML = '<span class="status-msg">None missing</span>';
+    }
+}
+
+function updateCoverLetterDirtyUI() {
+    const textarea = document.getElementById('ai-letter-textarea');
+    const dirtyEl = document.getElementById('ai-dirty-indicator');
+    const genBtn = document.getElementById('ai-generate-letter-btn');
+    if (!textarea) return;
+
+    const current = textarea.value;
+    isLetterDirty = current.trim().length > 0 && current !== lastLoadedLetterText;
+    if (dirtyEl) dirtyEl.textContent = isLetterDirty ? 'Unsaved manual edits' : '';
+    if (genBtn) genBtn.textContent = current.trim().length > 0 ? 'Regenerate Letter' : 'Generate Letter';
+}
+
+async function loadAiDialogStateForResume(vacancy, resumeId) {
+    if (!vacancy || !resumeId) {
+        setMatchDisplay(null);
+        return;
+    }
+
+    let match = null;
+    let draft = null;
+    if (isExtensionConnected) {
+        try {
+            const matches = await callExtension('get_match_results', { vacancyId: vacancy.id });
+            match = matches.find((m) => m.resume_id === resumeId) || null;
+            if (match) await saveMatchResult(match).catch(() => {});
+            const letters = await callExtension('get_cover_letters', { vacancyId: vacancy.id });
+            draft = letters.find((c) => c.resume_id === resumeId) || letters[0] || null;
+            if (draft) await db.cover_letters.put(draft).catch(() => {});
+        } catch {}
+    }
+    const profId = activeProfileId || (await ensureDefaultProfile()).id;
+    if (!match) match = await getMatchResult(vacancy.id, resumeId);
+    if (!draft) draft = await getCoverLetterForVacancy(profId, vacancy.id, resumeId);
+
+    setMatchDisplay(match);
+    const textarea = document.getElementById('ai-letter-textarea');
+    if (textarea) {
+        activeCoverLetterId = draft?.id || null;
+        lastLoadedLetterText = draft?.plain_text || '';
+        textarea.value = lastLoadedLetterText;
+        updateCoverLetterDirtyUI();
+    }
+}
+
+async function openAiAssistantModal(vacancy) {
+    const modal = document.getElementById('ai-assistant-modal');
+    const titleEl = document.getElementById('ai-modal-title');
+    const resumeSel = document.getElementById('ai-modal-resume-select');
+    const statusEl = document.getElementById('ai-modal-status');
+    if (!modal || !resumeSel) return;
+
+    activeAiVacancy = vacancy;
+    activeCoverLetterId = null;
+    lastLoadedLetterText = '';
+    isLetterDirty = false;
+    if (statusEl) statusEl.textContent = '';
+    if (titleEl) titleEl.textContent = `AI Match & Cover Letter: ${vacancy.full_position_name || 'Vacancy'}`;
+
+    if (!cachedProfileResumes.length) await loadResumesUI();
+
+    resumeSel.innerHTML = '';
+    if (!cachedProfileResumes.length) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No resume variants — add one in Profile & Resumes';
+        resumeSel.appendChild(opt);
+    } else {
+        for (const r of cachedProfileResumes) {
+            const opt = document.createElement('option');
+            opt.value = r.id;
+            opt.textContent = r.title;
+            resumeSel.appendChild(opt);
+        }
+        if (activeResumeId && cachedProfileResumes.some((r) => r.id === activeResumeId)) {
+            resumeSel.value = activeResumeId;
+        }
+    }
+
+    await loadAiDialogStateForResume(vacancy, resumeSel.value);
+    modal.setAttribute('open', '');
+}
+
+async function runWithBridgeConsentRetry(fn, endpointLabel) {
+    try {
+        return await fn();
+    } catch (err) {
+        if (err.code === 'AI_CONSENT_REQUIRED' || String(err.message).includes('GDPR opt-in consent')) {
+            const accepted = await requestAiConsentModal(endpointLabel);
+            if (!accepted) throw new Error('AI processing cancelled (consent not granted).');
+            return await fn();
+        }
+        throw err;
+    }
+}
+
+function initAiAssistantModal() {
+    const modal = document.getElementById('ai-assistant-modal');
+    const closeBtn = document.getElementById('ai-modal-close-btn');
+    const resumeSel = document.getElementById('ai-modal-resume-select');
+    const evalBtn = document.getElementById('ai-evaluate-match-btn');
+    const genBtn = document.getElementById('ai-generate-letter-btn');
+    const saveBtn = document.getElementById('ai-save-letter-btn');
+    const textarea = document.getElementById('ai-letter-textarea');
+    const statusEl = document.getElementById('ai-modal-status');
+
+    const closeModal = () => modal?.removeAttribute('open');
+    closeBtn?.addEventListener('click', closeModal);
+    modal?.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal?.hasAttribute('open')) closeModal();
+    });
+
+    resumeSel?.addEventListener('change', () => {
+        if (activeAiVacancy) loadAiDialogStateForResume(activeAiVacancy, resumeSel.value);
+    });
+
+    textarea?.addEventListener('input', updateCoverLetterDirtyUI);
+
+    evalBtn?.addEventListener('click', async () => {
+        const resumeId = resumeSel?.value;
+        const resume = cachedProfileResumes.find((r) => r.id === resumeId);
+        if (!activeAiVacancy || !resume) {
+            if (statusEl) { statusEl.textContent = 'Create and select a resume variant first.'; statusEl.style.color = '#f87171'; }
+            return;
+        }
+
+        const activeCfg = cachedAiConfigs.find((c) => c.is_active) || cachedAiConfigs[0];
+        const endpointLabel = activeCfg?.api_endpoint || activeCfg?.provider_name || 'AI Provider';
+
+        evalBtn.disabled = true;
+        if (statusEl) { statusEl.textContent = 'Evaluating match...'; statusEl.style.color = 'var(--text-secondary)'; }
+        try {
+            let result;
+            if (isExtensionConnected) {
+                result = await runWithBridgeConsentRetry(
+                    () => callExtension('ai_evaluate_match', {
+                        vacancyId: activeAiVacancy.id,
+                        resumeId: resume.id,
+                        vacancy: activeAiVacancy,
+                        resume,
+                    }, 45000),
+                    endpointLabel
+                );
+                await saveMatchResult(result).catch(() => {});
+            } else {
+                const personalData = await db.personal_data.where('profile_id').equals(resume.profile_id).first();
+                result = await evaluateVacancyMatch(activeAiVacancy, resume, {
+                    personalData,
+                    requestConsentFn: () => requestAiConsentModal(endpointLabel),
+                });
+            }
+            setMatchDisplay(result);
+            if (statusEl) { statusEl.textContent = `Match evaluated (${result.score}%).`; statusEl.style.color = '#34d399'; }
+        } catch (err) {
+            if (statusEl) { statusEl.textContent = err.message; statusEl.style.color = '#f87171'; }
+        } finally {
+            evalBtn.disabled = false;
+        }
+    });
+
+    genBtn?.addEventListener('click', async () => {
+        const resumeId = resumeSel?.value;
+        const resume = cachedProfileResumes.find((r) => r.id === resumeId);
+        if (!activeAiVacancy || !resume) {
+            if (statusEl) { statusEl.textContent = 'Create and select a resume variant first.'; statusEl.style.color = '#f87171'; }
+            return;
+        }
+
+        if (isLetterDirty) {
+            const ok = confirm('You have manually edited the cover letter. Overwrite your edits with a newly generated letter?');
+            if (!ok) return;
+        }
+
+        const activeCfg = cachedAiConfigs.find((c) => c.is_active) || cachedAiConfigs[0];
+        const endpointLabel = activeCfg?.api_endpoint || activeCfg?.provider_name || 'AI Provider';
+
+        genBtn.disabled = true;
+        if (statusEl) { statusEl.textContent = 'Generating tailored cover letter...'; statusEl.style.color = 'var(--text-secondary)'; }
+        try {
+            let draft;
+            if (isExtensionConnected) {
+                draft = await runWithBridgeConsentRetry(
+                    () => callExtension('ai_generate_cover_letter', {
+                        vacancyId: activeAiVacancy.id,
+                        resumeId: resume.id,
+                        existingDraftId: activeCoverLetterId,
+                        vacancy: activeAiVacancy,
+                        resume,
+                    }, 45000),
+                    endpointLabel
+                );
+                await db.cover_letters.put(draft).catch(() => {});
+            } else {
+                const personalData = await db.personal_data.where('profile_id').equals(resume.profile_id).first();
+                draft = await generateCoverLetter(activeAiVacancy, resume, {
+                    personalData,
+                    existingDraftId: activeCoverLetterId,
+                    isDirty: false,
+                    requestConsentFn: () => requestAiConsentModal(endpointLabel),
+                });
+            }
+            activeCoverLetterId = draft.id;
+            lastLoadedLetterText = draft.plain_text || '';
+            if (textarea) textarea.value = lastLoadedLetterText;
+            updateCoverLetterDirtyUI();
+            if (statusEl) { statusEl.textContent = 'Cover letter generated.'; statusEl.style.color = '#34d399'; }
+        } catch (err) {
+            if (statusEl) { statusEl.textContent = err.message; statusEl.style.color = '#f87171'; }
+        } finally {
+            genBtn.disabled = false;
+        }
+    });
+
+    saveBtn?.addEventListener('click', async () => {
+        const resumeId = resumeSel?.value;
+        const resume = cachedProfileResumes.find((r) => r.id === resumeId);
+        const text = (textarea?.value || '').trim();
+        if (!activeAiVacancy || !resume || !text) {
+            if (statusEl) { statusEl.textContent = 'Cover letter text and resume variant are required.'; statusEl.style.color = '#f87171'; }
+            return;
+        }
+
+        try {
+            const payload = {
+                id: activeCoverLetterId || null,
+                profile_id: resume.profile_id,
+                vacancy_id: activeAiVacancy.id,
+                resume_id: resume.id,
+                title: `Cover Letter - ${activeAiVacancy.full_position_name || 'Application'}`.slice(0, 150),
+                plain_text: text,
+                skill_ids: Array.isArray(resume.skill_ids) ? resume.skill_ids : [],
+            };
+            let saved;
+            if (isExtensionConnected) {
+                saved = await callExtension('save_cover_letter', { coverLetter: payload });
+                await db.cover_letters.put(saved).catch(() => {});
+            } else {
+                saved = await saveCoverLetter(payload);
+            }
+            activeCoverLetterId = saved.id;
+            lastLoadedLetterText = saved.plain_text;
+            updateCoverLetterDirtyUI();
+            if (statusEl) { statusEl.textContent = 'Cover letter draft saved.'; statusEl.style.color = '#34d399'; }
+        } catch (err) {
+            if (statusEl) { statusEl.textContent = err.message; statusEl.style.color = '#f87171'; }
+        }
+    });
+}
+
 async function loadPlatforms() {
     if (isExtensionConnected) {
         try {
@@ -550,7 +1126,6 @@ async function loadPlatforms() {
     return cachedPlatforms;
 }
 
-// ---- Profiles ---------------------------------------------------------------
 async function loadLocalHydratedProfiles() {
     await ensureDefaultProfile();
     const profiles = await db.user_profiles.toArray();
@@ -664,17 +1239,18 @@ async function saveLocalProfile(incoming) {
 }
 
 function populateProfileForm(p) {
-    document.getElementById('pwa-prof-label').value = p?.profile_name || 'Default';
-    document.getElementById('pwa-prof-default').checked = Boolean(p?.is_default);
-    document.getElementById('pwa-prof-firstname').value = p?.first_name || '';
-    document.getElementById('pwa-prof-lastname').value = p?.last_name || '';
-    document.getElementById('pwa-prof-email').value = p?.email || '';
-    document.getElementById('pwa-prof-phone').value = p?.phone || '';
-    document.getElementById('pwa-prof-location').value = p?.location || '';
-    document.getElementById('pwa-prof-roles').value = p?.roles || '';
-    document.getElementById('pwa-prof-locations').value = p?.locations || '';
-    document.getElementById('pwa-prof-keywords').value = p?.keywords || '';
-    document.getElementById('pwa-prof-links').value = p?.links || '';
+    setVal('pwa-prof-label', p?.profile_name || 'Default');
+    const defBox = document.getElementById('pwa-prof-default');
+    if (defBox) defBox.checked = Boolean(p?.is_default);
+    setVal('pwa-prof-firstname', p?.first_name || '');
+    setVal('pwa-prof-lastname', p?.last_name || '');
+    setVal('pwa-prof-email', p?.email || '');
+    setVal('pwa-prof-phone', p?.phone || '');
+    setVal('pwa-prof-location', p?.location || '');
+    setVal('pwa-prof-roles', p?.roles || '');
+    setVal('pwa-prof-locations', p?.locations || '');
+    setVal('pwa-prof-keywords', p?.keywords || '');
+    setVal('pwa-prof-links', p?.links || '');
 }
 
 function renderProfileSelects() {
@@ -721,7 +1297,6 @@ async function loadProfilesUI() {
     await loadResumesUI();
 }
 
-// ---- US 5.1 & US 3.6: Multi-Resume Variants + PDF/Word Export -------------
 async function loadLocalHydratedResumes(profileId) {
     const rows = await db.resumes.where('profile_id').equals(profileId).toArray();
     rows.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
@@ -772,10 +1347,10 @@ function populateResumeForm(r) {
     const fileInput = document.getElementById('pwa-resume-file');
     if (fileInput) fileInput.value = '';
 
-    document.getElementById('pwa-resume-title').value = r?.title || '';
-    document.getElementById('pwa-resume-skills').value = (r?.skills || []).join(', ');
-    document.getElementById('pwa-resume-summary').value = r?.summary || '';
-    document.getElementById('pwa-resume-text').value = r?.plain_text || '';
+    setVal('pwa-resume-title', r?.title || '');
+    setVal('pwa-resume-skills', (r?.skills || []).join(', '));
+    setVal('pwa-resume-summary', r?.summary || '');
+    setVal('pwa-resume-text', r?.plain_text || '');
 
     const fileInfo = document.getElementById('pwa-resume-file-info');
     const clearFileBtn = document.getElementById('pwa-resume-clear-file-btn');
@@ -891,10 +1466,10 @@ async function loadResumesUI() {
 
 function buildResumeDocumentHtml(resumeOverride = null) {
     const profile = cachedProfiles.find((p) => p.profile_id === activeProfileId) || {};
-    const title = resumeOverride?.title ?? document.getElementById('pwa-resume-title').value.trim();
-    const summary = resumeOverride?.summary ?? document.getElementById('pwa-resume-summary').value.trim();
-    const plainText = resumeOverride?.plain_text ?? document.getElementById('pwa-resume-text').value.trim();
-    const skills = resumeOverride?.skills ?? toStringArray(document.getElementById('pwa-resume-skills').value);
+    const title = resumeOverride?.title ?? getVal('pwa-resume-title').trim();
+    const summary = resumeOverride?.summary ?? getVal('pwa-resume-summary').trim();
+    const plainText = resumeOverride?.plain_text ?? getVal('pwa-resume-text').trim();
+    const skills = resumeOverride?.skills ?? toStringArray(getVal('pwa-resume-skills'));
 
     const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.profile_name || 'Candidate';
     const contactLine = [profile.email, profile.phone, profile.location, profile.links].filter(Boolean).join('  |  ');
@@ -932,7 +1507,7 @@ function buildResumeDocumentHtml(resumeOverride = null) {
 }
 
 function exportResumeAsWord(resumeOverride = null) {
-    const title = (resumeOverride?.title ?? document.getElementById('pwa-resume-title').value.trim()) || 'resume';
+    const title = (resumeOverride?.title ?? getVal('pwa-resume-title').trim()) || 'resume';
     const html = buildResumeDocumentHtml(resumeOverride);
     const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
     const a = document.createElement('a');
@@ -1015,17 +1590,17 @@ function initProfilePage() {
             const payload = {
                 profile_id: activeProfileId,
                 create_new: !activeProfileId,
-                profile_name: document.getElementById('pwa-prof-label').value.trim() || 'Profile',
-                is_default: document.getElementById('pwa-prof-default').checked ? 1 : 0,
-                first_name: document.getElementById('pwa-prof-firstname').value.trim(),
-                last_name: document.getElementById('pwa-prof-lastname').value.trim(),
-                email: document.getElementById('pwa-prof-email').value.trim(),
-                phone: document.getElementById('pwa-prof-phone').value.trim(),
-                location: document.getElementById('pwa-prof-location').value.trim(),
-                roles: document.getElementById('pwa-prof-roles').value.trim(),
-                locations: document.getElementById('pwa-prof-locations').value.trim(),
-                keywords: document.getElementById('pwa-prof-keywords').value.trim(),
-                links: document.getElementById('pwa-prof-links').value.trim(),
+                profile_name: getVal('pwa-prof-label').trim() || 'Profile',
+                is_default: document.getElementById('pwa-prof-default')?.checked ? 1 : 0,
+                first_name: getVal('pwa-prof-firstname').trim(),
+                last_name: getVal('pwa-prof-lastname').trim(),
+                email: getVal('pwa-prof-email').trim(),
+                phone: getVal('pwa-prof-phone').trim(),
+                location: getVal('pwa-prof-location').trim(),
+                roles: getVal('pwa-prof-roles').trim(),
+                locations: getVal('pwa-prof-locations').trim(),
+                keywords: getVal('pwa-prof-keywords').trim(),
+                links: getVal('pwa-prof-links').trim(),
             };
 
             if (isExtensionConnected) {
@@ -1082,25 +1657,27 @@ function initProfilePage() {
             file_data_b64: b64,
             clear_file: false,
         };
-        document.getElementById('pwa-resume-file-info').textContent = `Selected: ${file.name}`;
+        const infoEl = document.getElementById('pwa-resume-file-info');
+        if (infoEl) infoEl.textContent = `Selected: ${file.name}`;
         if (clearFileBtn) clearFileBtn.style.display = 'inline-block';
     });
 
     clearFileBtn?.addEventListener('click', () => {
         pendingResumeFile = { clear_file: true };
         if (resumeFileEl) resumeFileEl.value = '';
-        document.getElementById('pwa-resume-file-info').textContent = 'No file attached (save to confirm removal)';
+        const infoEl = document.getElementById('pwa-resume-file-info');
+        if (infoEl) infoEl.textContent = 'No file attached (save to confirm removal)';
         clearFileBtn.style.display = 'none';
     });
 
     saveResumeBtn?.addEventListener('click', async () => {
         if (!activeProfileId) return showResumeStatus('Save the profile first.', false);
-        const title = document.getElementById('pwa-resume-title').value.trim();
+        const title = getVal('pwa-resume-title').trim();
         if (!title) return showResumeStatus('Variant title is required.', false);
 
-        const summary = document.getElementById('pwa-resume-summary').value.trim();
-        const skillsText = document.getElementById('pwa-resume-skills').value.trim();
-        const plainTextInput = document.getElementById('pwa-resume-text').value.trim();
+        const summary = getVal('pwa-resume-summary').trim();
+        const skillsText = getVal('pwa-resume-skills').trim();
+        const plainTextInput = getVal('pwa-resume-text').trim();
         const plain_text = plainTextInput || [title, summary, skillsText ? `Skills: ${skillsText}` : ''].filter(Boolean).join('\n\n');
 
         try {
@@ -1182,7 +1759,6 @@ function initProfilePage() {
     document.getElementById('pwa-export-doc-btn')?.addEventListener('click', () => exportResumeAsWord());
 }
 
-// ---- Jobs & Automation Management -------------------------------------------
 function renderJobPlatformChips() {
     const picker = document.getElementById('pwa-job-platforms-picker');
     if (!picker) return;
@@ -1245,18 +1821,20 @@ function renderJobsList() {
         editBtn.textContent = 'Edit';
         editBtn.addEventListener('click', () => {
             editingJobId = j.id;
-            document.getElementById('pwa-job-form-heading').textContent = `Edit Job: ${j.title}`;
-            document.getElementById('pwa-job-title').value = j.title || '';
-            document.getElementById('pwa-job-roles').value = j.roles || '';
-            document.getElementById('pwa-job-locations').value = j.locations || '';
-            document.getElementById('pwa-job-keywords').value = j.keywords || '';
-            document.getElementById('pwa-job-fields').value = j.fields_mode || 'all';
-            document.getElementById('pwa-job-limit').value = j.limit || 2;
-            if (j.profile_id) document.getElementById('pwa-job-profile').value = j.profile_id;
+            const heading = document.getElementById('pwa-job-form-heading');
+            if (heading) heading.textContent = `Edit Job: ${j.title}`;
+            setVal('pwa-job-title', j.title || '');
+            setVal('pwa-job-roles', j.roles || '');
+            setVal('pwa-job-locations', j.locations || '');
+            setVal('pwa-job-keywords', j.keywords || '');
+            setVal('pwa-job-fields', j.fields_mode || 'all');
+            setVal('pwa-job-limit', j.limit || 2);
+            if (j.profile_id) setVal('pwa-job-profile', j.profile_id);
             selectedJobUrls.clear();
             (j.websites || '').split('\n').map((s) => s.trim()).filter(Boolean).forEach((u) => selectedJobUrls.add(u));
             renderJobPlatformChips();
-            document.getElementById('pwa-cancel-job-btn').style.display = 'inline-block';
+            const cancelBtn = document.getElementById('pwa-cancel-job-btn');
+            if (cancelBtn) cancelBtn.style.display = 'inline-block';
         });
 
         const delBtn = document.createElement('button');
@@ -1298,13 +1876,14 @@ function initJobsPage() {
 
     const resetForm = () => {
         editingJobId = null;
-        document.getElementById('pwa-job-form-heading').textContent = 'Create Automation Job';
-        document.getElementById('pwa-job-title').value = '';
-        document.getElementById('pwa-job-roles').value = '';
-        document.getElementById('pwa-job-locations').value = '';
-        document.getElementById('pwa-job-keywords').value = '';
-        document.getElementById('pwa-job-fields').value = 'all';
-        document.getElementById('pwa-job-limit').value = 2;
+        const heading = document.getElementById('pwa-job-form-heading');
+        if (heading) heading.textContent = 'Create Automation Job';
+        setVal('pwa-job-title', '');
+        setVal('pwa-job-roles', '');
+        setVal('pwa-job-locations', '');
+        setVal('pwa-job-keywords', '');
+        setVal('pwa-job-fields', 'all');
+        setVal('pwa-job-limit', 2);
         selectedJobUrls.clear();
         renderJobPlatformChips();
         if (cancelBtn) cancelBtn.style.display = 'none';
@@ -1314,30 +1893,27 @@ function initJobsPage() {
 
     saveBtn?.addEventListener('click', async () => {
         const websites = Array.from(selectedJobUrls).join('\n');
-        const title = document.getElementById('pwa-job-title').value.trim();
-        const profileId = document.getElementById('pwa-job-profile').value;
-        const roles = document.getElementById('pwa-job-roles').value.trim();
-        const locations = document.getElementById('pwa-job-locations').value.trim();
-        const keywords = document.getElementById('pwa-job-keywords').value.trim();
-        const fields_mode = document.getElementById('pwa-job-fields').value;
-        const limit = Number(document.getElementById('pwa-job-limit').value);
+        const title = getVal('pwa-job-title').trim();
+        const profileId = getVal('pwa-job-profile');
+        const roles = getVal('pwa-job-roles').trim();
+        const locations = getVal('pwa-job-locations').trim();
+        const keywords = getVal('pwa-job-keywords').trim();
+        const fields_mode = getVal('pwa-job-fields') || 'all';
+        const limit = Number(getVal('pwa-job-limit'));
 
         const selectedProfile = cachedProfiles.find((p) => p.profile_id === profileId);
         const effectiveRoles = toStringArray(roles || selectedProfile?.roles || selectedProfile?.skills || '');
 
         if (!websites) {
-            statusEl.textContent = 'Select at least one target platform.';
-            statusEl.style.color = '#f87171';
+            if (statusEl) { statusEl.textContent = 'Select at least one target platform.'; statusEl.style.color = '#f87171'; }
             return;
         }
         if (!effectiveRoles.length) {
-            statusEl.textContent = 'Provide target roles (either here or in the selected profile).';
-            statusEl.style.color = '#f87171';
+            if (statusEl) { statusEl.textContent = 'Provide target roles (either here or in the selected profile).'; statusEl.style.color = '#f87171'; }
             return;
         }
         if (!Number.isInteger(limit) || limit < 1) {
-            statusEl.textContent = 'Page limit must be at least 1.';
-            statusEl.style.color = '#f87171';
+            if (statusEl) { statusEl.textContent = 'Page limit must be at least 1.'; statusEl.style.color = '#f87171'; }
             return;
         }
 
@@ -1364,24 +1940,24 @@ function initJobsPage() {
             resetForm();
             await loadJobsUI();
             await refreshDisplay();
-            statusEl.textContent = 'Job saved.';
-            statusEl.style.color = '#34d399';
-            setTimeout(() => { statusEl.textContent = ''; }, 3000);
+            if (statusEl) {
+                statusEl.textContent = 'Job saved.';
+                statusEl.style.color = '#34d399';
+                setTimeout(() => { statusEl.textContent = ''; }, 3000);
+            }
         } catch (err) {
-            statusEl.textContent = err.message;
-            statusEl.style.color = '#f87171';
+            if (statusEl) { statusEl.textContent = err.message; statusEl.style.color = '#f87171'; }
         }
     });
 }
 
-// ---- US 6.1 & US 6.2: Role-filtered Skill Hotwords + Responsive SVG Chart ---
 async function populateAnalyticsPositions() {
     const selectEl = document.getElementById('hotwords-position-select');
     if (!selectEl) return;
     const base = (await getSetting('server_base_url') || 'http://localhost:8080').replace(/\/+$/, '');
     let positions = [];
     try {
-        const res = await fetch(`${base}/api/dictionaries/bootstrap`);
+        const res = await fetchWithTimeout(`${base}/api/dictionaries/bootstrap`, {}, 3500);
         if (res.ok) {
             const boot = await res.json();
             if (Array.isArray(boot.positions) && boot.positions.length) {
@@ -1391,7 +1967,7 @@ async function populateAnalyticsPositions() {
     } catch {}
 
     if (!positions.length) {
-        positions = await db.positions_dict.toArray();
+        positions = await db.positions_dict.toArray().catch(() => []);
     }
 
     const prev = selectEl.value;
@@ -1493,13 +2069,13 @@ async function loadHotwords() {
     if (chartEl) chartEl.innerHTML = '';
 
     try {
-        const res = await fetch(`${base}/api/skills/hotwords${qs}`);
+        const res = await fetchWithTimeout(`${base}/api/skills/hotwords${qs}`, {}, 5000);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         let rows = await res.json();
 
         if (!Array.isArray(rows) || !rows.length) {
             try {
-                const chRes = await fetch(`${base}/api/analytics/skills-demand`);
+                const chRes = await fetchWithTimeout(`${base}/api/analytics/skills-demand`, {}, 4000);
                 if (chRes.ok) {
                     const chBody = await chRes.json();
                     const data = Array.isArray(chBody?.data) ? chBody.data : [];
@@ -1525,19 +2101,18 @@ async function loadHotwords() {
     }
 }
 
-// ---- Sync & Backup ----------------------------------------------------------
 async function syncFromExtension() {
     const extId = getExtensionId();
-    const role = document.getElementById('sync-role-input')?.value.trim() || 'all';
-    const dateRange = document.getElementById('sync-date-select')?.value || 'all';
-    const fieldsMode = document.getElementById('sync-fields-select')?.value || 'all';
+    const role = getVal('sync-role-input').trim() || 'all';
+    const dateRange = getVal('sync-date-select') || 'all';
+    const fieldsMode = getVal('sync-fields-select') || 'all';
 
     if (!extId) return setSyncStatus('Specify Chrome Extension ID.', 'error');
     localStorage.setItem('autooffer_extension_id', extId);
 
     setSyncStatus('Connecting to extension...', 'active');
     try {
-        const rows = await callExtension('get_vacancies', { role, dateRange, fieldsMode });
+        const rows = await callExtension('get_vacancies', { role, dateRange, fieldsMode }, 10000);
         for (const v of rows || []) {
             if (!isSafeHttpUrl(v.url)) continue;
             let host = null;
@@ -1568,7 +2143,7 @@ async function syncFromExtension() {
 async function exportLocalBackup() {
     const dump = {};
     for (const t of db.tables) {
-        if (t.name === 'local_device_state') continue;
+        if (BACKUP_EXCLUDED_TABLES.has(t.name)) continue;
         dump[t.name] = await t.toArray();
     }
     const blob = new Blob([JSON.stringify({ exportedAt: nowIso(), schemaVersion: 7, tables: dump }, null, 2)], { type: 'application/json' });
@@ -1584,7 +2159,7 @@ async function importLocalBackup(file) {
     if (!parsed?.tables) throw new Error('Invalid backup format');
     await db.transaction('rw', db.tables, async () => {
         for (const [name, rows] of Object.entries(parsed.tables)) {
-            if (name === 'local_device_state' || !Array.isArray(rows)) continue;
+            if (BACKUP_EXCLUDED_TABLES.has(name) || !Array.isArray(rows)) continue;
             const table = db.tables.find((t) => t.name === name);
             if (table) await table.bulkPut(rows);
         }
@@ -1620,6 +2195,7 @@ function updateThemeToggleUI() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     AoTheme.initTheme();
+    updateThemeToggleUI();
 
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js').then((reg) => reg.update()).catch(() => {});
@@ -1628,26 +2204,62 @@ document.addEventListener('DOMContentLoaded', async () => {
         navigator.storage.persist().catch(() => {});
     }
 
-    await seedDatabase();
-    await migrateLegacySecrets();
-
+    // Bind ALL UI controls synchronously first so navigation, theme, and buttons are always responsive
     initNavigation();
     initProfilePage();
     initJobsPage();
+    initAiSettingsHandlers();
+    initAiAssistantModal();
+
+    document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
+        AoTheme.toggleTheme();
+        updateThemeToggleUI();
+    });
+    window.addEventListener('ao-theme-changed', updateThemeToggleUI);
+
+    document.getElementById('quick-refresh-btn')?.addEventListener('click', () => refreshDisplay().catch(console.error));
+    document.getElementById('load-hotwords-btn')?.addEventListener('click', () => loadHotwords().catch(console.error));
+    document.getElementById('hotwords-position-select')?.addEventListener('change', () => loadHotwords().catch(console.error));
+    document.getElementById('applications-search-input')?.addEventListener('input', renderApplicationsTable);
+    document.getElementById('applications-status-filter')?.addEventListener('change', renderApplicationsTable);
+    document.getElementById('export-json-btn')?.addEventListener('click', () => exportLocalBackup().catch(console.error));
+    document.getElementById('import-json-input')?.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (file) importLocalBackup(file).catch((err) => setSyncStatus(err.message, 'error'));
+    });
+
+    document.getElementById('clear-btn')?.addEventListener('click', async () => {
+        if (isExtensionConnected) {
+            try { await callExtension('clear_vacancies'); } catch {}
+        }
+        const rows = await db.local_vacancies.toArray();
+        let skipped = 0;
+        for (const r of rows) {
+            try { await deleteVacancy(r.id); } catch { skipped++; }
+        }
+        await refreshDisplay();
+        setSyncStatus(skipped ? `Cleared un-applied vacancies (${skipped} kept due to applications).` : 'All stored vacancies cleared.', 'normal');
+    });
+
+    document.getElementById('sync-btn')?.addEventListener('click', () => syncFromExtension().catch(console.error));
+
+    document.getElementById('filter-input')?.addEventListener('input', (e) => {
+        const val = e.target.value.toLowerCase().trim();
+        if (!val) return refreshDisplay().catch(console.error);
+        const filtered = cachedVacancies.filter((v) =>
+            (v.full_position_name && v.full_position_name.toLowerCase().includes(val)) ||
+            (v.description && v.description.toLowerCase().includes(val))
+        );
+        renderList(filtered, activeProfileId || cachedProfiles[0]?.profile_id);
+    });
+
+    const urlExtId = new URLSearchParams(window.location.search).get('extId')?.trim();
+    if (urlExtId) localStorage.setItem('autooffer_extension_id', urlExtId);
 
     const savedExtId = localStorage.getItem('autooffer_extension_id') || '';
-    const extInput = document.getElementById('extension-id-input');
-    if (extInput && savedExtId) extInput.value = savedExtId;
+    if (savedExtId) setVal('extension-id-input', savedExtId);
 
-    await detectExtensionStatus();
-    await loadSettingsUI();
-    await loadPlatforms();
-    await loadProfilesUI();
-    await loadJobsUI();
-    await refreshDisplay();
-    await populateAnalyticsPositions();
-
-    extInput?.addEventListener('change', async (e) => {
+    document.getElementById('extension-id-input')?.addEventListener('change', async (e) => {
         localStorage.setItem('autooffer_extension_id', e.target.value.trim());
         await detectExtensionStatus();
         await loadSettingsUI();
@@ -1669,48 +2281,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         saveSingleSetting('submission_mode', e.target.value).catch((err) => setSyncStatus(err.message, 'error'))
     );
 
-    updateThemeToggleUI();
-    document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
-        AoTheme.toggleTheme();
-        updateThemeToggleUI();
-    });
-    window.addEventListener('ao-theme-changed', updateThemeToggleUI);
+    try {
+        await seedDatabase();
+        await migrateLegacySecrets();
+    } catch (err) {
+        console.error('Database init failed:', err);
+        setSyncStatus(`Local DB error: ${err.message}`, 'error');
+    }
 
-    document.getElementById('quick-refresh-btn')?.addEventListener('click', refreshDisplay);
-    document.getElementById('load-hotwords-btn')?.addEventListener('click', loadHotwords);
-    document.getElementById('hotwords-position-select')?.addEventListener('change', loadHotwords);
+    try { await detectExtensionStatus(); } catch (err) { console.error(err); }
+    try { await loadSettingsUI(); } catch (err) { console.error(err); }
+    try { await loadPlatforms(); } catch (err) { console.error(err); }
+    try { await loadProfilesUI(); } catch (err) { console.error(err); }
+    try { await loadJobsUI(); } catch (err) { console.error(err); }
+    try { await refreshDisplay(); } catch (err) { console.error(err); }
 
-    document.getElementById('applications-search-input')?.addEventListener('input', renderApplicationsTable);
-    document.getElementById('applications-status-filter')?.addEventListener('change', renderApplicationsTable);
-
-    document.getElementById('export-json-btn')?.addEventListener('click', exportLocalBackup);
-    document.getElementById('import-json-input')?.addEventListener('change', (e) => {
-        const file = e.target.files?.[0];
-        if (file) importLocalBackup(file).catch((err) => setSyncStatus(err.message, 'error'));
-    });
-
-    document.getElementById('clear-btn')?.addEventListener('click', async () => {
-        if (isExtensionConnected) {
-            try { await callExtension('clear_vacancies'); } catch {}
-        }
-        const rows = await db.local_vacancies.toArray();
-        let skipped = 0;
-        for (const r of rows) {
-            try { await deleteVacancy(r.id); } catch { skipped++; }
-        }
-        await refreshDisplay();
-        setSyncStatus(skipped ? `Cleared un-applied vacancies (${skipped} kept due to applications).` : 'All stored vacancies cleared.', 'normal');
-    });
-
-    document.getElementById('sync-btn')?.addEventListener('click', syncFromExtension);
-
-    document.getElementById('filter-input')?.addEventListener('input', (e) => {
-        const val = e.target.value.toLowerCase().trim();
-        if (!val) return refreshDisplay();
-        const filtered = cachedVacancies.filter((v) =>
-            (v.full_position_name && v.full_position_name.toLowerCase().includes(val)) ||
-            (v.description && v.description.toLowerCase().includes(val))
-        );
-        renderList(filtered, activeProfileId || cachedProfiles[0]?.profile_id);
-    });
+    populateAnalyticsPositions().catch(() => {});
 });

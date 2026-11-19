@@ -23,7 +23,7 @@ export async function setSetting(key, value) {
   await db.app_settings.put({ key, value, updated_at: nowIso() });
 }
 
-export async function recordAiConsent(version) {
+export async function recordAiConsent(version = '1.0') {
   await setSetting('ai_consent_given_at', nowIso());
   await setSetting('ai_consent_version', version);
 }
@@ -133,7 +133,34 @@ export async function markSynced(vacancyId, level) {
   await db.local_vacancies.update(vacancyId, { sync_level: level, updated_at: nowIso() });
 }
 
-// ---- matching and applications ---------------------------------------------
+// ---- AI configurations, matching, cover letters & applications --------------
+export async function getActiveAiConfiguration() {
+  const active = await db.ai_configurations.where('is_active').equals(1).first();
+  if (active) return active;
+  const all = await db.ai_configurations.toArray();
+  all.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+  return all[0] || null;
+}
+
+export async function setActiveAiConfiguration(configId) {
+  await db.transaction('rw', db.ai_configurations, async () => {
+    if (!(await db.ai_configurations.get(configId))) throw new Error('AI configuration not found');
+    const now = nowIso();
+    await db.ai_configurations.toCollection().modify((cfg) => {
+      cfg.is_active = cfg.id === configId ? 1 : 0;
+      cfg.updated_at = now;
+    });
+  });
+}
+
+export async function deleteAiConfiguration(configId) {
+  await db.ai_configurations.delete(configId);
+}
+
+export async function getMatchResult(vacancyId, resumeId) {
+  return db.match_results.where('[vacancy_id+resume_id]').equals([vacancyId, resumeId]).first();
+}
+
 export async function saveMatchResult({ vacancy_id, resume_id, score, matched_skills, missing_skills, model = null }) {
   return db.transaction('rw', db.match_results, async () => {
     const existing = await db.match_results.where('[vacancy_id+resume_id]').equals([vacancy_id, resume_id]).first();
@@ -143,6 +170,46 @@ export async function saveMatchResult({ vacancy_id, resume_id, score, matched_sk
     };
     await db.match_results.put(record);
     return record.id;
+  });
+}
+
+export async function getCoverLetterForVacancy(profileId, vacancyId, resumeId = null) {
+  const candidates = await db.cover_letters.where('vacancy_id').equals(vacancyId).toArray();
+  const byProfile = candidates.filter((c) => c.profile_id === profileId);
+  if (!byProfile.length) return null;
+  if (resumeId) {
+    const exact = byProfile.find((c) => c.resume_id === resumeId);
+    if (exact) return exact;
+  }
+  byProfile.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+  return byProfile[0];
+}
+
+export async function saveCoverLetter({
+                                        id = null,
+                                        profile_id,
+                                        vacancy_id = null,
+                                        resume_id = null,
+                                        title,
+                                        plain_text,
+                                        skill_ids = [],
+                                      }) {
+  const now = nowIso();
+  return db.transaction('rw', db.cover_letters, async () => {
+    const existing = id ? await db.cover_letters.get(id) : null;
+    const record = {
+      id: existing?.id ?? id ?? newId(),
+      profile_id,
+      vacancy_id: vacancy_id ?? existing?.vacancy_id ?? null,
+      resume_id: resume_id ?? existing?.resume_id ?? null,
+      title: String(title || existing?.title || 'Tailored Cover Letter').trim().slice(0, 150),
+      plain_text: String(plain_text || '').trim(),
+      skill_ids: Array.isArray(skill_ids) ? [...new Set(skill_ids)] : [],
+      created_at: existing?.created_at ?? now,
+      updated_at: now,
+    };
+    await db.cover_letters.put(record);
+    return record;
   });
 }
 

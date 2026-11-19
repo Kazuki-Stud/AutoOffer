@@ -266,7 +266,8 @@ body {
 .form-field input:not([type="checkbox"]):not([type="file"]),
 .form-field textarea,
 .form-select,
-.inline-notes-input {
+.inline-notes-input,
+.ai-letter-panel textarea {
     width: 100%;
     background: var(--input-bg);
     border: 1px solid var(--input-border);
@@ -287,7 +288,8 @@ body {
 .form-field input:not([type="checkbox"]):focus,
 .form-field textarea:focus,
 .form-select:focus,
-.inline-notes-input:focus {
+.inline-notes-input:focus,
+.ai-letter-panel textarea:focus {
     border-color: var(--color-primary);
 }
 
@@ -374,7 +376,6 @@ body {
     margin-bottom: 8px;
 }
 
-/* Custom UI components (migrated from kit.js) */
 ao-stats, ao-modal {
     display: block;
     font-family: var(--font-stack);
@@ -445,7 +446,8 @@ ao-stats {
     border-color: var(--pill-basic-border);
 }
 
-ao-modal {
+ao-modal,
+.ao-overlay-modal {
     position: fixed;
     top: 0;
     left: 0;
@@ -461,7 +463,8 @@ ao-modal {
     -webkit-backdrop-filter: blur(4px);
 }
 
-ao-modal[open] {
+ao-modal[open],
+.ao-overlay-modal[open] {
     display: flex;
 }
 
@@ -478,6 +481,10 @@ ao-modal[open] {
     flex-direction: column;
     position: relative;
     color: var(--text-primary);
+}
+
+.ai-modal-card {
+    max-width: 740px;
 }
 
 .ao-modal-header {
@@ -524,6 +531,16 @@ ao-modal[open] {
     color: var(--text-secondary);
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.ai-modal-body {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
 }
 
 .ao-modal-footer {
@@ -580,7 +597,8 @@ ao-modal[open] {
     .vacancies-grid,
     .profile-grid,
     .sync-form-grid,
-    .metrics-grid {
+    .metrics-grid,
+    .ai-skills-columns {
         grid-template-columns: 1fr;
     }
     .form-field.full-width {
@@ -626,6 +644,15 @@ ao-modal[open] {
     margin: 0 0 6px 0;
 }
 
+.vacancy-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
 .vacancy-link {
     display: inline-flex;
     align-items: center;
@@ -634,7 +661,6 @@ ao-modal[open] {
     font-weight: 500;
     color: var(--text-secondary);
     text-decoration: none;
-    margin-bottom: 14px;
     width: fit-content;
 }
 
@@ -699,7 +725,7 @@ ao-modal[open] {
     transition: background 0.15s ease;
 }
 
-.primary-btn:hover {
+.primary-btn:hover:not(:disabled) {
     background: var(--btn-primary-hover);
 }
 
@@ -715,9 +741,15 @@ ao-modal[open] {
     transition: all 0.15s ease;
 }
 
-.secondary-btn:hover {
+.secondary-btn:hover:not(:disabled) {
     border-color: var(--color-primary);
     color: var(--color-primary);
+}
+
+.primary-btn:disabled,
+.secondary-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .clear-button {
@@ -1029,4 +1061,110 @@ ao-modal[open] {
     width: 100%;
     height: auto;
     display: block;
+}
+
+/* AI Assistant Configuration & Match/Letter Modal (Prompt 5) */
+.ai-configs-list {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ai-config-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.ai-config-row.active {
+    border-color: var(--color-primary);
+}
+
+.ai-match-panel,
+.ai-letter-panel {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ai-match-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ai-score-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ai-skills-columns {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.ai-sub-label {
+    font-size: 0.74rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.skill-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.skill-chip {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.skill-chip.matched {
+    background: var(--pill-complete-bg);
+    color: var(--pill-complete-text);
+    border: 1px solid var(--pill-complete-border);
+}
+
+.skill-chip.missing {
+    background: rgba(239, 68, 68, 0.14);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.ai-letter-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.consent-box {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 0.84rem;
+    color: var(--text-primary);
 }

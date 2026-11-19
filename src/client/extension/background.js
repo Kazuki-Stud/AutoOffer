@@ -1,17 +1,26 @@
 import { db } from './database/database.js';
-import { migrateLegacySecrets } from './database/crypto.js';
+import { migrateLegacySecrets, saveAiConfiguration } from './database/crypto.js';
 import {
     createApplication,
+    deleteAiConfiguration,
     deleteProfileCascade,
     deleteResume,
     deleteVacancy,
     ensureDefaultProfile,
+    getActiveAiConfiguration,
+    getCoverLetterForVacancy,
+    getMatchResult,
     getOrCreateByName,
     getSetting,
+    hasAiConsent,
     newId,
     nowIso,
+    recordAiConsent,
     rollbackSelector,
+    saveCoverLetter,
+    saveMatchResult,
     saveVacancy,
+    setActiveAiConfiguration,
     setApplicationStatus,
     setDefaultProfile,
     setSetting,
@@ -24,6 +33,7 @@ import {
     syncVacancyToServer,
     syncWhitelist,
 } from './apiClient.js';
+import { evaluateVacancyMatch, generateCoverLetter } from './aiClient.js';
 
 const ELEMENT_TYPES = {
     CONTAINER:     '30000000-0000-4000-8000-000000000001',
@@ -499,7 +509,7 @@ async function runAutomationPipeline(config) {
     }
 }
 
-// ---- Profile, Resume & Settings helpers (shared with PWA bridge) ------------
+// ---- Profile, Resume, AI & Settings helpers ---------------------------------
 async function hydrateProfile(profileRow) {
     const pData = await db.personal_data.where('profile_id').equals(profileRow.id).first();
     const resume = await db.resumes.where('profile_id').equals(profileRow.id).first();
@@ -711,6 +721,25 @@ async function saveResumeRecord(incoming) {
     const file_data_b64 = record.file_data ? await blobToBase64(record.file_data) : null;
     const { file_data: _ignored, ...rest } = record;
     return { ...rest, skills: skillNames, file_data_b64 };
+}
+
+function sanitizeAiConfigMetadata(cfg) {
+    return {
+        id: cfg.id,
+        provider_name: cfg.provider_name,
+        api_endpoint: cfg.api_endpoint || null,
+        model_name: cfg.model_name,
+        is_active: cfg.is_active,
+        has_api_key: Boolean(cfg.api_key_enc),
+        created_at: cfg.created_at,
+        updated_at: cfg.updated_at,
+    };
+}
+
+async function listAiConfigMetadata() {
+    const rows = await db.ai_configurations.toArray();
+    rows.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+    return rows.map(sanitizeAiConfigMetadata);
 }
 
 async function readAllSettings() {
@@ -1040,6 +1069,145 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
             const updated = await db.applications.get(request.id);
             sendResponse({ status: 'success', data: updated });
         })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    // ---- AI Configurations, Match Results & Cover Letters (Prompt 5) --------
+    if (request.action === 'get_ai_configurations') {
+        listAiConfigMetadata()
+            .then((list) => sendResponse({ status: 'success', data: list }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'save_ai_configuration') {
+        (async () => {
+            const incoming = request.config || {};
+            const existing = incoming.id ? await db.ai_configurations.get(incoming.id) : null;
+            let savedId;
+            if (existing && !incoming.api_key) {
+                await db.ai_configurations.update(existing.id, {
+                    provider_name: incoming.provider_name,
+                    api_endpoint: incoming.api_endpoint || null,
+                    model_name: incoming.model_name,
+                    is_active: incoming.is_active ? 1 : 0,
+                    updated_at: nowIso(),
+                });
+                savedId = existing.id;
+            } else {
+                savedId = await saveAiConfiguration({
+                    id: incoming.id || undefined,
+                    provider_name: incoming.provider_name,
+                    api_endpoint: incoming.api_endpoint || null,
+                    api_key: incoming.api_key || '',
+                    model_name: incoming.model_name,
+                    is_active: incoming.is_active ? 1 : 0,
+                });
+            }
+            if (incoming.is_active) await setActiveAiConfiguration(savedId);
+            sendResponse({ status: 'success', data: await listAiConfigMetadata() });
+        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'set_active_ai_configuration') {
+        setActiveAiConfiguration(request.id)
+            .then(listAiConfigMetadata)
+            .then((list) => sendResponse({ status: 'success', data: list }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'delete_ai_configuration') {
+        deleteAiConfiguration(request.id)
+            .then(listAiConfigMetadata)
+            .then((list) => sendResponse({ status: 'success', data: list }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_ai_consent') {
+        Promise.all([hasAiConsent(), getSetting('ai_consent_given_at'), getSetting('ai_consent_version')])
+            .then(([consented, givenAt, version]) => sendResponse({ status: 'success', data: { consented, givenAt, version } }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'set_ai_consent') {
+        recordAiConsent(request.version || '1.0')
+            .then(() => sendResponse({ status: 'success', data: { consented: true } }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_match_results') {
+        (async () => {
+            const rows = request.vacancyId
+                ? await db.match_results.where('vacancy_id').equals(request.vacancyId).toArray()
+                : await db.match_results.toArray();
+            sendResponse({ status: 'success', data: rows });
+        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'save_match_result') {
+        saveMatchResult(request.matchResult)
+            .then((id) => db.match_results.get(id))
+            .then((row) => sendResponse({ status: 'success', data: row }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'get_cover_letters') {
+        (async () => {
+            let rows = await db.cover_letters.toArray();
+            if (request.profileId) rows = rows.filter((c) => c.profile_id === request.profileId);
+            if (request.vacancyId) rows = rows.filter((c) => c.vacancy_id === request.vacancyId);
+            sendResponse({ status: 'success', data: rows });
+        })().catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'save_cover_letter') {
+        saveCoverLetter(request.coverLetter || {})
+            .then((saved) => sendResponse({ status: 'success', data: saved }))
+            .catch((err) => sendResponse({ status: 'error', message: err.message }));
+        return true;
+    }
+
+    if (request.action === 'ai_evaluate_match') {
+        (async () => {
+            const vacancy = await db.local_vacancies.get(request.vacancyId) || request.vacancy;
+            const resume = await db.resumes.get(request.resumeId) || request.resume;
+            if (!vacancy || !resume) throw new Error('Vacancy or resume not found.');
+            const personalData = await db.personal_data.where('profile_id').equals(resume.profile_id).first();
+            const result = await evaluateVacancyMatch(vacancy, resume, { personalData });
+            sendResponse({ status: 'success', data: result });
+        })().catch((err) => sendResponse({
+            status: 'error',
+            code: err.code || 'AI_ERROR',
+            message: err.message,
+        }));
+        return true;
+    }
+
+    if (request.action === 'ai_generate_cover_letter') {
+        (async () => {
+            const vacancy = await db.local_vacancies.get(request.vacancyId) || request.vacancy;
+            const resume = await db.resumes.get(request.resumeId) || request.resume;
+            if (!vacancy || !resume) throw new Error('Vacancy or resume not found.');
+            const personalData = await db.personal_data.where('profile_id').equals(resume.profile_id).first();
+            const draft = await generateCoverLetter(vacancy, resume, {
+                personalData,
+                existingDraftId: request.existingDraftId || null,
+                isDirty: false,
+            });
+            sendResponse({ status: 'success', data: draft });
+        })().catch((err) => sendResponse({
+            status: 'error',
+            code: err.code || 'AI_ERROR',
+            message: err.message,
+        }));
         return true;
     }
 
