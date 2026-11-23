@@ -2,15 +2,12 @@ import { db } from '../../../extension/database/database.js';
 import { newId, nowIso, setSetting } from '../../../extension/database/repository.js';
 import {
     BACKUP_EXCLUDED_TABLES,
-    getVal,
     isSafeHttpUrl,
     optUuid,
-    setVal,
-    state,
-} from '../../../state.js';
+} from '../utils/helpers.js';
 
 export function getExtensionId() {
-    return (getVal('extension-id-input') || localStorage.getItem('autooffer_extension_id') || '').trim();
+    return (localStorage.getItem('autooffer_extension_id') || '').trim();
 }
 
 export function callExtension(action, payload = {}, timeoutMs = 3500) {
@@ -52,89 +49,53 @@ export function callExtension(action, payload = {}, timeoutMs = 3500) {
     });
 }
 
-export function setSyncStatus(text, type = 'normal') {
-    const statusEl = document.getElementById('sync-status');
-    const connEl = document.getElementById('pwa-conn-status-val');
-    if (statusEl) {
-        statusEl.textContent = text;
-        statusEl.className = `sync-status-indicator ${type}`;
-    }
-    if (connEl) connEl.textContent = text;
-}
-
-export function updateSourceTags() {
-    const label = state.isExtensionConnected ? 'Extension Source of Truth (Manual Sync)' : 'Standalone Local (Dexie v7)';
-    for (const id of ['pwa-jobs-source-tag', 'pwa-profile-source-tag', 'pwa-settings-source-tag']) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = label;
-    }
-}
-
 export async function detectExtensionStatus() {
-    const banner = document.getElementById('ext-missing-banner');
-    const extId = getExtensionId();
-    const available = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
+const extId = getExtensionId();
+const available = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
 
     if (!available) {
-        state.isExtensionConnected = false;
-        if (banner) banner.style.display = 'block';
-        setSyncStatus('Standalone Mode (No Extension API)', 'normal');
-        updateSourceTags();
-        return false;
+        return { connected: false, text: 'Standalone Mode (No Extension API)', type: 'normal' };
     }
     if (!extId) {
-        state.isExtensionConnected = false;
-        if (banner) banner.style.display = 'block';
-        setSyncStatus('Set Extension ID in Settings', 'normal');
-        updateSourceTags();
-        return false;
+        return { connected: false, text: 'Set Extension ID in Settings', type: 'normal' };
     }
 
     try {
         await callExtension('get_storage_weight', {}, 2500);
-        state.isExtensionConnected = true;
-        if (banner) banner.style.display = 'none';
-        setSyncStatus('Extension Paired (Manual Sync)', 'success');
-        updateSourceTags();
-        return true;
+        return { connected: true, text: 'Extension Paired (Manual Sync)', type: 'success' };
     } catch {
-        state.isExtensionConnected = false;
-        if (banner) banner.style.display = 'block';
-        setSyncStatus('Extension Unreachable', 'error');
-        updateSourceTags();
-        return false;
+        return { connected: false, text: 'Extension Unreachable', type: 'error' };
     }
 }
 
-export function setupExtensionAutoPairing({ onPaired } = {}) {
-    return new Promise((resolve) => {
-        let resolved = false;
-        const finish = (id) => {
-            if (!resolved) {
-                resolved = true;
-                resolve(id || null);
-            }
-        };
+export function setupExtensionAutoPairing({ onPaired, isConnectedFn } = {}) {
+return new Promise((resolve) => {
+let resolved = false;
+const finish = (id) => {
+if (!resolved) {
+resolved = true;
+resolve(id || null);
+}
+};
 
-        window.addEventListener('message', async (event) => {
+        const handler = async (event) => {
             if (event.source !== window || !event.data) return;
-
             if (event.data.type === 'AUTOOFFER_EXTENSION_AVAILABLE' && event.data.extensionId) {
                 const discoveredId = String(event.data.extensionId).trim();
                 if (!discoveredId) return;
-
                 const prevId = getExtensionId();
                 localStorage.setItem('autooffer_extension_id', discoveredId);
-                setVal('extension-id-input', discoveredId);
                 finish(discoveredId);
-
-                if (prevId !== discoveredId || !state.isExtensionConnected) {
-                    const connected = await detectExtensionStatus();
-                    if (connected && typeof onPaired === 'function') await onPaired();
+                if (prevId !== discoveredId || !isConnectedFn?.()) {
+                    const status = await detectExtensionStatus();
+                    if (status.connected && typeof onPaired === 'function') {
+                        await onPaired(discoveredId, status);
+                    }
                 }
             }
-        });
+        };
 
+        window.addEventListener('message', handler);
         try {
             window.postMessage({ type: 'AUTOOFFER_DISCOVER_EXTENSION' }, window.location.origin);
         } catch {}
@@ -143,12 +104,12 @@ export function setupExtensionAutoPairing({ onPaired } = {}) {
     });
 }
 
-export async function calculateStorageWeight() {
-    if (state.isExtensionConnected) {
-        try {
-            return await callExtension('get_storage_weight');
-        } catch {}
-    }
+export async function calculateStorageWeight(isConnected = false) {
+if (isConnected) {
+try {
+return await callExtension('get_storage_weight');
+} catch {}
+}
     try {
         const chunks = await Promise.all([
             db.local_vacancies.toArray(),
@@ -171,8 +132,8 @@ export async function calculateStorageWeight() {
     }
 }
 
-export async function syncApplicationsFromBridge() {
-    if (state.isExtensionConnected) {
+export async function syncApplicationsFromBridge(isConnected = false) {
+    if (isConnected) {
         try {
             const remoteApps = await callExtension('get_applications');
             if (Array.isArray(remoteApps)) {
@@ -280,9 +241,9 @@ export async function mirrorVacanciesToLocalDb(rows, { pruneRemoved = false } = 
     });
 }
 
-export async function saveSingleSetting(key, value) {
+export async function saveSingleSetting(key, value, isConnected = false) {
     await setSetting(key, value);
-    if (state.isExtensionConnected) {
+    if (isConnected) {
         await callExtension('save_settings', { settings: { [key]: value } });
     }
 }
