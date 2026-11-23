@@ -42,6 +42,7 @@ const SKILL_PATTERNS = KNOWN_SKILLS.map((name) => {
 export const useAppStore = defineStore('app', {
     state: () => ({
         theme: localStorage.getItem('ao_theme') === 'light' ? 'light' : 'dark',
+        uiScale: Number(localStorage.getItem('ao_ui_scale')) || 100,
         extensionId: localStorage.getItem('autooffer_extension_id') || '',
         isExtensionConnected: false,
         syncStatusText: 'Ready',
@@ -119,6 +120,13 @@ export const useAppStore = defineStore('app', {
         toggleTheme() {
             this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
         },
+        setUiScale(scale) {
+            const allowed = [100, 110, 120];
+            const clean = allowed.includes(Number(scale)) ? Number(scale) : 100;
+            this.uiScale = clean;
+            document.documentElement.style.fontSize = `${clean}%`;
+            localStorage.setItem('ao_ui_scale', String(clean));
+        },
         resolveSourceLabel(item) {
             const plat = item.platform_id ? this.platformsMap.get(item.platform_id) : null;
             if (plat) return plat.name || plat.code;
@@ -159,6 +167,7 @@ export const useAppStore = defineStore('app', {
 
         async bootstrap() {
             this.setTheme(this.theme);
+            this.setUiScale(this.uiScale);
             const urlExtId = new URLSearchParams(window.location.search).get('extId')?.trim();
             if (urlExtId) {
                 localStorage.setItem('autooffer_extension_id', urlExtId);

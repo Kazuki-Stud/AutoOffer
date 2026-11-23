@@ -2,7 +2,7 @@
     <header class="app-header">
         <div class="header-top-row">
             <div class="brand-group">
-                <img src="/image.svg" alt="AutoOffer logo" class="header-brand-logo" width="30" height="30" />
+                <img :src="`${baseUrl}image.svg`" alt="AutoOffer logo" class="header-brand-logo" width="30" height="30" />
                 <h1 class="header-brand-title">AutoOffer</h1>
                 <span class="hub-badge">Local Hub</span>
             </div>
@@ -43,6 +43,8 @@
 </template>
 
 <script setup>
+const baseUrl = import.meta.env.BASE_URL || '/';
+
 defineProps({
     theme: { type: String, default: 'dark' },
 });

@@ -22,6 +22,29 @@
 
         <div class="pwa-card">
             <div class="card-header-bar">
+                <h2>Display &amp; Accessibility Preferences</h2>
+            </div>
+            <div class="sync-form-grid">
+                <div class="form-field">
+                    <label for="display-theme">Color Scheme</label>
+                    <select id="display-theme" :value="store.theme" class="form-select" @change="store.setTheme($event.target.value)">
+                        <option value="dark">Dark Theme</option>
+                        <option value="light">Light Theme</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="display-scale">Interface Text Scale</label>
+                    <select id="display-scale" :value="store.uiScale" class="form-select" @change="store.setUiScale($event.target.value)">
+                        <option :value="100">100% (Default)</option>
+                        <option :value="110">110% (Large)</option>
+                        <option :value="120">120% (Extra Large)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="pwa-card">
+            <div class="card-header-bar">
                 <h2>AI Assistant Configuration</h2>
                 <span class="tag-status">
                     {{ store.aiConsent.consented ? `GDPR Opt-In: Consented (${formatDate(store.aiConsent.givenAt)})` : 'GDPR Opt-In: Pending' }}

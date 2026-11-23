@@ -826,6 +826,16 @@ ao-modal[open],
     .pwa-card {
         padding: 16px;
     }
+    .analytics-controls,
+    .analytics-controls .form-select,
+    .profile-toolbar .form-select,
+    .search-input-wrap {
+        min-width: 0;
+        width: 100%;
+    }
+    .resume-variants-list {
+        grid-template-columns: 1fr;
+    }
 }
 
 .vacancy-item {
@@ -1625,15 +1635,30 @@ min-height: 44px;
         height: 22px;
     }
 
+    .layout-container,
+    .app-header,
+    .header-top-row,
+    .header-actions,
+    .pwa-view,
+    .pwa-card,
+    .form-field {
+        min-width: 0;
+        max-width: 100%;
+    }
+
     .pwa-nav {
         width: 100%;
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+        min-width: 0;
+        flex-wrap: wrap;
     }
 
     .pwa-nav-btn {
-        white-space: nowrap;
-        flex-shrink: 0;
+        flex: 1 1 auto;
+    }
+
+    .applications-table td .inline-notes-input {
+        min-width: 0;
+        width: 100%;
     }
 }
