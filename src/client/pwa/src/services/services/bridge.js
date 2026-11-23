@@ -1,5 +1,5 @@
-import { db } from '../extension/database/database.js';
-import { newId, nowIso, setSetting } from '../extension/database/repository.js';
+import { db } from '../../../../extension/database/database.js';
+import { newId, nowIso, setSetting } from '../../../../extension/database/repository.js';
 import {
     BACKUP_EXCLUDED_TABLES,
     getVal,
@@ -7,7 +7,7 @@ import {
     optUuid,
     setVal,
     state,
-} from './state.js';
+} from '../../../state.js';
 
 export function getExtensionId() {
     return (getVal('extension-id-input') || localStorage.getItem('autooffer_extension_id') || '').trim();
