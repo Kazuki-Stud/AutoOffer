@@ -1,5 +1,5 @@
-import { db } from '../../../../extension/database/database.js';
-import { newId, nowIso, setSetting } from '../../../../extension/database/repository.js';
+import { db } from '../../../extension/database/database.js';
+import { newId, nowIso, setSetting } from '../../../extension/database/repository.js';
 import {
     BACKUP_EXCLUDED_TABLES,
     getVal,
