@@ -65,7 +65,7 @@ export const RULES = {
     region_id: uuid(), country_id: uuid(), city_id: uuid(),
     salary_from: num(0), salary_to: num(0), currency_id: uuid(),
     level_id: uuid(), work_format_id: uuid(), employment_type_id: uuid(),
-    url: url(true), description: text(false),
+    url: url(true), description: text(false), posted_at: iso(),
     sync_level: oneOf(ENUMS.sync_level, true), source: oneOf(ENUMS.vacancy_source, true),
     status: oneOf(ENUMS.vacancy_status, true), skill_ids: uuids(true),
     created_at: iso(true), updated_at: iso(true),
@@ -128,6 +128,7 @@ const PLAIN_SECRET_FIELDS = {
 
 const SETTING_RULES = {
   private_use_only:           (v) => typeof v === 'boolean',
+  auto_sync_pwa_on_grab:      (v) => typeof v === 'boolean',
   submission_mode:            (v) => ENUMS.submission_mode.includes(v),
   selector_poll_interval_min: (v) => Number.isInteger(v) && v >= 1 && v <= 60,
   ai_consent_given_at:        (v) => v === null || ISO_RE.test(v),

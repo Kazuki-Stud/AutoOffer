@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="autooffer-pwa" content="1">
     <title>AutoOffer Hub</title>
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest">
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%image.svg">
@@ -55,7 +56,7 @@
 
         <div class="view-controls-bar">
             <div class="search-input-wrap">
-                <input type="text" id="filter-input" placeholder="Search vacancies by title or description..." autocomplete="off" />
+                <input type="text" id="filter-input" placeholder="Search by title, company, skills or description..." autocomplete="off" />
                 <span class="search-input-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
@@ -63,7 +64,40 @@
                     </svg>
                 </span>
             </div>
+            <div class="view-mode-toggle" role="group" aria-label="Vacancies layout">
+                <button id="view-mode-grid-btn" class="view-mode-btn active" type="button" data-layout="grid" title="Grid view">Grid</button>
+                <button id="view-mode-list-btn" class="view-mode-btn" type="button" data-layout="list" title="List view">List</button>
+            </div>
             <button id="quick-refresh-btn" class="secondary-btn">Refresh List</button>
+        </div>
+
+        <div class="vacancies-filters-bar">
+            <select id="filter-source-select" class="form-select" aria-label="Filter by website">
+                <option value="">All Websites</option>
+            </select>
+            <select id="filter-app-status-select" class="form-select" aria-label="Filter by application status">
+                <option value="">All Statuses</option>
+                <option value="none">Not Applied</option>
+                <option value="Applied">Applied</option>
+                <option value="Screening">Screening</option>
+                <option value="Interview">Interview</option>
+                <option value="Offered">Offered</option>
+                <option value="Rejected">Rejected</option>
+            </select>
+            <select id="filter-date-select" class="form-select" aria-label="Filter by post date">
+                <option value="all">All Post Dates</option>
+                <option value="today">Posted Today</option>
+                <option value="7days">Last 7 Days</option>
+                <option value="30days">Last 30 Days</option>
+            </select>
+            <select id="filter-sort-select" class="form-select" aria-label="Sort vacancies">
+                <option value="posted_desc">Sort: Newest Posted</option>
+                <option value="updated_desc">Sort: Recently Synced</option>
+                <option value="title_asc">Sort: Title (A–Z)</option>
+                <option value="company_asc">Sort: Company (A–Z)</option>
+            </select>
+            <button id="clear-filters-btn" class="secondary-btn" type="button">Reset</button>
+            <span id="vacancies-filter-count" class="status-msg"></span>
         </div>
 
         <main class="content-area">
@@ -120,7 +154,7 @@
             </div>
             <div id="applications-empty" class="empty-state" style="display: none; margin: 0;">
                 <h3>No Applications Tracked Yet</h3>
-                <p>Change a vacancy status in the Vacancies tab or submit via Review & Apply to start tracking your pipeline.</p>
+                <p>Change a vacancy status in the Vacancies tab or submit via AI Match &amp; Letter to start tracking your pipeline.</p>
             </div>
             <div class="applications-table-wrap">
                 <table class="applications-table" id="applications-table">
@@ -315,7 +349,7 @@
     <div id="view-settings" class="pwa-view" style="display: none;">
         <div class="pwa-card">
             <div class="card-header-bar">
-                <h2>Storage & Device Metrics</h2>
+                <h2>Storage &amp; Device Metrics</h2>
             </div>
             <div class="metrics-grid">
                 <div class="metric-box">
@@ -335,7 +369,56 @@
 
         <div class="pwa-card">
             <div class="card-header-bar">
-                <h2>Synchronization & Privacy Options</h2>
+                <h2>AI Assistant Configuration</h2>
+                <span id="ai-consent-status-tag" class="tag-status">GDPR Opt-In: Pending</span>
+            </div>
+            <p class="status-msg" style="margin-top: 0; margin-bottom: 16px;">
+                API keys are encrypted at rest with a non-extractable device key, excluded from JSON backups, and never sent to the AutoOffer backend. Personal contact fields are stripped before any AI prompt.
+            </p>
+            <div class="sync-form-grid">
+                <div class="form-field">
+                    <label for="ai-provider-select">AI Provider Mode</label>
+                    <select id="ai-provider-select" class="form-select">
+                        <option value="openai">OpenAI-Compatible HTTPS Endpoint</option>
+                        <option value="gemini">Google Gemini AI</option>
+                        <option value="local">Local Model (Ollama / LM Studio)</option>
+                        <option value="local_cosine">Offline Local Similarity (No LLM Call)</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="ai-model-select">Preset Model</label>
+                    <select id="ai-model-select" class="form-select"></select>
+                </div>
+                <div class="form-field">
+                    <label for="ai-model-input">Model Name (or write custom name)</label>
+                    <input type="text" id="ai-model-input" placeholder="Pick a preset or enter custom model name" value="gpt-4o-mini" />
+                </div>
+                <div class="form-field full-width">
+                    <label for="ai-endpoint-input">API Endpoint URL</label>
+                    <input type="url" id="ai-endpoint-input" placeholder="https://api.openai.com/v1/chat/completions" value="https://api.openai.com/v1/chat/completions" />
+                </div>
+                <div class="form-field">
+                    <label for="ai-apikey-input">API Key (optional for local Ollama/LM Studio)</label>
+                    <input type="password" id="ai-apikey-input" placeholder="sk-..." autocomplete="new-password" />
+                </div>
+                <div class="form-field">
+                    <label>Activation</label>
+                    <label class="inline-check">
+                        <input type="checkbox" id="ai-active-toggle" checked />
+                        <span>Set as active AI configuration</span>
+                    </label>
+                </div>
+            </div>
+            <div class="sync-actions-bar">
+                <button id="save-ai-config-btn" class="primary-btn" type="button">Save AI Configuration</button>
+                <span id="ai-config-status" class="status-msg"></span>
+            </div>
+            <div id="ai-configs-list" class="ai-configs-list"></div>
+        </div>
+
+        <div class="pwa-card">
+            <div class="card-header-bar">
+                <h2>Synchronization &amp; Privacy Options</h2>
                 <span id="pwa-settings-source-tag" class="tag-status">Extension Bridge</span>
             </div>
             <div class="sync-form-grid">
@@ -355,8 +438,8 @@
                 <div class="form-field">
                     <label>Data Scope / Fields</label>
                     <select id="sync-fields-select" class="form-select">
-                        <option value="all">All Fields (Descriptions & Metadata)</option>
-                        <option value="minimum">Minimum Fields (Titles & Links)</option>
+                        <option value="all">All Fields (Descriptions &amp; Metadata)</option>
+                        <option value="minimum">Minimum Fields (Titles &amp; Links)</option>
                     </select>
                 </div>
                 <div class="form-field">
@@ -370,7 +453,7 @@
                 <div class="form-field">
                     <label>Submission Mode</label>
                     <select id="submission-mode-select" class="form-select">
-                        <option value="semi_automated">Semi-Automated (Highlight & Confirm)</option>
+                        <option value="semi_automated">Semi-Automated (Highlight &amp; Confirm)</option>
                         <option value="manual">Manual Only</option>
                     </select>
                 </div>
@@ -378,6 +461,12 @@
                     <label class="inline-check">
                         <input type="checkbox" id="private-use-only-toggle" />
                         <span>Private use only (do not send vacancies or URLs to server)</span>
+                    </label>
+                </div>
+                <div class="form-field full-width">
+                    <label class="inline-check">
+                        <input type="checkbox" id="auto-sync-pwa-toggle" checked />
+                        <span>Auto-sync grabbed vacancies with PWA when extension finishes</span>
                     </label>
                 </div>
             </div>
@@ -395,6 +484,106 @@
     </div>
 
     <ao-modal id="vacancy-modal"></ao-modal>
+
+    <!-- US 3.3, 3.4, 3.5, 4.1, 4.2, 4.3: Review & Apply Modal -->
+    <div id="ai-assistant-modal" class="ao-overlay-modal" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+        <div class="ao-modal-card ai-modal-card">
+            <div class="ao-modal-header">
+                <h2 class="ao-modal-title" id="ai-modal-title">Review &amp; Apply</h2>
+                <button id="ai-modal-close-btn" class="ao-modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="ai-modal-body">
+                <div class="form-field">
+                    <label for="ai-modal-resume-select">Selected Resume Variant</label>
+                    <select id="ai-modal-resume-select" class="form-select"></select>
+                </div>
+
+                <div class="ai-match-panel">
+                    <div class="ai-match-header">
+                        <div class="ai-score-summary">
+                            <span class="metric-label">Compatibility Match</span>
+                            <span id="ai-match-score-pill" class="ao-pill" data-status="basic">Not evaluated</span>
+                        </div>
+                        <button id="ai-evaluate-match-btn" class="primary-btn" type="button">Evaluate Match</button>
+                    </div>
+                    <div class="ai-skills-columns">
+                        <div>
+                            <div class="ai-sub-label">Matched Skills</div>
+                            <div id="ai-matched-skills" class="skill-chips-row"><span class="status-msg">—</span></div>
+                        </div>
+                        <div>
+                            <div class="ai-sub-label">Missing Skills</div>
+                            <div id="ai-missing-skills" class="skill-chips-row"><span class="status-msg">—</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ai-letter-panel">
+                    <div class="ai-match-header">
+                        <label for="ai-letter-textarea" style="font-size: 0.84rem; font-weight: 600;">Tailored Cover Letter Draft (Editable)</label>
+                        <span id="ai-dirty-indicator" class="status-msg"></span>
+                    </div>
+                    <textarea id="ai-letter-textarea" rows="7" placeholder="Click Generate Letter to create a tailored cover letter draft..."></textarea>
+                    <div class="ai-letter-actions">
+                        <button id="ai-generate-letter-btn" class="secondary-btn" type="button">Generate Letter</button>
+                        <button id="ai-save-letter-btn" class="secondary-btn" type="button">Save Draft</button>
+                        <span id="ai-modal-status" class="status-msg"></span>
+                    </div>
+                </div>
+
+                <div class="apply-preview-panel">
+                    <div class="ai-match-header">
+                        <span class="metric-label">Profile Autofill Preview</span>
+                        <div class="apply-mode-row">
+                            <label for="apply-mode-select" class="status-msg">Mode:</label>
+                            <select id="apply-mode-select" class="form-select" style="width: auto; min-width: 190px;">
+                                <option value="semi_automated">Semi-Automated (Autofill &amp; Review)</option>
+                                <option value="manual">Manual (Open Posting Only)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="apply-profile-preview" class="apply-preview-grid"></div>
+                </div>
+
+                <div id="apply-captcha-alert" class="apply-captcha-alert" style="display: none;">
+                    <div>
+                        <strong>Captcha Detected</strong>
+                        <p class="status-msg" style="margin: 4px 0 0 0;">Solve the captcha in the focused application tab, then click Resume Autofill.</p>
+                    </div>
+                    <button id="apply-resume-autofill-btn" class="primary-btn" type="button">Resume Autofill</button>
+                </div>
+            </div>
+            <div class="ao-modal-footer">
+                <span id="apply-autofill-status" class="status-msg"></span>
+                <div class="ao-modal-footer-actions">
+                    <button id="apply-fill-form-btn" class="secondary-btn" type="button">Fill Application Form</button>
+                    <button id="apply-confirm-submit-btn" class="primary-btn" type="button">Confirm and Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Explicit GDPR Opt-In Dialog before first remote AI call (BA 2.8 & R6) -->
+    <div id="ai-consent-modal" class="ao-overlay-modal" role="dialog" aria-modal="true" aria-labelledby="ai-consent-title">
+        <div class="ao-modal-card" style="max-width: 520px;">
+            <div class="ao-modal-header">
+                <h2 class="ao-modal-title" id="ai-consent-title">AI Data Processing Consent (GDPR)</h2>
+            </div>
+            <div class="ai-modal-body">
+                <p style="margin: 0;">
+                    Before calling a remote AI provider (<strong id="ai-consent-endpoint-label"></strong>), please confirm that you consent to sending minimized resume text (skills, summary, experience) and sanitized vacancy descriptions.
+                </p>
+                <div class="consent-box">
+                    All personal contact details (name, email, phone, location, GitHub/LinkedIn/Telegram links) are automatically stripped locally before any prompt is transmitted. Your API key and profile never leave your device to the AutoOffer backend.
+                </div>
+            </div>
+            <div class="ao-modal-footer">
+                <button id="ai-consent-decline-btn" class="secondary-btn" type="button">Cancel</button>
+                <button id="ai-consent-accept-btn" class="primary-btn" type="button">I Consent &amp; Continue</button>
+            </div>
+        </div>
+    </div>
+
     <iframe id="print-resume-frame" title="Resume Print Frame" style="position:fixed;right:0;bottom:0;width:0;height:0;border:0;"></iframe>
 </div>
 
