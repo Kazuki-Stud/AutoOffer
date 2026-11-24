@@ -34,10 +34,10 @@
                 </div>
                 <div class="form-field">
                     <label for="display-scale">Interface Text Scale</label>
-                    <select id="display-scale" :value="store.uiScale" class="form-select" @change="store.setUiScale($event.target.value)">
-                        <option :value="100">100% (Default)</option>
-                        <option :value="110">110% (Large)</option>
-                        <option :value="120">120% (Extra Large)</option>
+                    <select id="display-scale" :value="String(store.uiScale)" class="form-select" @change="store.setUiScale($event.target.value)">
+                        <option value="100">100% (Default)</option>
+                        <option value="110">110% (Large)</option>
+                        <option value="120">120% (Extra Large)</option>
                     </select>
                 </div>
             </div>

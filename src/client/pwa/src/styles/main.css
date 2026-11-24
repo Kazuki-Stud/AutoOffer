@@ -376,14 +376,14 @@ body {
     margin-bottom: 8px;
 }
 
-ao-stats, ao-modal {
+.ao-stats, ao-stats, ao-modal {
     display: block;
     font-family: var(--font-stack);
     color: var(--text-primary);
     box-sizing: border-box;
 }
 
-ao-stats {
+.ao-stats, ao-stats {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 16px;
@@ -805,6 +805,7 @@ ao-modal[open],
 }
 
 @media (max-width: 680px) {
+    .ao-stats,
     ao-stats,
     .vacancies-grid,
     .profile-grid,
@@ -1660,5 +1661,64 @@ min-height: 44px;
     .applications-table td .inline-notes-input {
         min-width: 0;
         width: 100%;
+    }
+}
+
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 8px;
+    z-index: 100001;
+    background: var(--btn-primary);
+    color: #ffffff;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.skip-link:focus {
+    left: 16px;
+}
+
+:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+[data-theme="light"] .tag-status {
+    background: #d1fae5;
+    color: #065f46;
+    border-color: #6ee7b7;
+}
+
+[data-theme="light"] .sync-status-indicator.success {
+    color: #065f46;
+}
+
+[data-theme="light"] .sync-status-indicator.error {
+    color: #b91c1c;
+}
+
+@media (min-width: 1920px) {
+    .layout-container {
+        max-width: 1560px;
+    }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+    .app-header {
+        padding: 10px 14px;
+        margin-bottom: 12px;
+    }
+    .ao-modal-card {
+        max-height: 94vh;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
     }
 }

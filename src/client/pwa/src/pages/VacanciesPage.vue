@@ -47,7 +47,7 @@
             <span class="status-msg">{{ countLabel }}</span>
         </div>
 
-        <main class="content-area">
+        <section class="content-area" aria-label="Vacancies list">
             <div v-if="store.loading && !store.vacancies.length" class="vacancies-grid">
                 <div v-for="n in 6" :key="n" class="ao-skeleton"></div>
             </div>
@@ -103,7 +103,7 @@
                 <p>No vacancies currently match your filters. Open Settings &amp; Sync to import from your extension.</p>
                 <router-link to="/settings" class="primary-btn ao-nav-link">Go to Settings &amp; Sync</router-link>
             </div>
-        </main>
+        </section>
 
         <HotwordsChart />
     </div>
