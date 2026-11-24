@@ -40,8 +40,8 @@
             <select v-model="sortBy" class="form-select" aria-label="Sort vacancies">
                 <option value="posted_desc">Sort: Newest Posted</option>
                 <option value="updated_desc">Sort: Recently Synced</option>
-                <option value="title_asc">Sort: Title (A–Z)</option>
-                <option value="company_asc">Sort: Company (A–Z)</option>
+                <option value="title_asc">Sort: Title A–Z</option>
+                <option value="company_asc">Sort: Company A–Z</option>
             </select>
             <button type="button" class="secondary-btn" @click="resetFilters">Reset</button>
             <span class="status-msg">{{ countLabel }}</span>

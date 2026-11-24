@@ -2,8 +2,8 @@
     <div class="pwa-card">
         <div class="card-header-bar analytics-header-bar">
             <div>
-                <h2>Skills Analytics (Market Demand)</h2>
-                <span class="status-msg">Most frequent skills for the selected role</span>
+                <h2>Skills Analytics</h2>
+                <span class="status-msg">Market demand for the selected role</span>
             </div>
             <div class="analytics-controls">
                 <select v-model="selectedPositionId" class="form-select" aria-label="Filter skills by role" @change="loadHotwords">
@@ -21,7 +21,7 @@
             <svg :viewBox="`0 0 640 ${svgHeight}`" class="hotwords-svg" role="img" aria-label="Skill demand frequency bar chart">
                 <g v-for="(row, idx) in chartRows" :key="`${row.skillName}-${idx}`">
                     <text x="4" :y="idx * 32 + 23" fill="currentColor" font-size="12" font-weight="600">
-                        <title>{{ row.skillName }} ({{ row.positionName || 'All' }}): {{ row.vacancyCount }} vacancies</title>
+                        <title>{{ row.skillName }} · {{ row.positionName || 'All' }}: {{ row.vacancyCount }} vacancies</title>
                         {{ formatLabel(row) }}
                     </text>
                     <rect x="175" :y="idx * 32 + 10" width="384" height="18" rx="4" fill="rgba(148, 163, 184, 0.16)" />
@@ -57,7 +57,7 @@ function barWidth(cnt) {
 }
 
 function formatLabel(row) {
-    const raw = row.positionName && !selectedPositionId.value ? `${row.skillName} (${row.positionName})` : row.skillName;
+    const raw = row.positionName && !selectedPositionId.value ? `${row.skillName} · ${row.positionName}` : row.skillName;
     return raw.length > 25 ? `${raw.slice(0, 23)}…` : raw;
 }
 
@@ -96,9 +96,9 @@ async function loadHotwords() {
         statusText.value = rows.value.length
             ? `Showing top ${Math.min(rows.value.length, 15)} skills${roleName ? ` for ${roleName}` : ''}:`
             : 'No aggregated skill hotwords available for this role yet.';
-    } catch (err) {
-        statusText.value = `Could not reach backend analytics (${err.message}).`;
-    } finally {
+} catch (err) {
+    statusText.value = `Could not reach backend analytics: ${err.message}.`;
+} finally {
         loading.value = false;
     }
 }

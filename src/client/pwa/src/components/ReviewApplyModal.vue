@@ -54,7 +54,7 @@
 
                 <div class="ai-letter-panel">
                     <div class="ai-match-header">
-                        <label for="ai-letter-textarea">Tailored Cover Letter Draft (Editable)</label>
+                        <label for="ai-letter-textarea">Tailored Cover Letter Draft</label>
                         <span class="status-msg">{{ isLetterDirty ? 'Unsaved manual edits' : '' }}</span>
                     </div>
                     <textarea id="ai-letter-textarea" v-model="letterText" rows="7" placeholder="Click Generate Letter to create a tailored cover letter draft..."></textarea>
@@ -73,8 +73,8 @@
                         <div class="apply-mode-row">
                             <label for="apply-mode-select" class="status-msg">Mode:</label>
                             <select id="apply-mode-select" v-model="submissionMode" class="form-select ao-select-mode">
-                                <option value="semi_automated">Semi-Automated (Autofill &amp; Review)</option>
-                                <option value="manual">Manual (Open Posting Only)</option>
+                                <option value="semi_automated">Semi-Automated · Autofill &amp; Review</option>
+                                <option value="manual">Manual · Open Posting Only</option>
                             </select>
                         </div>
                     </div>
@@ -207,7 +207,7 @@ async function runWithConsent(fn, endpointLabel) {
     } catch (err) {
         if (err.code === 'AI_CONSENT_REQUIRED' || String(err.message).includes('GDPR opt-in consent')) {
             const ok = await store.requestAiConsent(endpointLabel);
-            if (!ok) throw new Error('AI processing cancelled (consent not granted).');
+            if (!ok) throw new Error('AI processing cancelled: consent not granted.');
             return await fn();
         }
         throw err;
@@ -247,7 +247,7 @@ async function evaluateMatch() {
             });
         }
         matchResult.value = res;
-        aiStatus.value = `Match evaluated (${res.score}%).`;
+        aiStatus.value = `Match evaluated: ${res.score}%.`;
     } catch (err) {
         aiStatus.value = err.message;
         store.notify(err.message, 'error');
@@ -358,9 +358,9 @@ async function executeAutofill(reuseTabId = null) {
             applyStatus.value = 'Captcha detected — solve it in the tab, then click Resume Autofill.';
         } else if (res.mode === 'manual') {
             applyStatus.value = 'Opened posting in manual mode. Click Confirm and Submit after applying.';
-        } else {
-            applyStatus.value = `Filled ${res.filled?.length || 0} field(s) (${res.unmapped?.length || 0} unmapped). Review & confirm.`;
-        }
+    } else {
+        applyStatus.value = `Filled ${res.filled?.length || 0} fields, ${res.unmapped?.length || 0} unmapped. Review & confirm.`;
+    }
     } catch (err) {
         applyStatus.value = `Autofill failed: ${err.message}`;
     } finally {

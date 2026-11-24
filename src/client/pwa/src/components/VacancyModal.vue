@@ -61,8 +61,8 @@ const sourceBadge = computed(() => [company.value, website.value].filter(Boolean
 const safeUrl = computed(() => (props.vacancy && isSafeHttpUrl(props.vacancy.url) ? props.vacancy.url : null));
 const skills = computed(() => (props.vacancy ? store.extractVacancySkills(props.vacancy) : []));
 const descLines = computed(() =>
-    String(props.vacancy?.description || '(No full description stored locally)')
-        .split(/\r?\n/)
+    String(props.vacancy?.description || 'No full description stored locally.')
+    .split(/\r?\n/)
         .map((l) => l.trim())
         .filter(Boolean)
 );

@@ -35,9 +35,9 @@
                 <div class="form-field">
                     <label for="display-scale">Interface Text Scale</label>
                     <select id="display-scale" :value="String(store.uiScale)" class="form-select" @change="store.setUiScale($event.target.value)">
-                        <option value="100">100% (Default)</option>
-                        <option value="110">110% (Large)</option>
-                        <option value="120">120% (Extra Large)</option>
+                        <option value="100">100% — Default</option>
+                        <option value="110">110% — Large</option>
+                        <option value="120">120% — Extra Large</option>
                     </select>
                 </div>
             </div>
@@ -47,7 +47,7 @@
             <div class="card-header-bar">
                 <h2>AI Assistant Configuration</h2>
                 <span class="tag-status">
-                    {{ store.aiConsent.consented ? `GDPR Opt-In: Consented (${formatDate(store.aiConsent.givenAt)})` : 'GDPR Opt-In: Pending' }}
+                    {{ store.aiConsent.consented ? `GDPR Opt-In: Consented · ${formatDate(store.aiConsent.givenAt)}` : 'GDPR Opt-In: Pending' }}
                 </span>
             </div>
             <p class="status-msg ao-hint-text">
@@ -59,8 +59,8 @@
                     <select id="ai-provider" v-model="aiForm.provider_name" class="form-select" @change="onProviderChange">
                         <option value="openai">OpenAI-Compatible HTTPS Endpoint</option>
                         <option value="gemini">Google Gemini AI</option>
-                        <option value="local">Local Model (Ollama / LM Studio)</option>
-                        <option value="local_cosine">Offline Local Similarity (No LLM Call)</option>
+                        <option value="local">Local Model — Ollama / LM Studio</option>
+                        <option value="local_cosine">Offline Local Similarity · No LLM</option>
                     </select>
                 </div>
                 <div class="form-field">
@@ -98,7 +98,7 @@
                 <div v-if="!store.aiConfigs.length" class="status-msg">No saved AI provider configurations yet.</div>
                 <div v-for="cfg in store.aiConfigs" :key="cfg.id" class="ai-config-row" :class="{ active: cfg.is_active }">
                     <div>
-                        <strong>{{ cfg.provider_name }} · {{ cfg.model_name }}{{ cfg.is_active ? ' (Active)' : '' }}</strong>
+                        <strong>{{ cfg.provider_name }} · {{ cfg.model_name }}{{ cfg.is_active ? ' · Active' : '' }}</strong>
                         <div class="job-row-meta">{{ cfg.api_endpoint || 'Offline Cosine' }} · Key: {{ cfg.has_api_key ? 'Encrypted locally' : 'None' }}</div>
                     </div>
                     <div class="job-row-actions">
@@ -131,8 +131,8 @@
                 <div class="form-field">
                     <label for="sync-fields">Data Scope / Fields</label>
                     <select id="sync-fields" v-model="syncOpts.fieldsMode" class="form-select">
-                        <option value="all">All Fields (Descriptions &amp; Metadata)</option>
-                        <option value="minimum">Minimum Fields (Titles &amp; Links)</option>
+                        <option value="all">All Fields — Descriptions &amp; Metadata</option>
+                        <option value="minimum">Minimum Fields — Titles &amp; Links</option>
                     </select>
                 </div>
                 <div class="form-field">
@@ -146,14 +146,14 @@
                 <div class="form-field">
                     <label for="sub-mode">Submission Mode</label>
                     <select id="sub-mode" :value="store.settings.submission_mode" class="form-select" @change="store.updateSetting('submission_mode', $event.target.value)">
-                        <option value="semi_automated">Semi-Automated (Highlight &amp; Confirm)</option>
+                        <option value="semi_automated">Semi-Automated · Highlight &amp; Confirm</option>
                         <option value="manual">Manual Only</option>
                     </select>
                 </div>
                 <div class="form-field full-width">
                     <label class="inline-check">
                         <input type="checkbox" :checked="store.settings.private_use_only" @change="store.updateSetting('private_use_only', $event.target.checked)" />
-                        <span>Private use only (do not send vacancies or URLs to server)</span>
+                        <span>Private use only — keep all vacancies and URLs on this device</span>
                     </label>
                 </div>
                 <div class="form-field full-width">
@@ -232,7 +232,7 @@ async function saveAiConfig() {
             is_active: aiForm.is_active ? 1 : 0,
         });
         aiForm.api_key = '';
-        aiStatus.value = 'AI configuration saved (key encrypted locally).';
+        aiStatus.value = 'AI configuration saved. Key encrypted locally.';
         store.notify('AI configuration saved.', 'success');
     } catch (err) {
         aiStatus.value = err.message;
@@ -260,7 +260,7 @@ async function onImportBackup(e) {
 async function clearStored() {
     const skipped = await store.clearVacancies();
     store.notify(
-        skipped ? `Cleared un-applied vacancies (${skipped} kept due to applications).` : 'All stored vacancies cleared.',
+        skipped ? `Cleared un-applied vacancies; ${skipped} kept due to linked applications.` : 'All stored vacancies cleared.',
         'info'
     );
 }

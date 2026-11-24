@@ -16,11 +16,11 @@ export function registerGlobalHttpErrorHandler(fn) {
 }
 
 function mapStatusMessage(status, fallback) {
-    if (status === 401) return 'Authentication required or session expired (401).';
-    if (status === 403) return 'Access denied by server policy (403).';
-    if (status === 404) return 'Requested backend resource not found (404).';
-    if (status >= 500) return `Backend server error (${status}). Please try again later.`;
-    return fallback || `Request failed (${status}).`;
+    if (status === 401) return 'Authentication required or session expired · HTTP 401';
+    if (status === 403) return 'Access denied by server policy · HTTP 403';
+    if (status === 404) return 'Requested backend resource not found · HTTP 404';
+    if (status >= 500) return `Backend server error · HTTP ${status}. Please try again later.`;
+    return fallback || `Request failed · HTTP ${status}`;
 }
 
 export async function requestJson(url, options = {}, { timeoutMs = 4500, notifyOnError = true } = {}) {

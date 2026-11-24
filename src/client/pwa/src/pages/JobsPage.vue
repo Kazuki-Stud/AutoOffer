@@ -20,36 +20,36 @@
                     <label>Target Platforms</label>
                     <div class="chips-grid">
                         <button
-                            v-for="p in store.platforms"
-                            :key="p.id"
-                            type="button"
-                            class="platform-chip"
-                            :class="{ selected: selectedUrls.has(platformUrl(p)) }"
-                            @click="togglePlatform(platformUrl(p))"
+                        v-for="p in store.platforms"
+                        :key="p.id"
+                        type="button"
+                        class="platform-chip"
+                        :class="{ selected: selectedUrls.has(platformUrl(p)) }"
+                        @click="togglePlatform(platformUrl(p))"
                         >
-                            {{ p.name || p.code }}{{ p.permission_status === 'granted' ? '' : ' (Manual)' }}
-                        </button>
-                    </div>
+                        {{ p.name || p.code }}{{ p.permission_status === 'granted' ? '' : ' · Manual' }}
+                    </button>
                 </div>
-                <div class="form-field full-width">
-                    <label for="job-roles">Target Roles (comma-separated)</label>
-                    <input id="job-roles" v-model="form.roles" type="text" placeholder="Frontend Developer, React, TypeScript" />
-                </div>
-                <div class="form-field">
-                    <label for="job-locations">Locations (optional)</label>
-                    <input id="job-locations" v-model="form.locations" type="text" placeholder="Remote, Vilnius, Berlin" />
-                </div>
-                <div class="form-field">
-                    <label for="job-keywords">Keywords (optional)</label>
-                    <input id="job-keywords" v-model="form.keywords" type="text" placeholder="TypeScript, REST, Docker" />
-                </div>
-                <div class="form-field">
-                    <label for="job-fields">Fields Extraction</label>
-                    <select id="job-fields" v-model="form.fields_mode" class="form-select">
-                        <option value="all">All Fields (Title, URL, Details)</option>
-                        <option value="minimum">Minimum Fields (Title, URL)</option>
-                    </select>
-                </div>
+            </div>
+            <div class="form-field full-width">
+                <label for="job-roles">Target Roles</label>
+                <input id="job-roles" v-model="form.roles" type="text" placeholder="Frontend Developer, React, TypeScript" />
+            </div>
+            <div class="form-field">
+                <label for="job-locations">Locations</label>
+                <input id="job-locations" v-model="form.locations" type="text" placeholder="Remote, Vilnius, Berlin" />
+            </div>
+            <div class="form-field">
+                <label for="job-keywords">Keywords</label>
+                <input id="job-keywords" v-model="form.keywords" type="text" placeholder="TypeScript, REST, Docker" />
+            </div>
+            <div class="form-field">
+                <label for="job-fields">Fields Extraction</label>
+                <select id="job-fields" v-model="form.fields_mode" class="form-select">
+                    <option value="all">All Fields — Title, URL &amp; Details</option>
+                    <option value="minimum">Minimum Fields — Title &amp; URL</option>
+                </select>
+            </div>
                 <div class="form-field">
                     <label for="job-limit">Page Limit</label>
                     <input id="job-limit" v-model.number="form.limit" type="number" min="1" max="50" />
@@ -75,7 +75,7 @@
                     <div>
                         <strong>{{ j.title || 'Untitled Job' }}</strong>
                         <div class="job-row-meta">
-                            Sites: {{ (j.websites || '').split('\n').filter(Boolean).length }} · Roles: {{ j.roles || '(from profile)' }} · Pages: {{ j.limit || 2 }}
+                            Sites: {{ (j.websites || '').split('\n').filter(Boolean).length }} · Roles: {{ j.roles || 'From profile' }} · Pages: {{ j.limit || 2 }}
                         </div>
                     </div>
                     <div class="job-row-actions">
@@ -151,7 +151,7 @@ async function onSave() {
     const prof = store.profiles.find((p) => p.profile_id === form.profile_id);
     const effectiveRoles = toStringArray(form.roles.trim() || prof?.roles || prof?.skills || '');
     if (!websites) return (statusMsg.value = 'Select at least one target platform.');
-    if (!effectiveRoles.length) return (statusMsg.value = 'Provide target roles (here or in selected profile).');
+    if (!effectiveRoles.length) return (statusMsg.value = 'Provide target roles here or in the selected profile.');
     if (!Number.isInteger(form.limit) || form.limit < 1) return (statusMsg.value = 'Page limit must be at least 1.');
 
     await store.saveJob({

@@ -8,7 +8,7 @@
             <div class="profile-toolbar">
                 <select v-model="selectedProfileId" class="form-select" aria-label="Select candidate profile" @change="onSelectProfile">
                     <option v-for="p in store.profiles" :key="p.profile_id" :value="p.profile_id">
-                        {{ p.profile_name || `${p.first_name} ${p.last_name}`.trim() || 'Profile' }}{{ p.is_default ? ' (Default)' : '' }}
+                        {{ p.profile_name || `${p.first_name} ${p.last_name}`.trim() || 'Profile' }}{{ p.is_default ? ' · Default' : '' }}
                     </option>
                 </select>
                 <button type="button" class="secondary-btn" @click="newProfile">+ New Profile</button>
@@ -43,11 +43,11 @@
                     <input id="prof-phone" v-model="profForm.phone" type="tel" placeholder="+370 600 00000" />
                 </div>
                 <div class="form-field full-width">
-                    <label for="prof-loc">Location (City, Country)</label>
+                    <label for="prof-loc">Location</label>
                     <input id="prof-loc" v-model="profForm.location" type="text" placeholder="Vilnius, Lithuania" />
                 </div>
                 <div class="form-field full-width">
-                    <label for="prof-roles">Target Roles (comma-separated)</label>
+                    <label for="prof-roles">Target Roles</label>
                     <input id="prof-roles" v-model="profForm.roles" type="text" placeholder="Backend Developer, Java Developer" />
                 </div>
                 <div class="form-field">
@@ -59,7 +59,7 @@
                     <input id="prof-kw" v-model="profForm.keywords" type="text" placeholder="Spring Boot, PostgreSQL" />
                 </div>
                 <div class="form-field full-width">
-                    <label for="prof-links">Portfolio / Links (comma-separated URLs)</label>
+                    <label for="prof-links">Portfolio &amp; Profile Links</label>
                     <textarea id="prof-links" v-model="profForm.links" rows="2" placeholder="https://github.com/..., https://linkedin.com/in/..."></textarea>
                 </div>
             </div>
@@ -71,7 +71,7 @@
 
         <div class="pwa-card">
             <div class="card-header-bar">
-                <h2>Resume Variants (Local Only)</h2>
+                <h2>Resume Variants</h2>
                 <span class="tag-status">{{ store.profileResumes.length }} variant{{ store.profileResumes.length === 1 ? '' : 's' }}</span>
             </div>
             <div class="resume-variants-list">
@@ -108,7 +108,7 @@
                     <input id="res-title" v-model="resForm.title" type="text" placeholder="e.g. Backend Architecture 2026" />
                 </div>
                 <div class="form-field">
-                    <label for="res-skills">Skills (comma-separated)</label>
+                    <label for="res-skills">Skills</label>
                     <input id="res-skills" v-model="resForm.skills" type="text" placeholder="Java 21, Spring Boot, PostgreSQL, Docker" />
                 </div>
                 <div class="form-field full-width">
@@ -131,7 +131,7 @@
             <div class="profile-actions-bar">
                 <button type="button" class="primary-btn" @click="saveResume">Save Resume Variant</button>
                 <button type="button" class="secondary-btn" @click="doExportPdf(null)">Export PDF</button>
-                <button type="button" class="secondary-btn" @click="doExportWord(null)">Export Word (.doc)</button>
+                <button type="button" class="secondary-btn" @click="doExportWord(null)">Export Word</button>
                 <span class="status-msg">{{ resStatus }}</span>
             </div>
         </div>
@@ -221,9 +221,9 @@ watch(
 
 const hasFile = computed(() => Boolean(pendingFile.value?.file_name || (!pendingFile.value?.clear_file && resForm.file_name)));
 const fileInfo = computed(() => {
-    if (pendingFile.value?.clear_file) return 'No file attached (save to confirm removal)';
-    if (pendingFile.value?.file_name) return `Selected: ${pendingFile.value.file_name}`;
-    return resForm.file_name ? `Attached: ${resForm.file_name}` : 'No file attached';
+        if (pendingFile.value?.clear_file) return 'File will be removed on save';
+        if (pendingFile.value?.file_name) return `Selected: ${pendingFile.value.file_name}`;
+        return resForm.file_name ? `Attached: ${resForm.file_name}` : 'No file attached';
 });
 
 async function onSelectProfile() {

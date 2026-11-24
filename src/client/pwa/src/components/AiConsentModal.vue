@@ -10,14 +10,14 @@
     >
         <div class="ao-modal-card">
             <div class="ao-modal-header">
-                <h2 id="ai-consent-title" class="ao-modal-title">AI Data Processing Consent (GDPR)</h2>
+                <h2 id="ai-consent-title" class="ao-modal-title">GDPR AI Data Processing Consent</h2>
             </div>
             <div class="ai-modal-body">
                 <p>
-                    Before calling a remote AI provider (<strong>{{ store.consentRequest.endpointLabel }}</strong>), please confirm that you consent to sending minimized resume text and sanitized vacancy descriptions.
+                    Before calling the remote AI provider <strong>{{ store.consentRequest.endpointLabel }}</strong>, please confirm that you consent to sending minimized resume text and sanitized vacancy descriptions.
                 </p>
                 <div class="consent-box">
-                    All personal contact details (name, email, phone, location, GitHub/LinkedIn/Telegram links) are stripped locally before transmission. Your API key and profile never leave your device to the AutoOffer backend.
+                    All personal contact details — such as name, email, phone, location, and profile links — are stripped locally before transmission. Your API key and profile never leave your device to the AutoOffer backend.
                 </div>
             </div>
             <div class="ao-modal-footer">

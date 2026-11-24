@@ -86,7 +86,7 @@ export const useAppStore = defineStore('app', {
 
     getters: {
         sourceTagLabel: (s) =>
-            s.isExtensionConnected ? 'Extension Source of Truth (Manual Sync)' : 'Standalone Local (Dexie v7)',
+        s.isExtensionConnected ? 'Extension Source of Truth · Manual Sync' : 'Standalone Local · Dexie v7',
         activeProfile: (s) =>
             s.profiles.find((p) => p.profile_id === s.activeProfileId) ||
             s.profiles.find((p) => p.is_default) ||

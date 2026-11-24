@@ -54,7 +54,7 @@ const extId = getExtensionId();
 const available = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
 
     if (!available) {
-        return { connected: false, text: 'Standalone Mode (No Extension API)', type: 'normal' };
+        return { connected: false, text: 'Standalone Mode · No Extension API', type: 'normal' };
     }
     if (!extId) {
         return { connected: false, text: 'Set Extension ID in Settings', type: 'normal' };
@@ -62,7 +62,7 @@ const available = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendM
 
     try {
         await callExtension('get_storage_weight', {}, 2500);
-        return { connected: true, text: 'Extension Paired (Manual Sync)', type: 'success' };
+        return { connected: true, text: 'Extension Paired · Ready', type: 'success' };
     } catch {
         return { connected: false, text: 'Extension Unreachable', type: 'error' };
     }
