@@ -7,7 +7,7 @@ export const BACKUP_EXCLUDED_TABLES = new Set([
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const optUuid = (val) => (typeof val === 'string' && UUID_RE.test(val.trim()) ? val.trim() : null);
 
-export const state = {
+export const helpers = {
     cachedVacancies: [],
     cachedApplications: new Map(),
     cachedAllApplications: [],

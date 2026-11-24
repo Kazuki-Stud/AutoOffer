@@ -24,7 +24,7 @@ The system automates vacancy collection, resume-to-vacancy matching, cover lette
 | Layer | Technology | Purpose |
 | :--- | :--- | :--- |
 | **Browser Extension** | JavaScript (Vite), Chrome Extensions API, Dexie.js | Scrapes job boards via registry selectors, fills application forms, manages local encrypted state |
-| **PWA Dashboard** | JavaScript (Vite), Web Components, Service Worker | Local vacancy & application lifecycle dashboard, profile/resume editor, JSON backup export/import |
+| **PWA Dashboard** | Vue 3, Pinia, Vue Router, Vite, Vitest, Playwright | Local vacancy & application lifecycle SPA, profile/resume editor, responsive UI, JSON backup export/import |
 | **Backend & ETL** | Java, Spring Boot, Spring Security, Liquibase, Gradle | Registry API, pseudonymous device auth (HMAC-SHA-256), admin JWT auth (BCrypt), scheduled ClickHouse ETL |
 | **OLTP Database** | PostgreSQL 16.6 (`autooffer` schema) | 3NF registry, deduplicated/sanitized public vacancies, RBAC (`app_read`, `app_write`, `app_admin`), ETL metadata |
 | **OLAP Database** | ClickHouse 24.8 (`autooffer_olap`) | Columnar 3-layer analytical store (`MergeTree`, `ReplacingMergeTree`, `SummingMergeTree`, MVs & window views) |
@@ -39,7 +39,10 @@ AutoOffer/
 ├── docs/
 │   ├── 01-project-overview/       # Problem statement, goals, features, scope, stakeholders
 │   ├── 02-technical/
-│   │   ├── criteria/database.md   # Databases Criterion ADR, implementation & checklist (OLTP, OLAP, NoSQL)
+│   │   ├── criteria/
+│   │   │   ├── database.md    # Databases Criterion ADR, implementation & checklist (OLTP, OLAP, NoSQL)
+│   │   │   ├── frontend.md    # Front-End Architecture ADR (Vue 3 SPA, Pinia, Router, tests)
+│   │   │   └── adaptive-ui.md # Adaptive UI ADR (360px–4K responsive layout, 44px touch targets, themes)
 │   │   └── ...                    # Deployment, tech stack & other technical criteria
 │   ├── 03-user-guide/             # User guide & FAQ
 │   └── criteria/
@@ -51,7 +54,7 @@ AutoOffer/
 ├── src/
 │   ├── client/
 │   │   ├── extension/             # Chrome extension + Dexie v7 schema, validation, crypto, seed
-│   │   └── pwa/                   # Offline-capable PWA dashboard
+│   │   └── pwa/                   # Offline-capable Vue 3 SPA/PWA dashboard (components, pages, stores, tests, e2e)
 │   └── server/AutoOffer/
 │       ├── docker-compose.yml     # Isolated db-internal network (Postgres + ClickHouse + Spring Boot)
 │       ├── docker-compose.override.yml # Local dev port mappings (5432, 8123, 5005)
@@ -110,8 +113,44 @@ Once `docker compose ps` shows all services healthy:
 * **OLAP Salary by Country (ClickHouse):** `GET http://localhost:8080/api/analytics/salary-by-country`
 * **OLTP Skill Hotwords (PostgreSQL MV):** `GET http://localhost:8080/api/skills/hotwords`
 
-### 4. Client Extension & PWA (Optional)
-Install dependencies inside `src/client/extension` and `src/client/pwa` using `npm install` and inspect each `package.json` / `vite.config.mjs` for build and dev scripts.
+### 4. Client Extension & PWA
+
+#### PWA Dashboard (Vue 3 + Vite)
+```bash
+cd src/client/pwa
+npm install
+npm run dev        # http://localhost:5173/AutoOffer/
+```
+
+Run linter, unit/integration tests, production build, and Playwright E2E tests:
+```bash
+cd src/client/pwa
+npm run lint
+npm test
+npm run build
+npm run test:e2e
+```
+
+
+#### Browser Extension (Manifest V3)
+```bash
+cd src/client/extension
+npm install
+npm run build      # outputs unpacked build to src/client/extension/dist
+```
+
+---
+
+## Front-End & Adaptive UI Documentation (Evaluation Artifacts)
+
+* **Front-End Architecture Criterion (ADR, Diagrams, Checklist):** [`docs/02-technical/criteria/frontend.md`](docs/02-technical/criteria/frontend.md)
+    * SPA Entry & Router: `src/client/pwa/src/main.js`, `src/client/pwa/src/App.vue`, `src/client/pwa/src/router/index.js`
+    * Pinia Store & Services: `src/client/pwa/src/stores/appStore.js`, `src/client/pwa/src/services/`
+    * Components & Pages: `src/client/pwa/src/components/`, `src/client/pwa/src/pages/`
+    * Unit, Integration & E2E Tests: `src/client/pwa/tests/pwa.spec.js`, `src/client/pwa/tests/integration.spec.js`, `src/client/pwa/e2e/pwa.spec.js`
+* **Adaptive UI Criterion (ADR, Breakpoints, Touch & Contrast Checklist):** [`docs/02-technical/criteria/adaptive-ui.md`](docs/02-technical/criteria/adaptive-ui.md)
+    * Responsive CSS, Dark/Light Tokens & `44px` Touch Targets: `src/client/pwa/src/styles/main.css`
+    * User Display Scale & Theme Controls: `src/client/pwa/src/pages/SettingsPage.vue`
 
 ---
 

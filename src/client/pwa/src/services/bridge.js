@@ -1,31 +1,44 @@
-import { db } from '../extension/database/database.js';
-import { newId, nowIso, setSetting } from '../extension/database/repository.js';
+import { db } from '../../../extension/database/database.js';
+import { newId, nowIso, setSetting } from '../../../extension/database/repository.js';
 import {
     BACKUP_EXCLUDED_TABLES,
-    getVal,
     isSafeHttpUrl,
     optUuid,
-    setVal,
-    state,
-} from './state.js';
+} from '../utils/helpers.js';
+import { logger } from './logger.js';
 
 export function getExtensionId() {
-    return (getVal('extension-id-input') || localStorage.getItem('autooffer_extension_id') || '').trim();
+    return (localStorage.getItem('autooffer_extension_id') || '').trim();
 }
 
 export function callExtension(action, payload = {}, timeoutMs = 3500) {
-    return new Promise((resolve, reject) => {
-        const extId = getExtensionId();
-        if (!extId || typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
-            return reject(new Error('Extension unavailable'));
-        }
-        let settled = false;
-        const timer = setTimeout(() => {
-            if (!settled) {
-                settled = true;
-                reject(new Error(`Extension timeout (${action})`));
-            }
-        }, timeoutMs);
+return new Promise((resolve, reject) => {
+if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+return reject(
+new Error(
+'Chrome extension API is unavailable. Open this PWA in Chrome/Chromium on an allowed origin to connect the extension.'
+)
+);
+}
+const extId = getExtensionId();
+if (!extId) {
+return reject(
+new Error(
+'Chrome Extension ID is missing. Copy it from the extension popup and paste it in Settings & Sync.'
+)
+);
+}
+let settled = false;
+const timer = setTimeout(() => {
+if (!settled) {
+settled = true;
+reject(
+new Error(
+`Extension timed out after ${timeoutMs}ms during "${action}". Reload the AutoOffer extension at chrome://extensions and retry.`
+)
+);
+}
+}, timeoutMs);
 
         try {
             chrome.runtime.sendMessage(extId, { action, ...payload }, (response) => {
@@ -33,11 +46,22 @@ export function callExtension(action, payload = {}, timeoutMs = 3500) {
                 settled = true;
                 clearTimeout(timer);
                 if (chrome.runtime.lastError) {
-                    return reject(new Error(chrome.runtime.lastError.message));
+                    const raw = chrome.runtime.lastError.message || 'Unknown extension runtime error';
+                    const msg = raw.includes('Receiving end does not exist')
+                        ? `Cannot reach extension "${extId}": it may be disabled, uninstalled, or the Extension ID in Settings & Sync is incorrect.`
+                        : `Extension communication failed (${action}): ${raw}`;
+                    return reject(new Error(msg));
                 }
-                if (!response || response.status === 'error') {
-                    const err = new Error(response?.message || 'Extension returned an error');
-                    if (response?.code) err.code = response.code;
+                if (!response) {
+                    return reject(
+                        new Error(
+                            `Extension returned no response for "${action}". Reload the extension service worker and try again.`
+                        )
+                    );
+                }
+                if (response.status === 'error') {
+                    const err = new Error(response.message || `Extension action "${action}" failed.`);
+                    if (response.code) err.code = response.code;
                     return reject(err);
                 }
                 resolve(response.data);
@@ -46,109 +70,82 @@ export function callExtension(action, payload = {}, timeoutMs = 3500) {
             if (!settled) {
                 settled = true;
                 clearTimeout(timer);
-                reject(err);
+                reject(new Error(`Failed sending "${action}" to extension: ${err.message}`));
             }
         }
     });
 }
 
-export function setSyncStatus(text, type = 'normal') {
-    const statusEl = document.getElementById('sync-status');
-    const connEl = document.getElementById('pwa-conn-status-val');
-    if (statusEl) {
-        statusEl.textContent = text;
-        statusEl.className = `sync-status-indicator ${type}`;
-    }
-    if (connEl) connEl.textContent = text;
-}
-
-export function updateSourceTags() {
-    const label = state.isExtensionConnected ? 'Extension Source of Truth (Manual Sync)' : 'Standalone Local (Dexie v7)';
-    for (const id of ['pwa-jobs-source-tag', 'pwa-profile-source-tag', 'pwa-settings-source-tag']) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = label;
-    }
-}
-
 export async function detectExtensionStatus() {
-    const banner = document.getElementById('ext-missing-banner');
-    const extId = getExtensionId();
-    const available = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
+const extId = getExtensionId();
+const available = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
 
     if (!available) {
-        state.isExtensionConnected = false;
-        if (banner) banner.style.display = 'block';
-        setSyncStatus('Standalone Mode (No Extension API)', 'normal');
-        updateSourceTags();
-        return false;
+        return { connected: false, text: 'Standalone Mode · No Extension API', type: 'normal' };
     }
     if (!extId) {
-        state.isExtensionConnected = false;
-        if (banner) banner.style.display = 'block';
-        setSyncStatus('Set Extension ID in Settings', 'normal');
-        updateSourceTags();
-        return false;
+        return { connected: false, text: 'Set Extension ID in Settings', type: 'normal' };
     }
 
     try {
         await callExtension('get_storage_weight', {}, 2500);
-        state.isExtensionConnected = true;
-        if (banner) banner.style.display = 'none';
-        setSyncStatus('Extension Paired (Manual Sync)', 'success');
-        updateSourceTags();
-        return true;
-    } catch {
-        state.isExtensionConnected = false;
-        if (banner) banner.style.display = 'block';
-        setSyncStatus('Extension Unreachable', 'error');
-        updateSourceTags();
-        return false;
-    }
+        return { connected: true, text: 'Extension Paired · Ready', type: 'success' };
+} catch (err) {
+    logger.warn('bridge.detectExtensionStatus', 'Extension unreachable', err);
+    return {
+        connected: false,
+        text: `Extension Unreachable: ${err.message}`,
+        type: 'error',
+    };
+}
 }
 
-export function setupExtensionAutoPairing({ onPaired } = {}) {
-    return new Promise((resolve) => {
-        let resolved = false;
-        const finish = (id) => {
-            if (!resolved) {
-                resolved = true;
-                resolve(id || null);
-            }
-        };
+export function setupExtensionAutoPairing({ onPaired, isConnectedFn } = {}) {
+return new Promise((resolve) => {
+let resolved = false;
+const finish = (id) => {
+if (!resolved) {
+resolved = true;
+resolve(id || null);
+}
+};
 
-        window.addEventListener('message', async (event) => {
+        const handler = async (event) => {
             if (event.source !== window || !event.data) return;
-
             if (event.data.type === 'AUTOOFFER_EXTENSION_AVAILABLE' && event.data.extensionId) {
                 const discoveredId = String(event.data.extensionId).trim();
                 if (!discoveredId) return;
-
                 const prevId = getExtensionId();
                 localStorage.setItem('autooffer_extension_id', discoveredId);
-                setVal('extension-id-input', discoveredId);
                 finish(discoveredId);
-
-                if (prevId !== discoveredId || !state.isExtensionConnected) {
-                    const connected = await detectExtensionStatus();
-                    if (connected && typeof onPaired === 'function') await onPaired();
+                if (prevId !== discoveredId || !isConnectedFn?.()) {
+                    const status = await detectExtensionStatus();
+                    if (status.connected && typeof onPaired === 'function') {
+                        await onPaired(discoveredId, status);
+                    }
                 }
             }
-        });
+        };
 
+        window.addEventListener('message', handler);
         try {
             window.postMessage({ type: 'AUTOOFFER_DISCOVER_EXTENSION' }, window.location.origin);
-        } catch {}
+        } catch (err) {
+            logger.warn('bridge.setupExtensionAutoPairing', 'Discovery postMessage failed', err);
+        }
 
         setTimeout(() => finish(getExtensionId()), 400);
     });
 }
 
-export async function calculateStorageWeight() {
-    if (state.isExtensionConnected) {
-        try {
-            return await callExtension('get_storage_weight');
-        } catch {}
-    }
+export async function calculateStorageWeight(isConnected = false) {
+if (isConnected) {
+try {
+return await callExtension('get_storage_weight');
+} catch (err) {
+logger.warn('bridge.calculateStorageWeight', 'Extension storage check failed; computing locally', err);
+}
+}
     try {
         const chunks = await Promise.all([
             db.local_vacancies.toArray(),
@@ -166,20 +163,23 @@ export async function calculateStorageWeight() {
             ? `${(bytes / 1048576).toFixed(2)} MB`
             : `${Math.max(1, Math.round(bytes / 1024))} KB`;
         return { bytes, formatted };
-    } catch {
+    } catch (err) {
+        logger.error('bridge.calculateStorageWeight', err);
         return { bytes: 0, formatted: '0 KB' };
     }
 }
 
-export async function syncApplicationsFromBridge() {
-    if (state.isExtensionConnected) {
+export async function syncApplicationsFromBridge(isConnected = false) {
+    if (isConnected) {
         try {
             const remoteApps = await callExtension('get_applications');
             if (Array.isArray(remoteApps)) {
                 await db.applications.clear();
                 if (remoteApps.length) await db.applications.bulkPut(remoteApps);
             }
-        } catch {}
+        } catch (err) {
+            logger.warn('bridge.syncApplicationsFromBridge', 'Failed syncing applications from extension', err);
+        }
     }
 }
 
@@ -205,7 +205,11 @@ export async function mirrorVacanciesToLocalDb(rows, { pruneRemoved = false } = 
             const platform_id = optUuid(v.platform_id);
             let host = v.source_host ? String(v.source_host).trim() : null;
             if (!platform_id && !host) {
-                try { host = new URL(v.url).hostname; } catch {}
+                try {
+                    host = new URL(v.url).hostname;
+                } catch (err) {
+                    logger.warn('bridge.mirrorVacanciesToLocalDb', 'Could not parse vacancy URL host', { url: v.url, error: err?.message });
+                }
             }
             if (!platform_id && !host) continue;
 
@@ -280,9 +284,9 @@ export async function mirrorVacanciesToLocalDb(rows, { pruneRemoved = false } = 
     });
 }
 
-export async function saveSingleSetting(key, value) {
+export async function saveSingleSetting(key, value, isConnected = false) {
     await setSetting(key, value);
-    if (state.isExtensionConnected) {
+    if (isConnected) {
         await callExtension('save_settings', { settings: { [key]: value } });
     }
 }
@@ -302,13 +306,22 @@ export async function exportLocalBackup() {
 }
 
 export async function importLocalBackup(file) {
-    const parsed = JSON.parse(await file.text());
-    if (!parsed?.tables) throw new Error('Invalid backup format');
-    await db.transaction('rw', db.tables, async () => {
+    let parsed;
+    try {
+        parsed = JSON.parse(await file.text());
+    } catch (err) {
+        throw new Error(`Backup file "${file.name}" is not valid JSON: ${err.message}`);
+    }
+    if (!parsed || typeof parsed !== 'object' || !parsed.tables || typeof parsed.tables !== 'object') {
+        throw new Error(
+        `Backup file "${file.name}" is missing the "tables" object. Export a new backup from Settings & Sync and retry.`
+    );
+}
+await db.transaction('rw', db.tables, async () => {
         for (const [name, rows] of Object.entries(parsed.tables)) {
             if (BACKUP_EXCLUDED_TABLES.has(name) || !Array.isArray(rows)) continue;
             const table = db.tables.find((t) => t.name === name);
             if (table) await table.bulkPut(rows);
         }
-    });
+});
 }
