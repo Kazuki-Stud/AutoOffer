@@ -147,8 +147,8 @@ flowchart LR
 | # | Requirement | Status | Evidence / Notes |
 |---|---|---|---|
 | 1 | SPA built with modern framework + bundler | ✅ | Vue 3 (`src/client/pwa/package.json`) + Vite (`vite.config.mjs`) |
-| 2 | Architecture & user flow diagrams + tech justification | ✅ | Included in `docs/adr/frontend.md` |
-| 3 | API documentation for client endpoints | ✅ | Included in `docs/adr/frontend.md` + `OpenApiConfiguration.java` |
+| 2 | Architecture & user flow diagrams + tech justification | ✅ | Included in `docs/02-technical/criteria/frontend.md` |
+| 3 | API documentation for client endpoints | ✅ | Included above + `OpenApiConfiguration.java` |
 | 4 | Separation into components, pages, services, stores, models, styles | ✅ | `src/client/pwa/src/{components,pages,services,stores,models,styles}` |
 | 5 | Routing (≥ 3–4 routes) + lazy loading | ✅ | 5 lazy routes in `src/router/index.js` |
 | 6 | Local + global state management | ✅ | Component `ref`/`reactive` + Pinia `useAppStore` (`src/stores/appStore.js`) |
