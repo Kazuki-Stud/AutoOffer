@@ -39,6 +39,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { db } from '../../../extension/database/database.js';
 import { requestJson } from '../services/httpClient.js';
+import { logger } from '../services/logger.js';
 import { useAppStore } from '../stores/appStore.js';
 
 const store = useAppStore();
@@ -69,8 +70,13 @@ async function populatePositions() {
             positions.value = boot.positions;
             return;
         }
-    } catch {}
-    positions.value = await db.positions_dict.toArray().catch(() => []);
+} catch (err) {
+    logger.warn('HotwordsChart.populatePositions', 'Backend dictionary unreachable; using local cache', err);
+}
+positions.value = await db.positions_dict.toArray().catch((err) => {
+        logger.warn('HotwordsChart.populatePositions', 'Failed reading local positions_dict', err);
+        return [];
+});
 }
 
 async function loadHotwords() {
@@ -86,7 +92,10 @@ async function loadHotwords() {
     try {
         let data = await requestJson(`${base}/api/skills/hotwords${qs}`, {}, { timeoutMs: 5000, notifyOnError: false });
         if (!Array.isArray(data) || !data.length) {
-            const ch = await requestJson(`${base}/api/analytics/skills-demand`, {}, { timeoutMs: 4000, notifyOnError: false }).catch(() => null);
+            const ch = await requestJson(`${base}/api/analytics/skills-demand`, {}, { timeoutMs: 4000, notifyOnError: false }).catch((err) => {
+                    logger.warn('HotwordsChart.loadHotwords', 'ClickHouse fallback failed', err);
+                    return null;
+            });
             const items = Array.isArray(ch?.data) ? ch.data : [];
             data = items
                 .filter((d) => !posId || d.position_name === roleName)
@@ -104,6 +113,6 @@ async function loadHotwords() {
 }
 
 onMounted(() => {
-    populatePositions().catch(() => {});
+        populatePositions().catch((err) => logger.warn('HotwordsChart.onMounted', 'Failed loading positions', err));
 });
 </script>

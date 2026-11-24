@@ -125,6 +125,7 @@ import {
 } from '../../../extension/database/repository.js';
 import { evaluateVacancyMatch, generateCoverLetter } from '../../../extension/aiClient.js';
 import { callExtension } from '../services/bridge.js';
+import { logger } from '../services/logger.js';
 import { useAppStore } from '../stores/appStore.js';
 import { isSafeHttpUrl } from '../utils/helpers.js';
 
@@ -191,8 +192,10 @@ async function loadStateForResume() {
             m = matches.find((x) => x.resume_id === selectedResumeId.value) || null;
             const letters = await callExtension('get_cover_letters', { vacancyId: props.vacancy.id });
             d = letters.find((c) => c.resume_id === selectedResumeId.value) || letters[0] || null;
-        } catch {}
+    } catch (err) {
+        logger.warn('ReviewApplyModal.loadStateForResume', 'Failed loading AI state from extension; using local cache', err);
     }
+}
     const profId = store.activeProfileId || (await ensureDefaultProfile()).id;
     matchResult.value = m || (await getMatchResult(props.vacancy.id, selectedResumeId.value)) || null;
     d = d || (await getCoverLetterForVacancy(profId, props.vacancy.id, selectedResumeId.value));
@@ -238,7 +241,7 @@ async function evaluateMatch() {
                 () => callExtension('ai_evaluate_match', { vacancyId: props.vacancy.id, resumeId: resume.id, vacancy: props.vacancy, resume }, 45000),
                 getEndpointLabel()
             );
-            await saveMatchResult(res).catch(() => {});
+            await saveMatchResult(res).catch((err) => logger.warn('ReviewApplyModal.evaluateMatch', 'Failed caching match result locally', err));
         } else {
             const personalData = await db.personal_data.where('profile_id').equals(resume.profile_id).first();
             res = await evaluateVacancyMatch(props.vacancy, resume, {
@@ -272,7 +275,7 @@ async function generateLetter() {
                 () => callExtension('ai_generate_cover_letter', { vacancyId: props.vacancy.id, resumeId: resume.id, existingDraftId: coverLetterId.value, vacancy: props.vacancy, resume }, 45000),
                 getEndpointLabel()
             );
-            await db.cover_letters.put(draft).catch(() => {});
+            await db.cover_letters.put(draft).catch((err) => logger.warn('ReviewApplyModal.generateLetter', 'Failed caching cover letter locally', err));
         } else {
             const personalData = await db.personal_data.where('profile_id').equals(resume.profile_id).first();
             draft = await generateCoverLetter(props.vacancy, resume, {
@@ -314,7 +317,7 @@ async function saveLetterDraft(requireNonEmpty = false) {
     let saved;
     if (store.isExtensionConnected) {
         saved = await callExtension('save_cover_letter', { coverLetter: payload });
-        await db.cover_letters.put(saved).catch(() => {});
+        await db.cover_letters.put(saved).catch((err) => logger.warn('ReviewApplyModal.saveLetterDraft', 'Failed caching cover letter locally', err));
     } else {
         saved = await saveCoverLetter(payload);
     }
@@ -334,7 +337,7 @@ async function executeAutofill(reuseTabId = null) {
     filling.value = true;
     applyStatus.value = submissionMode.value === 'manual' ? 'Opening application page...' : 'Opening tab & autofilling form...';
     try {
-        await saveLetterDraft(false).catch(() => {});
+        await saveLetterDraft(false).catch((err) => logger.warn('ReviewApplyModal.executeAutofill', 'Could not persist draft before autofill', err));
         const p = store.activeProfile || {};
         const res = await callExtension(
             'prepare_application_autofill',
@@ -373,7 +376,10 @@ async function confirmAndSubmit() {
     submitting.value = true;
     try {
         const profId = store.activeProfile?.profile_id || store.activeProfileId || (await ensureDefaultProfile()).id;
-        const cId = await saveLetterDraft(false).catch(() => coverLetterId.value);
+        const cId = await saveLetterDraft(false).catch((err) => {
+                logger.warn('ReviewApplyModal.confirmAndSubmit', 'Could not persist cover letter draft', err);
+                return coverLetterId.value;
+        });
         const score = matchResult.value?.score != null ? Math.round(Number(matchResult.value.score)) : null;
         if (store.isExtensionConnected) {
             const created = await callExtension('create_application', {

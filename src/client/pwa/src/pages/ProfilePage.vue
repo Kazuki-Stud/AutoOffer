@@ -142,6 +142,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
 import { newId } from '../../../extension/database/repository.js';
+import { logger } from '../services/logger.js';
 import { exportResumeAsPdf, exportResumeAsWord } from '../services/resumeExport.js';
 import { useAppStore } from '../stores/appStore.js';
 import { fileToBase64, formatDate, toStringArray } from '../utils/helpers.js';
@@ -227,8 +228,13 @@ const fileInfo = computed(() => {
 });
 
 async function onSelectProfile() {
-    store.activeProfileId = selectedProfileId.value || null;
-    await store.loadResumes();
+    try {
+        store.activeProfileId = selectedProfileId.value || null;
+        await store.loadResumes();
+    } catch (err) {
+        logger.error('ProfilePage.onSelectProfile', err);
+        store.notify(err.message, 'error');
+    }
 }
 
 function newProfile() {
@@ -272,8 +278,15 @@ async function saveProfile() {
 async function deleteProfile() {
     if (!store.activeProfileId || store.profiles.length <= 1) return;
     if (!confirm('Delete this profile and its resumes?')) return;
-    await store.removeProfile(store.activeProfileId);
-    profStatus.value = 'Profile deleted.';
+    try {
+        await store.removeProfile(store.activeProfileId);
+        profStatus.value = 'Profile deleted.';
+        store.notify('Profile deleted.', 'info');
+    } catch (err) {
+        logger.error('ProfilePage.deleteProfile', err);
+        profStatus.value = err.message;
+        store.notify(err.message, 'error');
+    }
 }
 
 function selectResume(id) {
@@ -292,12 +305,18 @@ function newResume() {
 async function onFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    pendingFile.value = {
-        file_name: file.name,
-        mime_type: file.type || 'application/octet-stream',
-        file_data_b64: await fileToBase64(file),
-        clear_file: false,
-    };
+    try {
+        pendingFile.value = {
+            file_name: file.name,
+            mime_type: file.type || 'application/octet-stream',
+            file_data_b64: await fileToBase64(file),
+            clear_file: false,
+        };
+    } catch (err) {
+        logger.error('ProfilePage.onFileChange', err);
+        resStatus.value = err.message;
+        store.notify(`Could not read file: ${err.message}`, 'error');
+    }
 }
 
 function clearFile() {
@@ -332,8 +351,15 @@ async function saveResume() {
 async function deleteResume() {
     if (!store.activeResumeId) return;
     if (!confirm('Delete this resume variant?')) return;
-    await store.removeResume(store.activeResumeId);
-    resStatus.value = 'Resume variant deleted.';
+    try {
+        await store.removeResume(store.activeResumeId);
+        resStatus.value = 'Resume variant deleted.';
+        store.notify('Resume variant deleted.', 'info');
+    } catch (err) {
+        logger.error('ProfilePage.deleteResume', err);
+        resStatus.value = err.message;
+        store.notify(err.message, 'error');
+    }
 }
 
 function buildExportPayload(override) {

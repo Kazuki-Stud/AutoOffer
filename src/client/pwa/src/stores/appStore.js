@@ -133,7 +133,9 @@ export const useAppStore = defineStore('app', {
             if (item.source_host) return item.source_host.replace(/^www\./, '');
             try {
                 if (item.url) return new URL(item.url).hostname.replace(/^www\./, '');
-            } catch {}
+            } catch (err) {
+                logger.warn('appStore.resolveSourceLabel', 'Invalid vacancy URL', { url: item.url, error: err?.message });
+            }
             return 'Direct';
         },
         resolveCompanyLabel(item) {
@@ -225,7 +227,10 @@ export const useAppStore = defineStore('app', {
         async syncVacanciesQuietly({ respectSetting = true, pruneRemoved = false } = {}) {
             if (!this.isExtensionConnected || !getExtensionId()) return false;
             if (respectSetting) {
-                const autoSync = await getSetting('auto_sync_pwa_on_grab').catch(() => true);
+                const autoSync = await getSetting('auto_sync_pwa_on_grab').catch((err) => {
+                        logger.warn('appStore.syncVacanciesQuietly', 'Could not read auto_sync_pwa_on_grab setting', err);
+                        return true;
+                });
                 if (autoSync === false) return false;
             }
             try {
@@ -235,7 +240,10 @@ export const useAppStore = defineStore('app', {
                 this.syncStatusText = `Auto-synced ${(rows || []).length} vacancies.`;
                 this.syncStatusType = 'success';
                 return true;
-            } catch {
+            } catch (err) {
+                logger.warn('appStore.syncVacanciesQuietly', 'Background extension sync failed', err);
+                this.syncStatusText = `Sync failed: ${err.message}`;
+                this.syncStatusType = 'error';
                 return false;
             }
         },
@@ -301,7 +309,10 @@ export const useAppStore = defineStore('app', {
             if (existing) {
                 await setApplicationStatus(existing.id, newStatus);
                 if (this.isExtensionConnected) {
-                    await callExtension('update_application', { id: existing.id, status: newStatus }).catch(() => {});
+                    await callExtension('update_application', { id: existing.id, status: newStatus }).catch((err) => {
+                            logger.warn('appStore.upsertVacancyStatus', 'Extension sync failed; saved locally', err);
+                            this.notify('Status saved locally, but extension sync failed.', 'warning');
+                    });
                 }
             } else {
                 const defaultResumeId = this.profileResumes[0]?.id || null;
@@ -325,7 +336,10 @@ export const useAppStore = defineStore('app', {
             if (status) await setApplicationStatus(appId, status);
             if (notes !== undefined) await db.applications.update(appId, { notes: notes || null });
             if (this.isExtensionConnected) {
-                await callExtension('update_application', { id: appId, ...(status ? { status } : {}), ...(notes !== undefined ? { notes } : {}) }).catch(() => {});
+                await callExtension('update_application', { id: appId, ...(status ? { status } : {}), ...(notes !== undefined ? { notes } : {}) }).catch((err) => {
+                        logger.warn('appStore.updateApplicationStatusAndNotes', 'Extension sync failed; updated locally', err);
+                        this.notify('Changes saved locally, but extension sync failed.', 'warning');
+                });
             }
             await this.refreshDisplay();
         },
@@ -351,9 +365,11 @@ export const useAppStore = defineStore('app', {
                             }
                         });
                     }
-                } catch {}
+            } catch (err) {
+                logger.warn('appStore.loadPlatforms', 'Extension platform load failed; using local cache', err);
             }
-            this.platforms = await db.platforms_dict.toArray();
+        }
+        this.platforms = await db.platforms_dict.toArray();
         },
 
         async loadProfiles() {
@@ -363,9 +379,11 @@ export const useAppStore = defineStore('app', {
                     this.ensureSelectedProfile();
                     await this.loadResumes();
                     return;
-                } catch {}
+            } catch (err) {
+                logger.warn('appStore.loadProfiles', 'Extension profile load failed; using local cache', err);
             }
-            await ensureDefaultProfile();
+        }
+        await ensureDefaultProfile();
             const rows = await db.user_profiles.toArray();
             const out = [];
             for (const row of rows) {
@@ -467,7 +485,9 @@ export const useAppStore = defineStore('app', {
                         this.activeResumeId = list[0]?.id || null;
                     }
                     return;
-                } catch {}
+                } catch (err) {
+                    logger.warn('appStore.loadResumes', 'Extension resume load failed; using local cache', err);
+                }
             }
             const rows = await db.resumes.where('profile_id').equals(this.activeProfileId).toArray();
             rows.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
@@ -536,7 +556,9 @@ export const useAppStore = defineStore('app', {
                     await db.automation_jobs.clear();
                     if (this.jobs.length) await db.automation_jobs.bulkPut(this.jobs);
                     return;
-                } catch {}
+                } catch (err) {
+                    logger.warn('appStore.loadJobs', 'Extension jobs load failed; using local cache', err);
+                }
             }
             this.jobs = await db.automation_jobs.toArray();
         },
@@ -562,8 +584,12 @@ export const useAppStore = defineStore('app', {
             if (this.isExtensionConnected) {
                 try {
                     const remote = await callExtension('get_settings');
-                    for (const [k, v] of Object.entries(remote)) await setSetting(k, v).catch(() => {});
-                } catch {}
+                    for (const [k, v] of Object.entries(remote)) {
+                        await setSetting(k, v).catch((err) => logger.warn('appStore.loadSettings', `Skipped setting ${k}`, err));
+                    }
+                } catch (err) {
+                    logger.warn('appStore.loadSettings', 'Extension settings load failed; using local cache', err);
+                }
             }
             this.settings = {
                 server_base_url: (await getSetting('server_base_url')) || 'http://localhost:8080',
@@ -586,7 +612,9 @@ export const useAppStore = defineStore('app', {
                     const c = await callExtension('get_ai_consent');
                     this.aiConsent = { consented: Boolean(c?.consented), givenAt: c?.givenAt || null };
                     return;
-                } catch {}
+                } catch (err) {
+                    logger.warn('appStore.loadAiConfigs', 'Extension AI config load failed; using local cache', err);
+                }
             }
             const rows = await db.ai_configurations.toArray();
             rows.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
@@ -632,12 +660,22 @@ export const useAppStore = defineStore('app', {
 
         async clearVacancies() {
             if (this.isExtensionConnected) {
-                try { await callExtension('clear_vacancies'); } catch {}
+                try {
+                    await callExtension('clear_vacancies');
+                } catch (err) {
+                    logger.warn('appStore.clearVacancies', 'Failed clearing vacancies in extension', err);
+                    this.notify('Could not clear extension vacancies; clearing local PWA cache only.', 'warning');
+                }
             }
             const rows = await db.local_vacancies.toArray();
             let skipped = 0;
             for (const r of rows) {
-                try { await deleteVacancy(r.id); } catch { skipped++; }
+                try {
+                    await deleteVacancy(r.id);
+                } catch (err) {
+                    logger.warn('appStore.clearVacancies', 'Kept vacancy with linked application', { id: r.id, error: err?.message });
+                    skipped++;
+                }
             }
             await this.refreshDisplay();
             return skipped;
@@ -655,7 +693,9 @@ export const useAppStore = defineStore('app', {
             if (accepted) {
                 await recordAiConsent('1.0');
                 if (this.isExtensionConnected) {
-                    await callExtension('set_ai_consent', { version: '1.0' }).catch(() => {});
+                    await callExtension('set_ai_consent', { version: '1.0' }).catch((err) => {
+                            logger.warn('appStore.resolveAiConsent', 'Failed syncing AI consent to extension', err);
+                    });
                 }
                 await this.loadAiConfigs();
             }

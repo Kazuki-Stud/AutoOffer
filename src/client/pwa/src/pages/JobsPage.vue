@@ -91,6 +91,7 @@
 <script setup>
 import { reactive, ref, watchEffect } from 'vue';
 import { newId, nowIso } from '../../../extension/database/repository.js';
+import { logger } from '../services/logger.js';
 import { useAppStore } from '../stores/appStore.js';
 import { toStringArray } from '../utils/helpers.js';
 
@@ -154,26 +155,38 @@ async function onSave() {
     if (!effectiveRoles.length) return (statusMsg.value = 'Provide target roles here or in the selected profile.');
     if (!Number.isInteger(form.limit) || form.limit < 1) return (statusMsg.value = 'Page limit must be at least 1.');
 
-    await store.saveJob({
-        id: editingJobId.value || newId(),
-        title: form.title.trim() || 'Custom Job',
-        websites,
-        roles: form.roles.trim(),
-        locations: form.locations.trim(),
-        keywords: form.keywords.trim(),
-        profile_id: form.profile_id,
-        fields_mode: form.fields_mode,
-        limit: form.limit,
-        status: 'ready',
-        created_at: nowIso(),
-    });
-    resetForm();
-    statusMsg.value = 'Job saved.';
-    store.notify('Automation job saved.', 'success');
+    try {
+        await store.saveJob({
+                id: editingJobId.value || newId(),
+                title: form.title.trim() || 'Custom Job',
+                websites,
+                roles: form.roles.trim(),
+                locations: form.locations.trim(),
+                keywords: form.keywords.trim(),
+                profile_id: form.profile_id,
+                fields_mode: form.fields_mode,
+                limit: form.limit,
+                status: 'ready',
+                created_at: nowIso(),
+        });
+        resetForm();
+        statusMsg.value = 'Job saved.';
+        store.notify('Automation job saved.', 'success');
+    } catch (err) {
+        logger.error('JobsPage.onSave', err);
+        statusMsg.value = err.message;
+        store.notify(err.message, 'error');
+    }
 }
 
 async function deleteJob(j) {
     if (!confirm(`Delete job "${j.title}"?`)) return;
-    await store.removeJob(j.id);
+    try {
+        await store.removeJob(j.id);
+        store.notify('Automation job deleted.', 'info');
+    } catch (err) {
+        logger.error('JobsPage.deleteJob', err);
+        store.notify(err.message, 'error');
+    }
 }
 </script>

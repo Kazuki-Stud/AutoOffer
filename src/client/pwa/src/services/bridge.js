@@ -5,6 +5,7 @@ import {
     isSafeHttpUrl,
     optUuid,
 } from '../utils/helpers.js';
+import { logger } from './logger.js';
 
 export function getExtensionId() {
     return (localStorage.getItem('autooffer_extension_id') || '').trim();
@@ -63,9 +64,10 @@ const available = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendM
     try {
         await callExtension('get_storage_weight', {}, 2500);
         return { connected: true, text: 'Extension Paired · Ready', type: 'success' };
-    } catch {
-        return { connected: false, text: 'Extension Unreachable', type: 'error' };
-    }
+} catch (err) {
+    logger.warn('bridge.detectExtensionStatus', 'Extension unreachable', err);
+    return { connected: false, text: 'Extension Unreachable', type: 'error' };
+}
 }
 
 export function setupExtensionAutoPairing({ onPaired, isConnectedFn } = {}) {
@@ -98,7 +100,9 @@ resolve(id || null);
         window.addEventListener('message', handler);
         try {
             window.postMessage({ type: 'AUTOOFFER_DISCOVER_EXTENSION' }, window.location.origin);
-        } catch {}
+        } catch (err) {
+            logger.warn('bridge.setupExtensionAutoPairing', 'Discovery postMessage failed', err);
+        }
 
         setTimeout(() => finish(getExtensionId()), 400);
     });
@@ -108,7 +112,9 @@ export async function calculateStorageWeight(isConnected = false) {
 if (isConnected) {
 try {
 return await callExtension('get_storage_weight');
-} catch {}
+} catch (err) {
+logger.warn('bridge.calculateStorageWeight', 'Extension storage check failed; computing locally', err);
+}
 }
     try {
         const chunks = await Promise.all([
@@ -127,7 +133,8 @@ return await callExtension('get_storage_weight');
             ? `${(bytes / 1048576).toFixed(2)} MB`
             : `${Math.max(1, Math.round(bytes / 1024))} KB`;
         return { bytes, formatted };
-    } catch {
+    } catch (err) {
+        logger.error('bridge.calculateStorageWeight', err);
         return { bytes: 0, formatted: '0 KB' };
     }
 }
@@ -140,7 +147,9 @@ export async function syncApplicationsFromBridge(isConnected = false) {
                 await db.applications.clear();
                 if (remoteApps.length) await db.applications.bulkPut(remoteApps);
             }
-        } catch {}
+        } catch (err) {
+            logger.warn('bridge.syncApplicationsFromBridge', 'Failed syncing applications from extension', err);
+        }
     }
 }
 
@@ -166,7 +175,11 @@ export async function mirrorVacanciesToLocalDb(rows, { pruneRemoved = false } = 
             const platform_id = optUuid(v.platform_id);
             let host = v.source_host ? String(v.source_host).trim() : null;
             if (!platform_id && !host) {
-                try { host = new URL(v.url).hostname; } catch {}
+                try {
+                    host = new URL(v.url).hostname;
+                } catch (err) {
+                    logger.warn('bridge.mirrorVacanciesToLocalDb', 'Could not parse vacancy URL host', { url: v.url, error: err?.message });
+                }
             }
             if (!platform_id && !host) continue;
 
