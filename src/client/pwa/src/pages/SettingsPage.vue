@@ -23,6 +23,9 @@
         <div class="pwa-card">
             <div class="card-header-bar">
                 <h2>Display &amp; Accessibility Preferences</h2>
+                <span class="tag-status">
+                    {{ deviceState.deviceType }} · {{ deviceState.orientation }} · {{ deviceState.aspectRatio }} · {{ deviceState.pixelRatio }}x
+                </span>
             </div>
             <div class="sync-form-grid">
                 <div class="form-field">
@@ -38,6 +41,13 @@
                         <option value="100">100% — Default</option>
                         <option value="110">110% — Large</option>
                         <option value="120">120% — Extra Large</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="display-density">Layout Density</label>
+                    <select id="display-density" :value="store.uiDensity" class="form-select" @change="store.setUiDensity($event.target.value)">
+                        <option value="comfortable">Comfortable</option>
+                        <option value="compact">Compact</option>
                     </select>
                 </div>
             </div>
@@ -179,12 +189,14 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue';
+import { useDeviceInfo } from '../composables/useDeviceInfo.js';
 import { AI_MODEL_PRESETS } from '../models/constants.js';
 import { exportLocalBackup, importLocalBackup } from '../services/bridge.js';
 import { useAppStore } from '../stores/appStore.js';
 import { formatDate, isSafeHttpUrl } from '../utils/helpers.js';
 
 const store = useAppStore();
+const { deviceState } = useDeviceInfo();
 const aiStatus = ref('');
 const selectedPreset = ref('gpt-4o-mini');
 const aiForm = reactive({

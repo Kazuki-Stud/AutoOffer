@@ -7,10 +7,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = path.resolve(__dirname, '../../../../docs/02-technical/criteria/assets/screenshots');
 
 const VIEWPORTS = [
-{ name: 'mobile-360', width: 360, height: 780, touchCheck: true, screenshot: 'mobile-360.png' },
-{ name: 'mobile-landscape-780', width: 780, height: 360, touchCheck: true, screenshot: null },
-{ name: 'tablet-768', width: 768, height: 1024, touchCheck: true, screenshot: 'tablet-768.png' },
-{ name: 'desktop-1280', width: 1280, height: 800, touchCheck: false, screenshot: 'desktop-1280.png' },
+{ name: 'foldable-280', width: 280, height: 653, touchCheck: true, bottomNav: true, deviceAttr: 'foldable', screenshot: null },
+{ name: 'mobile-360', width: 360, height: 780, touchCheck: true, bottomNav: true, deviceAttr: 'mobile', screenshot: 'mobile-360.png' },
+{ name: 'mobile-landscape-780', width: 780, height: 360, touchCheck: true, bottomNav: false, deviceAttr: 'tablet', screenshot: null },
+{ name: 'tablet-768', width: 768, height: 1024, touchCheck: true, bottomNav: false, deviceAttr: 'tablet', screenshot: 'tablet-768.png' },
+{ name: 'desktop-1280', width: 1280, height: 800, touchCheck: false, bottomNav: false, deviceAttr: 'desktop', screenshot: 'desktop-1280.png' },
+{ name: 'ultrawide-1920', width: 1920, height: 1080, touchCheck: false, bottomNav: false, deviceAttr: 'ultrawide', screenshot: null },
 ];
 
 for (const vp of VIEWPORTS) {
@@ -19,6 +21,7 @@ await page.setViewportSize({ width: vp.width, height: vp.height });
 await page.goto('./');
 
         await expect(page.locator('.header-brand-title')).toHaveText('AutoOffer');
+        await expect(page.locator('html')).toHaveAttribute('data-device', vp.deviceAttr);
 
         const overflow = await page.evaluate(
             () => document.documentElement.scrollWidth > window.innerWidth
@@ -28,6 +31,14 @@ await page.goto('./');
         if (vp.touchCheck) {
             const navBox = await page.locator('.pwa-nav-btn').first().boundingBox();
             expect(navBox.height).toBeGreaterThanOrEqual(44);
+            const toggleBox = await page.locator('.theme-toggle-pill').boundingBox();
+            expect(toggleBox.height).toBeGreaterThanOrEqual(44);
+            expect(toggleBox.width).toBeGreaterThanOrEqual(44);
+        }
+
+        if (vp.bottomNav) {
+            const navBarBox = await page.locator('.pwa-nav').boundingBox();
+            expect(navBarBox.y + navBarBox.height).toBeGreaterThanOrEqual(vp.height - 2);
         }
 
         if (vp.screenshot) {

@@ -41,9 +41,10 @@ const SKILL_PATTERNS = KNOWN_SKILLS.map((name) => {
 
 export const useAppStore = defineStore('app', {
     state: () => ({
-        theme: localStorage.getItem('ao_theme') === 'light' ? 'light' : 'dark',
-        uiScale: Number(localStorage.getItem('ao_ui_scale')) || 100,
-        extensionId: localStorage.getItem('autooffer_extension_id') || '',
+            theme: localStorage.getItem('ao_theme') === 'light' ? 'light' : 'dark',
+            uiScale: Number(localStorage.getItem('ao_ui_scale')) || 100,
+            uiDensity: localStorage.getItem('ao_ui_density') === 'compact' ? 'compact' : 'comfortable',
+            extensionId: localStorage.getItem('autooffer_extension_id') || '',
         isExtensionConnected: false,
         syncStatusText: 'Ready',
         syncStatusType: 'normal',
@@ -127,6 +128,12 @@ export const useAppStore = defineStore('app', {
             document.documentElement.style.fontSize = `${clean}%`;
             localStorage.setItem('ao_ui_scale', String(clean));
         },
+        setUiDensity(density) {
+            const clean = density === 'compact' ? 'compact' : 'comfortable';
+            this.uiDensity = clean;
+            document.documentElement.setAttribute('data-density', clean);
+            localStorage.setItem('ao_ui_density', clean);
+        },
         resolveSourceLabel(item) {
             const plat = item.platform_id ? this.platformsMap.get(item.platform_id) : null;
             if (plat) return plat.name || plat.code;
@@ -170,6 +177,7 @@ export const useAppStore = defineStore('app', {
         async bootstrap() {
             this.setTheme(this.theme);
             this.setUiScale(this.uiScale);
+            this.setUiDensity(this.uiDensity);
             const urlExtId = new URLSearchParams(window.location.search).get('extId')?.trim();
             if (urlExtId) {
                 localStorage.setItem('autooffer_extension_id', urlExtId);
