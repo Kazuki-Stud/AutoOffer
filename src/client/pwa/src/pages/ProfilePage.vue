@@ -247,11 +247,24 @@ function newProfile() {
 }
 
 async function saveProfile() {
-    if (!profForm.first_name.trim() || !profForm.last_name.trim() || !profForm.email.trim()) {
+    const first = profForm.first_name.trim();
+    const last = profForm.last_name.trim();
+    const email = profForm.email.trim();
+    if (!first || !last || !email) {
         profStatus.value = 'First name, last name, and valid email are required.';
         return;
     }
-    try {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        profStatus.value = `Invalid email address "${email}". Enter a valid format such as user@example.com.`;
+        return;
+    }
+    const rawLinks = profForm.links.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+    const badLink = rawLinks.find((u) => !/^https?:\/\//i.test(u));
+        if (badLink) {
+            profStatus.value = `Invalid profile link "${badLink}". All links must start with http:// or https://.`;
+            return;
+        }
+        try {
         await store.saveProfile({
             profile_id: store.activeProfileId,
             create_new: !store.activeProfileId,
@@ -269,14 +282,23 @@ async function saveProfile() {
         });
         profStatus.value = 'Profile saved.';
         store.notify('Profile saved locally.', 'success');
-    } catch (err) {
-        profStatus.value = err.message;
-        store.notify(err.message, 'error');
-    }
+} catch (err) {
+    logger.error('ProfilePage.saveProfile', err);
+    profStatus.value = `Could not save profile: ${err.message}`;
+    store.notify(profStatus.value, 'error', 6000);
+}
 }
 
 async function deleteProfile() {
-    if (!store.activeProfileId || store.profiles.length <= 1) return;
+    if (!store.activeProfileId) {
+        profStatus.value = 'Select or save a profile first before deleting.';
+        return;
+    }
+    if (store.profiles.length <= 1) {
+        profStatus.value = 'Cannot delete the only profile. Create a second profile before deleting this one.';
+        store.notify(profStatus.value, 'warning');
+        return;
+    }
     if (!confirm('Delete this profile and its resumes?')) return;
     try {
         await store.removeProfile(store.activeProfileId);
@@ -305,6 +327,11 @@ function newResume() {
 async function onFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+        resStatus.value = `File "${file.name}" is too large (${(file.size / 1048576).toFixed(1)} MB). Maximum supported size is 10 MB.`;
+        store.notify(resStatus.value, 'error');
+        return;
+    }
     try {
         pendingFile.value = {
             file_name: file.name,
@@ -312,10 +339,11 @@ async function onFileChange(e) {
             file_data_b64: await fileToBase64(file),
             clear_file: false,
         };
+        resStatus.value = '';
     } catch (err) {
         logger.error('ProfilePage.onFileChange', err);
-        resStatus.value = err.message;
-        store.notify(`Could not read file: ${err.message}`, 'error');
+        resStatus.value = `Could not read "${file.name}": ${err.message}`;
+        store.notify(resStatus.value, 'error');
     }
 }
 
@@ -324,8 +352,14 @@ function clearFile() {
 }
 
 async function saveResume() {
-    if (!store.activeProfileId) return (resStatus.value = 'Save profile first.');
-    if (!resForm.title.trim()) return (resStatus.value = 'Variant title is required.');
+    if (!store.activeProfileId) {
+        resStatus.value = 'Save or select a candidate profile above before creating resume variants.';
+        return;
+    }
+    if (!resForm.title.trim()) {
+        resStatus.value = 'Variant title is required (e.g. "Backend Architecture 2026").';
+        return;
+    }
     const plain = resForm.plain_text.trim() || [resForm.title.trim(), resForm.summary.trim(), resForm.skills.trim() ? `Skills: ${resForm.skills.trim()}` : ''].filter(Boolean).join('\n\n');
     try {
         await store.saveResume(
@@ -342,14 +376,18 @@ async function saveResume() {
         pendingFile.value = null;
         resStatus.value = 'Resume variant saved.';
         store.notify('Resume variant saved.', 'success');
-    } catch (err) {
-        resStatus.value = err.message;
-        store.notify(err.message, 'error');
-    }
+} catch (err) {
+    logger.error('ProfilePage.saveResume', err);
+    resStatus.value = `Could not save resume variant: ${err.message}`;
+    store.notify(resStatus.value, 'error', 6000);
+}
 }
 
 async function deleteResume() {
-    if (!store.activeResumeId) return;
+    if (!store.activeResumeId) {
+        resStatus.value = 'Select a saved resume variant before deleting.';
+        return;
+    }
     if (!confirm('Delete this resume variant?')) return;
     try {
         await store.removeResume(store.activeResumeId);

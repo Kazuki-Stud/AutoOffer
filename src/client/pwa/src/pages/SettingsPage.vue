@@ -141,7 +141,7 @@
                 </div>
                 <div class="form-field">
                     <label for="srv-url">Server API Base URL</label>
-                    <input id="srv-url" :value="store.settings.server_base_url" type="url" @change="store.updateSetting('server_base_url', $event.target.value.trim())" />
+                    <input id="srv-url" :value="store.settings.server_base_url" type="url" @change="onServerUrlChange($event.target.value)" />
                 </div>
                 <div class="form-field">
                     <label for="sub-mode">Submission Mode</label>
@@ -216,12 +216,17 @@ function onPresetChange() {
 }
 
 async function saveAiConfig() {
-    if (!aiForm.model_name.trim()) return (aiStatus.value = 'Model name is required.');
+    if (!aiForm.model_name.trim()) {
+        aiStatus.value = 'Model name is required. Choose a preset or enter a custom model identifier.';
+        return;
+    }
     if (aiForm.provider_name !== 'local_cosine' && !isSafeHttpUrl(aiForm.api_endpoint)) {
-        return (aiStatus.value = 'Enter a valid http(s) AI endpoint URL.');
+        aiStatus.value = `Invalid AI endpoint "${aiForm.api_endpoint || ''}". Enter a full URL starting with https:// or http://.`;
+        return;
     }
     if ((aiForm.provider_name === 'openai' || aiForm.provider_name === 'gemini') && !aiForm.api_key.trim()) {
-        return (aiStatus.value = 'API key is required for remote AI providers.');
+        aiStatus.value = `An API key is required for ${aiForm.provider_name}. Paste your key or switch to Local Model / Offline Local Similarity.`;
+        return;
     }
     try {
         await store.saveAiConfig({
@@ -234,15 +239,41 @@ async function saveAiConfig() {
         aiForm.api_key = '';
         aiStatus.value = 'AI configuration saved. Key encrypted locally.';
         store.notify('AI configuration saved.', 'success');
-    } catch (err) {
-        aiStatus.value = err.message;
-        store.notify(err.message, 'error');
-    }
+} catch (err) {
+    aiStatus.value = `Could not save AI configuration: ${err.message}`;
+    store.notify(aiStatus.value, 'error', 6000);
+}
 }
 
 async function onExtIdChange() {
-    localStorage.setItem('autooffer_extension_id', store.extensionId.trim());
+    const clean = store.extensionId.trim();
+    if (clean && !/^[a-p]{32}$/.test(clean)) {
+        store.notify(
+        `Extension ID "${clean}" looks invalid (expected 32 lowercase letters a–p from chrome://extensions).`,
+            'warning',
+            6000
+        );
+    }
+    localStorage.setItem('autooffer_extension_id', clean);
     await store.runExtensionSync();
+}
+
+async function onServerUrlChange(raw) {
+    const url = String(raw || '').trim();
+    if (!isSafeHttpUrl(url)) {
+        store.notify(
+        `Invalid Server API Base URL "${url}". It must start with http:// or https:// (for example http://localhost:8080).`,
+        'error',
+        6000
+    );
+    return;
+}
+try {
+    await store.updateSetting('server_base_url', url);
+    store.notify(`Server API URL updated to ${url}.`, 'success');
+} catch (err) {
+    store.notify(`Could not save Server API URL: ${err.message}`, 'error', 6000);
+}
 }
 
 async function onImportBackup(e) {
@@ -251,9 +282,9 @@ async function onImportBackup(e) {
     try {
         await importLocalBackup(file);
         await Promise.all([store.loadSettings(), store.loadProfiles(), store.loadJobs(), store.refreshDisplay()]);
-        store.notify('Backup imported locally.', 'success');
+        store.notify(`Imported backup from "${file.name}" into local IndexedDB.`, 'success');
     } catch (err) {
-        store.notify(err.message, 'error');
+        store.notify(`Backup import failed: ${err.message}`, 'error', 6000);
     }
 }
 

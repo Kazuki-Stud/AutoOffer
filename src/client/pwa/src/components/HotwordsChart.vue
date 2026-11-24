@@ -106,7 +106,8 @@ async function loadHotwords() {
             ? `Showing top ${Math.min(rows.value.length, 15)} skills${roleName ? ` for ${roleName}` : ''}:`
             : 'No aggregated skill hotwords available for this role yet.';
 } catch (err) {
-    statusText.value = `Could not reach backend analytics: ${err.message}.`;
+    statusText.value = `Failed loading analytics from ${base}: ${err.message} Check Server API Base URL in Settings & Sync.`;
+    store.notify(statusText.value, 'error', 6000);
 } finally {
         loading.value = false;
     }

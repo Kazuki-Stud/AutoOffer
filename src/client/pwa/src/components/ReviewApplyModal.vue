@@ -226,10 +226,28 @@ function getEndpointLabel() {
     return cfg?.api_endpoint || cfg?.provider_name || 'AI Provider';
 }
 
+function formatAiError(actionLabel, err) {
+    const msg = err?.message || 'Unknown AI error';
+    if (msg.includes('API key') || msg.includes('401') || msg.includes('403')) {
+        return `${actionLabel} failed: ${msg}. Open Settings & Sync and verify your API key or switch to Offline Local Similarity.`;
+    }
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        return `${actionLabel} failed: cannot reach AI endpoint (${getEndpointLabel()}). Check the endpoint URL or ensure your local model server is running.`;
+    }
+    if (msg.includes('JSON')) {
+        return `${actionLabel} failed: AI model returned invalid JSON (${msg}). Retry or choose another model in Settings & Sync.`;
+    }
+    return `${actionLabel} failed: ${msg}`;
+}
+
 async function evaluateMatch() {
     const resume = getActiveResume();
-    if (!props.vacancy || !resume) {
-        aiStatus.value = 'Create and select a resume variant first.';
+    if (!props.vacancy) {
+        aiStatus.value = 'No vacancy selected for evaluation.';
+        return;
+    }
+    if (!resume) {
+        aiStatus.value = 'No resume variant selected. Create one in Profile & Resumes first.';
         return;
     }
     evaluating.value = true;
@@ -251,18 +269,22 @@ async function evaluateMatch() {
         }
         matchResult.value = res;
         aiStatus.value = `Match evaluated: ${res.score}%.`;
-    } catch (err) {
-        aiStatus.value = err.message;
-        store.notify(err.message, 'error');
-    } finally {
-        evaluating.value = false;
-    }
+} catch (err) {
+    aiStatus.value = formatAiError('Match evaluation', err);
+    store.notify(aiStatus.value, 'error', 6000);
+} finally {
+    evaluating.value = false;
+}
 }
 
 async function generateLetter() {
     const resume = getActiveResume();
-    if (!props.vacancy || !resume) {
-        aiStatus.value = 'Create and select a resume variant first.';
+    if (!props.vacancy) {
+        aiStatus.value = 'No vacancy selected for cover letter generation.';
+        return;
+    }
+    if (!resume) {
+        aiStatus.value = 'No resume variant selected. Create one in Profile & Resumes first.';
         return;
     }
     if (isLetterDirty.value && !confirm('You have manually edited the cover letter. Overwrite your edits?')) return;
@@ -289,12 +311,12 @@ async function generateLetter() {
         lastLoadedText.value = draft.plain_text || '';
         letterText.value = lastLoadedText.value;
         aiStatus.value = 'Cover letter generated.';
-    } catch (err) {
-        aiStatus.value = err.message;
-        store.notify(err.message, 'error');
-    } finally {
-        generating.value = false;
-    }
+} catch (err) {
+    aiStatus.value = formatAiError('Cover letter generation', err);
+    store.notify(aiStatus.value, 'error', 6000);
+} finally {
+    generating.value = false;
+}
 }
 
 async function saveLetterDraft(requireNonEmpty = false) {
@@ -330,8 +352,13 @@ async function saveLetterDraft(requireNonEmpty = false) {
 async function executeAutofill(reuseTabId = null) {
     if (!props.vacancy) return;
     if (!store.isExtensionConnected) {
-        if (isSafeHttpUrl(props.vacancy.url)) window.open(props.vacancy.url, '_blank', 'noopener,noreferrer');
-        applyStatus.value = 'Extension disconnected — opened posting in a new tab for manual submission.';
+        if (isSafeHttpUrl(props.vacancy.url)) {
+            window.open(props.vacancy.url, '_blank', 'noopener,noreferrer');
+            applyStatus.value = 'Extension not connected — opened posting in a new tab for manual application. Pair the extension in Settings & Sync to enable autofill.';
+        } else {
+            applyStatus.value = 'Cannot open application page: vacancy URL is missing or invalid.';
+            store.notify(applyStatus.value, 'error');
+        }
         return;
     }
     filling.value = true;
@@ -364,9 +391,10 @@ async function executeAutofill(reuseTabId = null) {
     } else {
         applyStatus.value = `Filled ${res.filled?.length || 0} fields, ${res.unmapped?.length || 0} unmapped. Review & confirm.`;
     }
-    } catch (err) {
-        applyStatus.value = `Autofill failed: ${err.message}`;
-    } finally {
+} catch (err) {
+    applyStatus.value = `Autofill failed on ${props.vacancy.url}: ${err.message}. Wait for the page to finish loading or reload the extension.`;
+    store.notify(applyStatus.value, 'error', 6000);
+} finally {
         filling.value = false;
     }
 }
@@ -402,9 +430,10 @@ async function confirmAndSubmit() {
         await store.refreshDisplay();
         store.notify('Application recorded as Applied!', 'success');
         emit('close');
-    } catch (err) {
-        applyStatus.value = err.message;
-    } finally {
+} catch (err) {
+    applyStatus.value = `Could not log application: ${err.message}`;
+    store.notify(applyStatus.value, 'error', 6000);
+} finally {
         submitting.value = false;
     }
 }

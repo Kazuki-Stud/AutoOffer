@@ -151,9 +151,19 @@ async function onSave() {
     const websites = Array.from(selectedUrls.value).join('\n');
     const prof = store.profiles.find((p) => p.profile_id === form.profile_id);
     const effectiveRoles = toStringArray(form.roles.trim() || prof?.roles || prof?.skills || '');
-    if (!websites) return (statusMsg.value = 'Select at least one target platform.');
-    if (!effectiveRoles.length) return (statusMsg.value = 'Provide target roles here or in the selected profile.');
-    if (!Number.isInteger(form.limit) || form.limit < 1) return (statusMsg.value = 'Page limit must be at least 1.');
+    if (!store.platforms.length) {
+        statusMsg.value = 'No platforms are loaded yet. Sync registry in the extension popup or refresh the app.';
+        return;
+    }
+    if (!websites) return (statusMsg.value = 'Select at least one target platform chip above.');
+    if (!effectiveRoles.length) {
+        statusMsg.value = 'Provide at least one target role here or configure Target Roles on the selected profile.';
+        return;
+    }
+    if (!Number.isInteger(form.limit) || form.limit < 1 || form.limit > 50) {
+        statusMsg.value = 'Page limit must be a whole number between 1 and 50.';
+        return;
+    }
 
     try {
         await store.saveJob({

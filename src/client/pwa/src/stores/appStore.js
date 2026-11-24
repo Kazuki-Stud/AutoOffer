@@ -242,8 +242,9 @@ export const useAppStore = defineStore('app', {
                 return true;
             } catch (err) {
                 logger.warn('appStore.syncVacanciesQuietly', 'Background extension sync failed', err);
-                this.syncStatusText = `Sync failed: ${err.message}`;
+                this.syncStatusText = `Auto-sync failed: ${err.message}`;
                 this.syncStatusType = 'error';
+                this.notify(`Could not auto-sync vacancies from extension: ${err.message}`, 'warning');
                 return false;
             }
         },
@@ -266,11 +267,12 @@ export const useAppStore = defineStore('app', {
                 this.syncStatusText = `Synchronized ${(rows || []).length} vacancies.`;
                 this.syncStatusType = 'success';
                 this.notify(this.syncStatusText, 'success');
-            } catch (err) {
-                this.syncStatusText = `Sync failed: ${err.message}`;
-                this.syncStatusType = 'error';
-                this.notify(this.syncStatusText, 'error');
-            }
+        } catch (err) {
+            logger.error('appStore.manualSyncFromExtension', err);
+            this.syncStatusText = `Manual sync failed: ${err.message}`;
+            this.syncStatusType = 'error';
+            this.notify(this.syncStatusText, 'error', 6000);
+        }
         },
 
         async refreshDisplay() {
@@ -311,7 +313,7 @@ export const useAppStore = defineStore('app', {
                 if (this.isExtensionConnected) {
                     await callExtension('update_application', { id: existing.id, status: newStatus }).catch((err) => {
                             logger.warn('appStore.upsertVacancyStatus', 'Extension sync failed; saved locally', err);
-                            this.notify('Status saved locally, but extension sync failed.', 'warning');
+                            this.notify(`Status saved locally, but extension sync failed: ${err.message}`, 'warning', 6000);
                     });
                 }
             } else {
@@ -338,7 +340,7 @@ export const useAppStore = defineStore('app', {
             if (this.isExtensionConnected) {
                 await callExtension('update_application', { id: appId, ...(status ? { status } : {}), ...(notes !== undefined ? { notes } : {}) }).catch((err) => {
                         logger.warn('appStore.updateApplicationStatusAndNotes', 'Extension sync failed; updated locally', err);
-                        this.notify('Changes saved locally, but extension sync failed.', 'warning');
+                        this.notify(`Changes saved locally, but extension sync failed: ${err.message}`, 'warning', 6000);
                 });
             }
             await this.refreshDisplay();
@@ -664,7 +666,7 @@ export const useAppStore = defineStore('app', {
                     await callExtension('clear_vacancies');
                 } catch (err) {
                     logger.warn('appStore.clearVacancies', 'Failed clearing vacancies in extension', err);
-                    this.notify('Could not clear extension vacancies; clearing local PWA cache only.', 'warning');
+                    this.notify(`Could not clear extension vacancies: ${err.message}. Cleared local PWA cache only.`, 'warning', 6000);
                 }
             }
             const rows = await db.local_vacancies.toArray();

@@ -12,18 +12,33 @@ export function getExtensionId() {
 }
 
 export function callExtension(action, payload = {}, timeoutMs = 3500) {
-    return new Promise((resolve, reject) => {
-        const extId = getExtensionId();
-        if (!extId || typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
-            return reject(new Error('Extension unavailable'));
-        }
-        let settled = false;
-        const timer = setTimeout(() => {
-            if (!settled) {
-                settled = true;
-                reject(new Error(`Extension timeout (${action})`));
-            }
-        }, timeoutMs);
+return new Promise((resolve, reject) => {
+if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+return reject(
+new Error(
+'Chrome extension API is unavailable. Open this PWA in Chrome/Chromium on an allowed origin to connect the extension.'
+)
+);
+}
+const extId = getExtensionId();
+if (!extId) {
+return reject(
+new Error(
+'Chrome Extension ID is missing. Copy it from the extension popup and paste it in Settings & Sync.'
+)
+);
+}
+let settled = false;
+const timer = setTimeout(() => {
+if (!settled) {
+settled = true;
+reject(
+new Error(
+`Extension timed out after ${timeoutMs}ms during "${action}". Reload the AutoOffer extension at chrome://extensions and retry.`
+)
+);
+}
+}, timeoutMs);
 
         try {
             chrome.runtime.sendMessage(extId, { action, ...payload }, (response) => {
@@ -31,11 +46,22 @@ export function callExtension(action, payload = {}, timeoutMs = 3500) {
                 settled = true;
                 clearTimeout(timer);
                 if (chrome.runtime.lastError) {
-                    return reject(new Error(chrome.runtime.lastError.message));
+                    const raw = chrome.runtime.lastError.message || 'Unknown extension runtime error';
+                    const msg = raw.includes('Receiving end does not exist')
+                        ? `Cannot reach extension "${extId}": it may be disabled, uninstalled, or the Extension ID in Settings & Sync is incorrect.`
+                        : `Extension communication failed (${action}): ${raw}`;
+                    return reject(new Error(msg));
                 }
-                if (!response || response.status === 'error') {
-                    const err = new Error(response?.message || 'Extension returned an error');
-                    if (response?.code) err.code = response.code;
+                if (!response) {
+                    return reject(
+                        new Error(
+                            `Extension returned no response for "${action}". Reload the extension service worker and try again.`
+                        )
+                    );
+                }
+                if (response.status === 'error') {
+                    const err = new Error(response.message || `Extension action "${action}" failed.`);
+                    if (response.code) err.code = response.code;
                     return reject(err);
                 }
                 resolve(response.data);
@@ -44,7 +70,7 @@ export function callExtension(action, payload = {}, timeoutMs = 3500) {
             if (!settled) {
                 settled = true;
                 clearTimeout(timer);
-                reject(err);
+                reject(new Error(`Failed sending "${action}" to extension: ${err.message}`));
             }
         }
     });
@@ -66,7 +92,11 @@ const available = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendM
         return { connected: true, text: 'Extension Paired · Ready', type: 'success' };
 } catch (err) {
     logger.warn('bridge.detectExtensionStatus', 'Extension unreachable', err);
-    return { connected: false, text: 'Extension Unreachable', type: 'error' };
+    return {
+        connected: false,
+        text: `Extension Unreachable: ${err.message}`,
+        type: 'error',
+    };
 }
 }
 
@@ -276,13 +306,22 @@ export async function exportLocalBackup() {
 }
 
 export async function importLocalBackup(file) {
-    const parsed = JSON.parse(await file.text());
-    if (!parsed?.tables) throw new Error('Invalid backup format');
-    await db.transaction('rw', db.tables, async () => {
+    let parsed;
+    try {
+        parsed = JSON.parse(await file.text());
+    } catch (err) {
+        throw new Error(`Backup file "${file.name}" is not valid JSON: ${err.message}`);
+    }
+    if (!parsed || typeof parsed !== 'object' || !parsed.tables || typeof parsed.tables !== 'object') {
+        throw new Error(
+        `Backup file "${file.name}" is missing the "tables" object. Export a new backup from Settings & Sync and retry.`
+    );
+}
+await db.transaction('rw', db.tables, async () => {
         for (const [name, rows] of Object.entries(parsed.tables)) {
             if (BACKUP_EXCLUDED_TABLES.has(name) || !Array.isArray(rows)) continue;
             const table = db.tables.find((t) => t.name === name);
             if (table) await table.bulkPut(rows);
         }
-    });
+});
 }
