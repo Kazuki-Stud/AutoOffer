@@ -36,7 +36,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { db } from '../../../extension/database/database.js';
 import { useDeviceInfo } from '../composables/useDeviceInfo.js';
 import { requestJson } from '../services/httpClient.js';
@@ -72,32 +72,48 @@ function formatLabel(row) {
     return raw.length > limit ? `${raw.slice(0, limit - 2)}…` : raw;
 }
 
-async function populatePositions() {
+function isLocalhostHttpFromHttps(url) {
+    return (
+        typeof window !== 'undefined' &&
+        window.location?.protocol === 'https:' &&
+        /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url)
+    );
+}
+
+async function populatePositions({ allowNetwork = false } = {}) {
+    const localRows = await db.positions_dict.toArray().catch((err) => {
+        logger.warn('HotwordsChart.populatePositions', 'Failed reading local positions_dict', err);
+        return [];
+    });
+    if (localRows.length) {
+        positions.value = localRows;
+    }
+
     const base = (store.settings.server_base_url || 'http://localhost:8080').replace(/\/+$/, '');
+    const shouldFetch = allowNetwork || (!localRows.length && !isLocalhostHttpFromHttps(base));
+    if (!shouldFetch) return;
+
     try {
         const boot = await requestJson(`${base}/api/dictionaries/bootstrap`, {}, { timeoutMs: 3500, notifyOnError: false });
         if (Array.isArray(boot?.positions) && boot.positions.length) {
             positions.value = boot.positions;
-            return;
         }
-} catch (err) {
-    logger.warn('HotwordsChart.populatePositions', 'Backend dictionary unreachable; using local cache', err);
-}
-positions.value = await db.positions_dict.toArray().catch((err) => {
-        logger.warn('HotwordsChart.populatePositions', 'Failed reading local positions_dict', err);
-        return [];
-});
+    } catch (err) {
+        logger.warn('HotwordsChart.populatePositions', 'Backend dictionary unreachable; using local cache', err);
+    }
 }
 
 async function loadHotwords() {
     const base = (store.settings.server_base_url || 'http://localhost:8080').replace(/\/+$/, '');
-    const posId = selectedPositionId.value;
-    const roleName = positions.value.find((p) => p.id === posId)?.name || '';
-    const qs = posId ? `?positionId=${encodeURIComponent(posId)}` : '';
-
     loading.value = true;
     statusText.value = 'Loading skill demand...';
     rows.value = [];
+
+    await populatePositions({ allowNetwork: true });
+
+    const posId = selectedPositionId.value;
+    const roleName = positions.value.find((p) => p.id === posId)?.name || '';
+    const qs = posId ? `?positionId=${encodeURIComponent(posId)}` : '';
 
     try {
         let data = await requestJson(`${base}/api/skills/hotwords${qs}`, {}, { timeoutMs: 5000, notifyOnError: false });
@@ -123,7 +139,16 @@ async function loadHotwords() {
     }
 }
 
+watch(
+() => store.loading,
+(busy) => {
+if (!busy && !positions.value.length) {
+populatePositions({ allowNetwork: false }).catch(() => {});
+}
+}
+);
+
 onMounted(() => {
-        populatePositions().catch((err) => logger.warn('HotwordsChart.onMounted', 'Failed loading positions', err));
+populatePositions({ allowNetwork: false }).catch((err) => logger.warn('HotwordsChart.onMounted', 'Failed loading positions', err));
 });
 </script>

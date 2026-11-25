@@ -42,7 +42,8 @@ watch(
             await nextTick();
             modalCard.value?.focus();
         }
-    }
+    },
+    { immediate: true }
 );
 
 function onKey(e) {

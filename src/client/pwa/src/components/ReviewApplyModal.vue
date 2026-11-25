@@ -176,7 +176,8 @@ watch(
         if (!store.profileResumes.length) await store.loadResumes();
         selectedResumeId.value = store.activeResumeId || store.profileResumes[0]?.id || '';
         await loadStateForResume();
-    }
+    },
+    { immediate: true }
 );
 
 async function loadStateForResume() {

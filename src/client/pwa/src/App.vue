@@ -8,30 +8,33 @@
             </ErrorBoundary>
         </main>
         <VacancyModal
-            :vacancy="store.selectedVacancyForModal"
-            @close="store.selectedVacancyForModal = null"
-            @review-apply="openReviewApply"
+        v-if="store.selectedVacancyForModal"
+        :vacancy="store.selectedVacancyForModal"
+        @close="store.selectedVacancyForModal = null"
+        @review-apply="openReviewApply"
         />
         <ReviewApplyModal
-            :vacancy="store.reviewApplyVacancy"
-            @close="store.reviewApplyVacancy = null"
+        v-if="store.reviewApplyVacancy"
+        :vacancy="store.reviewApplyVacancy"
+        @close="store.reviewApplyVacancy = null"
         />
-        <AiConsentModal />
+        <AiConsentModal v-if="store.consentRequest" />
         <ToastContainer />
     </div>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted } from 'vue';
-import AiConsentModal from './components/AiConsentModal.vue';
+import { defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import ErrorBoundary from './components/ErrorBoundary.vue';
-import ReviewApplyModal from './components/ReviewApplyModal.vue';
 import ToastContainer from './components/ToastContainer.vue';
-import VacancyModal from './components/VacancyModal.vue';
 import { useDeviceInfo } from './composables/useDeviceInfo.js';
 import { registerGlobalHttpErrorHandler } from './services/httpClient.js';
 import { useAppStore } from './stores/appStore.js';
+
+const VacancyModal = defineAsyncComponent(() => import('./components/VacancyModal.vue'));
+const ReviewApplyModal = defineAsyncComponent(() => import('./components/ReviewApplyModal.vue'));
+const AiConsentModal = defineAsyncComponent(() => import('./components/AiConsentModal.vue'));
 
 const store = useAppStore();
 useDeviceInfo();
