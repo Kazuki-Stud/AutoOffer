@@ -55,10 +55,9 @@ Build a layered **Spring Boot 4.1.2 (Java 26)** backend backed by **PostgreSQL 1
 docs/
 ├── api/
 │   └── openapi.yaml                              # OpenAPI 3.1.0 contract (200/201/202/204/4xx, ErrorResponseBody)
-├── 02-technical/
-│   └── backend.md                                # This ADR & criteria report
-└── criteria/
-    └── database-dictionary.md                    # OLTP/OLAP/IndexedDB data dictionary
+└── 02-technical/
+├── backend.md                                # This ADR & criteria report
+└── assets/db/database-dictionary.md          # OLTP/OLAP/IndexedDB data dictionary
 src/server/AutoOffer/
 ├── Dockerfile                                    # Multi-stage Temurin 26 JDK/JRE non-root build (SerialGC, low RAM)
 ├── docker-compose.yml                            # App, Postgres, ClickHouse, Redis, Prometheus, Alertmanager, Loki, Promtail, Grafana
@@ -220,7 +219,7 @@ Legend: ✅ Fully implemented · ⚠️ Partially implemented / needs verificati
 
 - **Repository API & Database Docs:**
   - `docs/api/openapi.yaml`
-  - `docs/criteria/database-dictionary.md`
+  - `docs/02-technical/assets/db/database-dictionary.md`
   - `.github/workflows/ci-cd.yml`
   - `src/server/AutoOffer/build.gradle`
   - `src/server/AutoOffer/docker-compose.yml`

@@ -192,9 +192,9 @@ export async function createApplication({ profile_id, vacancy_id, resume_id = nu
 
 ### Diagrams
 
-* [Multi-DBMS Architecture, OLAP Data Flow & Logical ER Diagrams](../../criteria/assets/diagrams/db-diagrams.md)
-* [Complete Auto-Scraped Data Dictionary](../../criteria/database-dictionary.md)
-* [Live Database Verification Output (PostgreSQL Grants & ClickHouse Tables)](../../criteria/database-live-verification.txt)
+* [Multi-DBMS Architecture, OLAP Data Flow & Logical ER Diagrams](assets/diagrams/db-diagrams.md)
+* [Complete Auto-Scraped Data Dictionary](assets/db/database-dictionary.md)
+* [Live Database Verification Output (PostgreSQL Grants & ClickHouse Tables)](../criteria/database-live-verification.txt)
 
 ---
 
