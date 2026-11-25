@@ -176,10 +176,18 @@
             <div class="sync-actions-bar">
                 <button type="button" class="primary-btn" @click="store.manualSyncFromExtension(syncOpts)">Download / Sync Data</button>
                 <button type="button" class="secondary-btn" @click="exportLocalBackup">Export Local Backup</button>
-                <label class="secondary-btn ao-nav-link">
+                <button type="button" class="secondary-btn" @click="backupFileInput?.click()">
                     Import Backup
-                    <input type="file" accept="application/json" class="ao-hidden-input" @change="onImportBackup" />
-                </label>
+                </button>
+                <input
+                ref="backupFileInput"
+                type="file"
+                accept="application/json"
+                class="ao-hidden-input"
+                tabindex="-1"
+                aria-hidden="true"
+                @change="onImportBackup"
+                />
                 <button type="button" class="clear-button" @click="clearStored">Clear Stored Vacancies</button>
                 <span class="sync-status-indicator" :class="store.syncStatusType">{{ store.syncStatusText }}</span>
             </div>
@@ -197,6 +205,7 @@ import { formatDate, isSafeHttpUrl } from '../utils/helpers.js';
 
 const store = useAppStore();
 const { deviceState } = useDeviceInfo();
+const backupFileInput = ref(null);
 const aiStatus = ref('');
 const selectedPreset = ref('gpt-4o-mini');
 const aiForm = reactive({

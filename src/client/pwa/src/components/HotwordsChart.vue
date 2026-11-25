@@ -18,15 +18,15 @@
         <div class="status-msg">{{ statusText }}</div>
         <div v-if="loading" class="ao-skeleton ao-section-spaced"></div>
         <div v-else-if="chartRows.length" class="hotwords-chart-wrap" aria-live="polite">
-            <svg :viewBox="`0 0 640 ${svgHeight}`" class="hotwords-svg" role="img" aria-label="Skill demand frequency bar chart">
+            <svg :viewBox="`0 0 ${chartLayout.width} ${svgHeight}`" class="hotwords-svg" role="img" aria-label="Skill demand frequency bar chart">
                 <g v-for="(row, idx) in chartRows" :key="`${row.skillName}-${idx}`">
                     <text x="4" :y="idx * 32 + 23" fill="currentColor" font-size="12" font-weight="600">
                         <title>{{ row.skillName }} · {{ row.positionName || 'All' }}: {{ row.vacancyCount }} vacancies</title>
                         {{ formatLabel(row) }}
                     </text>
-                    <rect x="175" :y="idx * 32 + 10" width="384" height="18" rx="4" fill="rgba(148, 163, 184, 0.16)" />
-                    <rect x="175" :y="idx * 32 + 10" :width="barWidth(row.vacancyCount)" height="18" rx="4" fill="var(--color-primary, #3b82f6)" />
-                    <text x="569" :y="idx * 32 + 23" fill="var(--text-secondary, #94a3b8)" font-size="12" font-weight="600">
+                    <rect :x="chartLayout.barX" :y="idx * 32 + 10" :width="chartLayout.barMax" height="18" rx="4" fill="rgba(148, 163, 184, 0.16)" />
+                    <rect :x="chartLayout.barX" :y="idx * 32 + 10" :width="barWidth(row.vacancyCount)" height="18" rx="4" fill="var(--color-primary, #3b82f6)" />
+                    <text :x="chartLayout.countX" :y="idx * 32 + 23" fill="var(--text-secondary, #94a3b8)" font-size="12" font-weight="600">
                         {{ row.vacancyCount }}
                     </text>
                 </g>
@@ -38,28 +38,38 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { db } from '../../../extension/database/database.js';
+import { useDeviceInfo } from '../composables/useDeviceInfo.js';
 import { requestJson } from '../services/httpClient.js';
 import { logger } from '../services/logger.js';
 import { useAppStore } from '../stores/appStore.js';
 
 const store = useAppStore();
+const { deviceState } = useDeviceInfo();
 const positions = ref([]);
 const selectedPositionId = ref('');
 const rows = ref([]);
 const loading = ref(false);
 const statusText = ref('Select a role and click "Load Analytics" to query public skill demand.');
 
+const isNarrowChart = computed(() => deviceState.width <= 680);
+const chartLayout = computed(() =>
+    isNarrowChart.value
+    ? { width: 340, barX: 118, barMax: 176, countX: 302, maxChars: 15 }
+    : { width: 640, barX: 175, barMax: 384, countX: 569, maxChars: 25 }
+);
+
 const chartRows = computed(() => rows.value.slice(0, 15));
 const maxCount = computed(() => Math.max(...chartRows.value.map((r) => Number(r.vacancyCount) || 0), 1));
 const svgHeight = computed(() => chartRows.value.length * 32 + 12);
 
 function barWidth(cnt) {
-    return Math.max(4, Math.round(((Number(cnt) || 0) / maxCount.value) * 384));
+    return Math.max(4, Math.round(((Number(cnt) || 0) / maxCount.value) * chartLayout.value.barMax));
 }
 
 function formatLabel(row) {
     const raw = row.positionName && !selectedPositionId.value ? `${row.skillName} · ${row.positionName}` : row.skillName;
-    return raw.length > 25 ? `${raw.slice(0, 23)}…` : raw;
+    const limit = chartLayout.value.maxChars;
+    return raw.length > limit ? `${raw.slice(0, limit - 2)}…` : raw;
 }
 
 async function populatePositions() {

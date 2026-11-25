@@ -71,10 +71,19 @@ await page.goto('./');
     await page.getByRole('button', { name: 'Toggle theme' }).click();
     await expect(html).toHaveAttribute('data-theme', 'light');
 
+    await page.getByRole('link', { name: 'Vacancies', exact: true }).click();
+    await page.getByRole('button', { name: 'List', exact: true }).click();
+    const listOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth
+    );
+    expect(listOverflow).toBe(false);
+
     await page.getByRole('link', { name: 'Settings & Sync', exact: true }).click();
     await page.locator('#display-scale').selectOption('120');
     const rootFontSize = await page.evaluate(() => document.documentElement.style.fontSize);
     expect(rootFontSize).toBe('120%');
+    await page.locator('#display-density').selectOption('compact');
+    await expect(html).toHaveAttribute('data-density', 'compact');
 
     await page.getByRole('link', { name: 'Profile & Resumes', exact: true }).click();
     await expect(page).toHaveURL(/#\/profile/);

@@ -53,6 +53,7 @@ src/client/pwa/
 │   └── pwa.spec.js              # Multi-viewport E2E & Adaptive UI verification
 ├── tests/
 │   ├── pwa.spec.js              # Real-backend & real-DOM unit tests (6 specs)
+│   ├── components.spec.js       # Offline component & page unit tests (4 specs)
 │   └── integration.spec.js      # Real-IndexedDB & Router integration tests (4 specs)
 └── src/
     ├── main.js                  # App bootstrap, Pinia, Router, SW registration
@@ -209,7 +210,7 @@ flowchart LR
 | 8 | Centralized HTTP handling, global error boundary, toasts, skeleton loading states | ✅ | `httpClient.js`, `ErrorBoundary.vue`, `ToastContainer.vue`, `.ao-skeleton` across views |
 | 9 | Forms with validation, tables/lists, search/filter/sort | ✅ | `ProfilePage.vue`, `JobsPage.vue`, `SettingsPage.vue`, `VacanciesPage.vue`, `ApplicationsPage.vue` |
 | 10 | ESLint + Prettier + logging | ✅ | `eslint.config.js`, `.prettierrc`, `src/services/logger.js` |
-| 11 | Unit tests (≥ 3 components/services) + Integration/E2E tests | ✅ | `tests/pwa.spec.js` (6 unit specs), `tests/integration.spec.js` (4 specs), `e2e/pwa.spec.js` (7 specs) |
+| 11 | Unit tests (≥ 3 components/services) + Integration/E2E tests | ✅ | `tests/pwa.spec.js` (6 specs), `tests/components.spec.js` (4 specs), `tests/integration.spec.js` (4 specs), `e2e/pwa.spec.js` (7 specs) |
 | 12 | Lighthouse ≥ 90 benchmark report | ⚠️ | Code splitting & SW configured; benchmark score to be captured on deployed GitHub Pages build |
 
 ## Known Limitations
