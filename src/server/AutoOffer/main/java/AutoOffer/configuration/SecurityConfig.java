@@ -1,12 +1,18 @@
 package AutoOffer.configuration;
 
+import AutoOffer.exception.ErrorCode;
 import AutoOffer.security.AdminJwtFilter;
 import AutoOffer.security.DeviceTokenAuthFilter;
+import AutoOffer.security.SecurityConstants;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -22,16 +28,21 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.io.IOException;
+import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final CorrelationIdFilter correlationIdFilter;
     private final DeviceTokenAuthFilter deviceTokenAuthFilter;
     private final AdminJwtFilter adminJwtFilter;
+    private final ObjectProvider<ObjectMapper> objectMapperProvider;
 
     @Value("${app.cors.allowed-origins:*}")
     private String allowedOrigins;
@@ -55,14 +66,34 @@ public class SecurityConfig {
                                 "/api/analytics/**"
                         ).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/removal-requests").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/vacancies/**", "/api/selectors/**").hasRole("DEVICE")
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/vacancies/**", "/api/selectors/**").hasRole(SecurityConstants.ROLE_DEVICE_SHORT)
+                        .requestMatchers("/api/admin/**").hasRole(SecurityConstants.ROLE_ADMIN_SHORT)
                         .anyRequest().authenticated()
-                )
-                .addFilterBefore(deviceTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(adminJwtFilter, DeviceTokenAuthFilter.class)
-                .build();
-    }
+                    )
+                    .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((req, res, authEx) ->
+                            writeErrorJson(res, HttpServletResponse.SC_UNAUTHORIZED, ErrorCode.UNAUTHORIZED, "Authentication required"))
+                        .accessDeniedHandler((req, res, accessEx) ->
+                            writeErrorJson(res, HttpServletResponse.SC_FORBIDDEN, ErrorCode.FORBIDDEN, "Access denied"))
+                    )
+                    .addFilterBefore(deviceTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                    .addFilterBefore(correlationIdFilter, DeviceTokenAuthFilter.class)
+                    .addFilterAfter(adminJwtFilter, DeviceTokenAuthFilter.class)
+                    .build();
+                }
+
+                private void writeErrorJson(HttpServletResponse res, int status, ErrorCode code, String message) throws IOException {
+                    res.setStatus(status);
+                    res.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    ObjectMapper mapper = objectMapperProvider.getIfAvailable(ObjectMapper::new);
+                    mapper.writeValue(res.getOutputStream(), Map.of(
+                            "timestamp", OffsetDateTime.now().toString(),
+                            "status", status,
+                            "code", code.name(),
+                            "message", message,
+                            "details", Map.of()
+                    ));
+                }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {

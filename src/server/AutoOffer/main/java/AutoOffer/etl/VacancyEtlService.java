@@ -21,6 +21,14 @@ import java.util.*;
 public class VacancyEtlService {
 
     private static final String PIPELINE = "vacancies_to_clickhouse";
+private static final String STATUS_RUNNING = "running";
+private static final String STATUS_SUCCESS = "success";
+private static final String STATUS_FAILED = "failed";
+private static final String TABLE_RAW = "raw_vacancies";
+private static final String TABLE_STAGING = "stg_vacancies";
+private static final String DEFAULT_UNSPECIFIED = "Unspecified";
+private static final String DEFAULT_UNKNOWN = "Unknown";
+private static final String DEFAULT_REGION = "OTHER";
 
     private static final Map<String, Double> FX_TO_EUR = Map.of(
             "EUR", 1.0,
@@ -77,52 +85,56 @@ public class VacancyEtlService {
     public EtlRunResult runIncremental() {
         UUID batchId = UUID.randomUUID();
         UUID runId = pg.queryForObject("""
-                INSERT INTO autooffer.etl_runs (pipeline_name, status)
-                VALUES (:p, 'running') RETURNING id
-                """, new MapSqlParameterSource("p", PIPELINE), UUID.class);
+            INSERT INTO autooffer.etl_runs (pipeline_name, status)
+            VALUES (:p, :st) RETURNING id
+            """, new MapSqlParameterSource().addValue("p", PIPELINE).addValue("st", STATUS_RUNNING), UUID.class);
 
-        try {
-            OffsetDateTime watermark = pg.queryForObject(
-                    "SELECT last_synced_at FROM autooffer.etl_watermark WHERE pipeline_name = :p",
-                    new MapSqlParameterSource("p", PIPELINE),
-                    OffsetDateTime.class);
+    try {
+        OffsetDateTime watermark = pg.queryForObject(
+            "SELECT last_synced_at FROM autooffer.etl_watermark WHERE pipeline_name = :p",
+            new MapSqlParameterSource("p", PIPELINE),
+            OffsetDateTime.class);
 
-            List<RawVacancyRow> rawRows = extractFromPostgres(batchId, watermark);
-            if (rawRows.isEmpty()) {
-                finishRun(runId, "success", 0, 0, 0, null);
-                return new EtlRunResult(runId, 0, 0, 0, "success");
-            }
-
-            List<StgVacancyRow> stgRows = new ArrayList<>();
-            int rejected = 0;
-            OffsetDateTime maxUpdatedAt = watermark;
-
-            for (RawVacancyRow raw : rawRows) {
-                OffsetDateTime rowUpd = OffsetDateTime.parse(raw.updated_at());
-                if (rowUpd.isAfter(maxUpdatedAt)) maxUpdatedAt = rowUpd;
-                StgVacancyRow stg = transform(raw);
-                if (stg.is_quality_ok() == 0) rejected++;
-                stgRows.add(stg);
-            }
-
-            clickHouse.insertJsonEachRow("raw_vacancies", rawRows);
-            clickHouse.insertJsonEachRow("stg_vacancies", stgRows);
-
-            pg.update("""
-                    UPDATE autooffer.etl_watermark
-                       SET last_synced_at = :ts, updated_at = now()
-                     WHERE pipeline_name = :p
-                    """, new MapSqlParameterSource().addValue("ts", maxUpdatedAt).addValue("p", PIPELINE));
-
-            finishRun(runId, "success", rawRows.size(), stgRows.size(), rejected, null);
-            log.info("ETL batch {} completed: extracted={}, loaded={}, qualityRejected={}",
-                    batchId, rawRows.size(), stgRows.size(), rejected);
-            return new EtlRunResult(runId, rawRows.size(), stgRows.size(), rejected, "success");
-        } catch (Exception ex) {
-            log.error("ETL run {} failed", runId, ex);
-            finishRun(runId, "failed", 0, 0, 0, ex.getMessage());
-            throw ex;
+        List<RawVacancyRow> rawRows = extractFromPostgres(batchId, watermark);
+        if (rawRows.isEmpty()) {
+            finishRun(runId, STATUS_SUCCESS, 0, 0, 0, null);
+            return new EtlRunResult(runId, 0, 0, 0, STATUS_SUCCESS);
         }
+
+        List<StgVacancyRow> stgRows = new ArrayList<>();
+        int rejected = 0;
+        OffsetDateTime maxUpdatedAt = watermark;
+
+        for (RawVacancyRow raw : rawRows) {
+            OffsetDateTime rowUpd = OffsetDateTime.parse(raw.updated_at());
+            if (rowUpd.isAfter(maxUpdatedAt)) {
+                maxUpdatedAt = rowUpd;
+            }
+            StgVacancyRow stg = transform(raw);
+            if (stg.is_quality_ok() == 0) {
+                rejected++;
+            }
+            stgRows.add(stg);
+        }
+
+        clickHouse.insertJsonEachRow(TABLE_RAW, rawRows);
+        clickHouse.insertJsonEachRow(TABLE_STAGING, stgRows);
+
+        pg.update("""
+            UPDATE autooffer.etl_watermark
+            SET last_synced_at = :ts, updated_at = now()
+            WHERE pipeline_name = :p
+            """, new MapSqlParameterSource().addValue("ts", maxUpdatedAt).addValue("p", PIPELINE));
+
+    finishRun(runId, STATUS_SUCCESS, rawRows.size(), stgRows.size(), rejected, null);
+    log.info("ETL batch {} completed: extracted={}, loaded={}, qualityRejected={}",
+        batchId, rawRows.size(), stgRows.size(), rejected);
+    return new EtlRunResult(runId, rawRows.size(), stgRows.size(), rejected, STATUS_SUCCESS);
+} catch (Exception ex) {
+    log.error("ETL run {} failed", runId, ex);
+    finishRun(runId, STATUS_FAILED, 0, 0, 0, ex.getMessage());
+    throw ex;
+}
     }
 
     public void rebuildSkillDemandMart() {
@@ -227,17 +239,17 @@ public class VacancyEtlService {
         int qualityOk = (r.platform_code() != null && validSalaryOrder) ? 1 : 0;
 
         return new StgVacancyRow(
-                r.vacancy_id(), r.platform_code(), r.storage_level(),
-                coalesce(r.position_name(), "Unspecified"),
-                coalesce(r.company_name(), "Unknown"),
-                coalesce(r.country_name(), "Unknown"),
-                coalesce(r.region_name(), "OTHER"),
-                eurFrom, eurTo, eurMid,
-                coalesce(r.level_name(), "Unspecified"),
-                coalesce(r.work_format(), "Unspecified"),
-                coalesce(r.employment_type(), "Unspecified"),
-                r.submission_count(), r.is_active(), qualityOk, r.skills(),
-                r.created_at(), r.updated_at()
+            r.vacancy_id(), r.platform_code(), r.storage_level(),
+            coalesce(r.position_name(), DEFAULT_UNSPECIFIED),
+            coalesce(r.company_name(), DEFAULT_UNKNOWN),
+            coalesce(r.country_name(), DEFAULT_UNKNOWN),
+            coalesce(r.region_name(), DEFAULT_REGION),
+            eurFrom, eurTo, eurMid,
+            coalesce(r.level_name(), DEFAULT_UNSPECIFIED),
+            coalesce(r.work_format(), DEFAULT_UNSPECIFIED),
+            coalesce(r.employment_type(), DEFAULT_UNSPECIFIED),
+            r.submission_count(), r.is_active(), qualityOk, r.skills(),
+            r.created_at(), r.updated_at()
         );
     }
 

@@ -1,8 +1,12 @@
 package AutoOffer.entity.view;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import org.hibernate.annotations.Immutable;
+import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -10,7 +14,8 @@ import java.util.UUID;
 @Immutable
 @Table(name = "v_registry_selectors", schema = "autooffer")
 @Getter
-public class RegistrySelectorView {
+public class RegistrySelectorView implements Serializable {
+private static final long serialVersionUID = 1L;
     @Id
     private UUID id;
     @Column(name = "platform_code")     private String platformCode;

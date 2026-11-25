@@ -9,18 +9,12 @@ servers:
 tags:
 - name: Admin Selectors
   description: Selector review workflow (US 2.4)
-- name: Dictionaries & Skills
-  description: Reference dictionaries & skill hotwords (E6)
 - name: Devices
   description: Pseudonymous client registration (US 7.1)
 - name: Registry
   description: "Approved selectors & platform whitelist (US 1.1, US 2.1)"
-- name: Admin GDPR Removals
-  description: Process Art. 17 removal requests
-- name: Admin Platforms
-  description: "Whitelist permission management (BA 2.8, R7)"
-- name: Admin Auth
-  description: Registry administrator authentication
+- name: Health
+  description: Service health check
 - name: Admin Verification
   description: Verify community dictionaries and vacancies
 - name: OLAP Analytics & ETL
@@ -29,6 +23,14 @@ tags:
   description: Anonymous Art. 17 removal requests (BA 2.8)
 - name: Vacancies
   description: Public vacancy registry & ingestion (US 1.3)
+- name: Dictionaries & Skills
+  description: Reference dictionaries & skill hotwords (E6)
+- name: Admin GDPR Removals
+  description: Process Art. 17 removal requests
+- name: Admin Platforms
+  description: "Whitelist permission management (BA 2.8, R7)"
+- name: Admin Auth
+  description: Registry administrator authentication
 - name: Selectors
   description: "Community selector submission (US 2.3, US 2.4)"
 paths:
@@ -44,6 +46,8 @@ paths:
         required: false
         schema:
           type: string
+          maxLength: 50
+          minLength: 0
       - name: pageable
         in: query
         required: true
@@ -51,9 +55,9 @@ paths:
           $ref: "#/components/schemas/Pageable"
       responses:
         "200":
-          description: OK
+          description: Paginated active vacancies
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageVacancyFullView"
     post:
@@ -69,14 +73,23 @@ paths:
         required: true
       responses:
         "200":
-          description: OK
+          description: Vacancy upserted
           content:
-            '*/*':
+            application/json:
               schema:
-                type: object
-                additionalProperties:
-                  type: string
-                  format: uuid
+                $ref: "#/components/schemas/IdResponse"
+        "400":
+          description: Validation or policy violation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
+        "401":
+          description: Device authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/selectors:
@@ -92,15 +105,24 @@ paths:
               $ref: "#/components/schemas/SubmitSelectorRequest"
         required: true
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Pending selector created
           content:
-            '*/*':
+            application/json:
               schema:
-                type: object
-                additionalProperties:
-                  type: string
-                  format: uuid
+                $ref: "#/components/schemas/IdResponse"
+        "400":
+          description: Invalid or unsafe selector
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
+        "401":
+          description: Device authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/removal-requests:
@@ -116,14 +138,18 @@ paths:
               $ref: "#/components/schemas/CreateRemovalRequest"
         required: true
       responses:
-        "200":
-          description: OK
+        "202":
+          description: Removal request accepted for review
           content:
-            '*/*':
+            application/json:
               schema:
-                type: object
-                additionalProperties:
-                  type: object
+                $ref: "#/components/schemas/RemovalRequestSubmittedResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
   /api/devices/register:
     post:
       tags:
@@ -137,12 +163,18 @@ paths:
               $ref: "#/components/schemas/DeviceRegisterRequest"
         required: true
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Device registered or bearer token rotated
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/DeviceRegisterResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
   /api/admin/vacancies/{id}/verify:
     post:
       tags:
@@ -157,8 +189,14 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Vacancy verified
+        "404":
+          description: Vacancy not found
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/admin/skills/{id}/verify:
@@ -175,8 +213,14 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Skill verified
+        "404":
+          description: Skill not found
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/admin/selectors/{id}/reject:
@@ -198,8 +242,14 @@ paths:
             schema:
               $ref: "#/components/schemas/ReviewCommentRequest"
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Selector rejected
+        "404":
+          description: Selector not found or not pending
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/admin/selectors/{id}/approve:
@@ -221,8 +271,14 @@ paths:
             schema:
               $ref: "#/components/schemas/ReviewCommentRequest"
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Selector approved and activated
+        "404":
+          description: Selector not found
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/admin/removal-requests/{id}/process:
@@ -245,8 +301,20 @@ paths:
               $ref: "#/components/schemas/ProcessRemovalRequest"
         required: true
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Removal request processed
+        "404":
+          description: Removal request not found
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
+        "409":
+          description: Removal request already processed
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/admin/positions/{id}/verify:
@@ -263,8 +331,14 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Position verified
+        "404":
+          description: Position not found
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/admin/etl/run:
@@ -275,9 +349,9 @@ paths:
       operationId: triggerEtl
       responses:
         "200":
-          description: OK
+          description: ETL run completed
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/EtlRunResult"
       security:
@@ -289,8 +363,8 @@ paths:
       summary: Rebuild dm_skill_demand from stg_vacancies FINAL (ROLE_ADMIN)
       operationId: rebuildMart
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Data mart rebuilt
       security:
       - bearerAuth: []
   /api/admin/companies/{id}/verify:
@@ -307,8 +381,14 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Company verified
+        "404":
+          description: Company not found
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/admin/auth/login:
@@ -325,13 +405,17 @@ paths:
         required: true
       responses:
         "200":
-          description: OK
+          description: Admin authenticated
           content:
-            '*/*':
+            application/json:
               schema:
-                type: object
-                additionalProperties:
-                  type: object
+                $ref: "#/components/schemas/AdminLoginResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
   /api/admin/auth/change-password:
     post:
       tags:
@@ -345,8 +429,26 @@ paths:
               $ref: "#/components/schemas/ChangePasswordRequest"
         required: true
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Password updated
+        "400":
+          description: Validation or current password mismatch
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
+        "401":
+          description: Unauthorized
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
+        "403":
+          description: Inactive admin
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/admin/platforms/{id}/permission:
@@ -369,8 +471,20 @@ paths:
               $ref: "#/components/schemas/UpdatePermissionRequest"
         required: true
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Permission updated
+        "400":
+          description: Invalid permission update
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
+        "404":
+          description: Platform not found
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
   /api/skills:
@@ -386,17 +500,17 @@ paths:
         schema:
           type: string
           default: ""
+          maxLength: 100
+          minLength: 0
       responses:
         "200":
-          description: OK
+          description: Matching skills
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  additionalProperties:
-                    type: object
+                  $ref: "#/components/schemas/SkillSearchDto"
   /api/skills/hotwords:
     get:
       tags:
@@ -412,15 +526,13 @@ paths:
           format: uuid
       responses:
         "200":
-          description: OK
+          description: Top skills per position
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  additionalProperties:
-                    type: object
+                  $ref: "#/components/schemas/SkillHotwordDto"
   /api/registry/whitelist:
     get:
       tags:
@@ -429,15 +541,13 @@ paths:
       operationId: getWhitelist
       responses:
         "200":
-          description: OK
+          description: Platform whitelist
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  additionalProperties:
-                    type: object
+                  $ref: "#/components/schemas/WhitelistPlatformDto"
   /api/registry/selectors:
     get:
       tags:
@@ -453,9 +563,9 @@ paths:
           format: date-time
       responses:
         "200":
-          description: OK
+          description: Active approved selectors
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
@@ -463,17 +573,16 @@ paths:
   /api/health:
     get:
       tags:
-      - health-controller
+      - Health
+      summary: Check API health
       operationId: health
       responses:
         "200":
-          description: OK
+          description: Service is up
           content:
-            '*/*':
+            application/json:
               schema:
-                type: object
-                additionalProperties:
-                  type: string
+                $ref: "#/components/schemas/HealthResponse"
   /api/dictionaries/bootstrap:
     get:
       tags:
@@ -482,13 +591,11 @@ paths:
       operationId: bootstrap
       responses:
         "200":
-          description: OK
+          description: Reference dictionaries payload
           content:
-            '*/*':
+            application/json:
               schema:
-                type: object
-                additionalProperties:
-                  type: object
+                $ref: "#/components/schemas/BootstrapDictionariesResponse"
   /api/analytics/skills-demand:
     get:
       tags:
@@ -523,15 +630,13 @@ paths:
       operationId: queue
       responses:
         "200":
-          description: OK
+          description: Pending selector proposals
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  additionalProperties:
-                    type: object
+                  $ref: "#/components/schemas/SelectorReviewQueueItemDto"
       security:
       - bearerAuth: []
   /api/admin/removal-requests:
@@ -549,15 +654,19 @@ paths:
           default: open
       responses:
         "200":
-          description: OK
+          description: Removal requests matching status
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  additionalProperties:
-                    type: object
+                  $ref: "#/components/schemas/RemovalRequestDto"
+        "400":
+          description: Invalid status filter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseBody"
       security:
       - bearerAuth: []
 components:
@@ -623,6 +732,37 @@ components:
       required:
       - platformId
       - url
+    ErrorResponseBody:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          format: int32
+        code:
+          type: string
+          enum:
+          - VALIDATION_ERROR
+          - DB_POLICY_VIOLATION
+          - RESOURCE_NOT_FOUND
+          - CONFLICT
+          - UNAUTHORIZED
+          - FORBIDDEN
+          - INTERNAL_ERROR
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties:
+            type: string
+    IdResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
     SubmitSelectorRequest:
       type: object
       properties:
@@ -657,11 +797,23 @@ components:
       properties:
         targetUrl:
           type: string
+          maxLength: 2048
+          minLength: 0
           pattern: ^https?://.*
         note:
           type: string
+          maxLength: 2000
+          minLength: 0
       required:
       - targetUrl
+    RemovalRequestSubmittedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
     DeviceRegisterRequest:
       type: object
       properties:
@@ -686,6 +838,8 @@ components:
       properties:
         comment:
           type: string
+          maxLength: 1000
+          minLength: 0
     ProcessRemovalRequest:
       type: object
       properties:
@@ -716,19 +870,35 @@ components:
       properties:
         username:
           type: string
+          maxLength: 100
+          minLength: 0
         password:
           type: string
+          maxLength: 128
+          minLength: 0
       required:
       - password
       - username
+    AdminLoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        adminId:
+          type: string
+          format: uuid
+        username:
+          type: string
     ChangePasswordRequest:
       type: object
       properties:
         currentPassword:
           type: string
+          maxLength: 128
+          minLength: 0
         newPassword:
           type: string
-          maxLength: 2147483647
+          maxLength: 128
           minLength: 10
       required:
       - currentPassword
@@ -741,6 +911,8 @@ components:
           pattern: ^(none|pending|granted)$
         permissionReference:
           type: string
+          maxLength: 500
+          minLength: 0
       required:
       - permissionStatus
     Pageable:
@@ -777,17 +949,17 @@ components:
         number:
           type: integer
           format: int32
+        numberOfElements:
+          type: integer
+          format: int32
+        pageable:
+          $ref: "#/components/schemas/PageableObject"
+        sort:
+          $ref: "#/components/schemas/SortObject"
         first:
           type: boolean
         last:
           type: boolean
-        numberOfElements:
-          type: integer
-          format: int32
-        sort:
-          $ref: "#/components/schemas/SortObject"
-        pageable:
-          $ref: "#/components/schemas/PageableObject"
         empty:
           type: boolean
     PageableObject:
@@ -796,8 +968,6 @@ components:
         offset:
           type: integer
           format: int64
-        sort:
-          $ref: "#/components/schemas/SortObject"
         paged:
           type: boolean
         pageNumber:
@@ -806,6 +976,8 @@ components:
         pageSize:
           type: integer
           format: int32
+        sort:
+          $ref: "#/components/schemas/SortObject"
         unpaged:
           type: boolean
     SortObject:
@@ -868,6 +1040,46 @@ components:
         updatedAt:
           type: string
           format: date-time
+    SkillSearchDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        isVerified:
+          type: boolean
+    SkillHotwordDto:
+      type: object
+      properties:
+        positionId:
+          type: string
+          format: uuid
+        positionName:
+          type: string
+        skillId:
+          type: string
+          format: uuid
+        skillName:
+          type: string
+        vacancyCount:
+          type: integer
+          format: int32
+    WhitelistPlatformDto:
+      type: object
+      properties:
+        platformCode:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+        permissionStatus:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
     RegistrySelectorView:
       type: object
       properties:
@@ -892,6 +1104,172 @@ components:
         updatedAt:
           type: string
           format: date-time
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+    BootstrapDictionariesResponse:
+      type: object
+      properties:
+        platforms:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlatformItem"
+        selectorTasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeNameItem"
+        selectorElementTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeNameItem"
+        currencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeNameItem"
+        regions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeNameItem"
+        countries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CountryItem"
+        cities:
+          type: array
+          items:
+            $ref: "#/components/schemas/CityItem"
+        levels:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdNameItem"
+        workFormats:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdNameItem"
+        employmentTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdNameItem"
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PositionItem"
+    CityItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        countryId:
+          type: string
+          format: uuid
+        name:
+          type: string
+    CodeNameItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+    CountryItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        regionId:
+          type: string
+          format: uuid
+        name:
+          type: string
+    IdNameItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    PlatformItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        url:
+          type: string
+        permissionStatus:
+          type: string
+    PositionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        isVerified:
+          type: boolean
+    SelectorReviewQueueItemDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        platformCode:
+          type: string
+        taskCode:
+          type: string
+        elementTypeCode:
+          type: string
+        urlPattern:
+          type: string
+        selectorKind:
+          type: string
+        version:
+          type: integer
+          format: int32
+        activeSelectorString:
+          type: string
+        proposedSelectorString:
+          type: string
+        submittedByDeviceId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+    RemovalRequestDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        targetUrl:
+          type: string
+        note:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: string
+          format: date-time
+        processedByAdminId:
+          type: string
+          format: uuid
   securitySchemes:
     bearerAuth:
       type: http

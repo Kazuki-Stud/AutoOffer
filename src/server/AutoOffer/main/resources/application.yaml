@@ -15,8 +15,22 @@ spring:
     username: ${DB_APP_USER}
     password: ${DB_APP_PASSWORD}
     hikari:
-      maximum-pool-size: 15
-      minimum-idle: 3
+      maximum-pool-size: 8
+      minimum-idle: 2
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 10m
 
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
