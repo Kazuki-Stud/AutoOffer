@@ -30,3 +30,4 @@ src/server/AutoOffer/.env
 client_bundle.txt
 Road.txt
 /docs/Goals
+.context/

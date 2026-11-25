@@ -1,0 +1,36 @@
+{
+  "output": {
+    "style": "xml",
+    "compress": true,
+    "removeComments": false,
+    "showLineNumbers": false
+  },
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "**/test-results/**",
+      "**/playwright-report/**",
+      "**/coverage/**",
+      "**/.vite/**",
+      "**/.context/**",
+      "**/*.svg",
+      "**/*.png",
+      "**/*.jpg",
+      "**/*.jpeg",
+      "**/*.gif",
+      "**/*.ico",
+      "**/*.webp",
+      "**/*.woff*",
+      "**/*.ttf",
+      "**/*.eot",
+      "**/*.pdf",
+      "**/*.jar",
+      "**/*.class",
+      "**/package-lock.json",
+      "**/.env",
+      "**/.env.*",
+      "!.env.example"
+    ]
+  }
+}

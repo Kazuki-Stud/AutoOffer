@@ -1,0 +1,899 @@
+openapi: 3.1.0
+info:
+  title: AutoOffer Registry API
+  description: "Public vacancy registry, selector registry & admin moderation API"
+  version: 0.1.0
+servers:
+- url: http://localhost:8080
+  description: Generated server url
+tags:
+- name: Admin Selectors
+  description: Selector review workflow (US 2.4)
+- name: Dictionaries & Skills
+  description: Reference dictionaries & skill hotwords (E6)
+- name: Devices
+  description: Pseudonymous client registration (US 7.1)
+- name: Registry
+  description: "Approved selectors & platform whitelist (US 1.1, US 2.1)"
+- name: Admin GDPR Removals
+  description: Process Art. 17 removal requests
+- name: Admin Platforms
+  description: "Whitelist permission management (BA 2.8, R7)"
+- name: Admin Auth
+  description: Registry administrator authentication
+- name: Admin Verification
+  description: Verify community dictionaries and vacancies
+- name: OLAP Analytics & ETL
+  description: ClickHouse data marts & incremental ETL pipeline
+- name: GDPR Removal
+  description: Anonymous Art. 17 removal requests (BA 2.8)
+- name: Vacancies
+  description: Public vacancy registry & ingestion (US 1.3)
+- name: Selectors
+  description: "Community selector submission (US 2.3, US 2.4)"
+paths:
+  /api/vacancies:
+    get:
+      tags:
+      - Vacancies
+      summary: List active vacancies from v_vacancies_full
+      operationId: list
+      parameters:
+      - name: platformCode
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: pageable
+        in: query
+        required: true
+        schema:
+          $ref: "#/components/schemas/Pageable"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PageVacancyFullView"
+    post:
+      tags:
+      - Vacancies
+      summary: Submit/deduplicate vacancy via server-side upsert_vacancy()
+      operationId: upsert
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertVacancyRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  format: uuid
+      security:
+      - bearerAuth: []
+  /api/selectors:
+    post:
+      tags:
+      - Selectors
+      summary: Submit a pending selector proposal for admin review
+      operationId: submit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitSelectorRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  format: uuid
+      security:
+      - bearerAuth: []
+  /api/removal-requests:
+    post:
+      tags:
+      - GDPR Removal
+      summary: Submit an anonymous GDPR Art. 17 removal request
+      operationId: submit_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRemovalRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/devices/register:
+    post:
+      tags:
+      - Devices
+      summary: Register pseudonymous device or rotate bearer token
+      operationId: register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRegisterRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DeviceRegisterResponse"
+  /api/admin/vacancies/{id}/verify:
+    post:
+      tags:
+      - Admin Verification
+      summary: Verify vacancy
+      operationId: verifyVacancy
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/skills/{id}/verify:
+    post:
+      tags:
+      - Admin Verification
+      summary: Verify skill
+      operationId: verifySkill
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/selectors/{id}/reject:
+    post:
+      tags:
+      - Admin Selectors
+      summary: Reject pending selector version
+      operationId: reject
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCommentRequest"
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/selectors/{id}/approve:
+    post:
+      tags:
+      - Admin Selectors
+      summary: Approve pending selector version
+      operationId: approve
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCommentRequest"
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/removal-requests/{id}/process:
+    post:
+      tags:
+      - Admin GDPR Removals
+      summary: Approve (delete matching vacancy) or reject a removal request
+      operationId: process
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessRemovalRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/positions/{id}/verify:
+    post:
+      tags:
+      - Admin Verification
+      summary: Verify position
+      operationId: verifyPosition
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/etl/run:
+    post:
+      tags:
+      - OLAP Analytics & ETL
+      summary: Trigger incremental Postgres -> ClickHouse ETL manually (ROLE_ADMIN)
+      operationId: triggerEtl
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EtlRunResult"
+      security:
+      - bearerAuth: []
+  /api/admin/etl/rebuild-mart:
+    post:
+      tags:
+      - OLAP Analytics & ETL
+      summary: Rebuild dm_skill_demand from stg_vacancies FINAL (ROLE_ADMIN)
+      operationId: rebuildMart
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/companies/{id}/verify:
+    post:
+      tags:
+      - Admin Verification
+      summary: Verify company
+      operationId: verifyCompany
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/auth/login:
+    post:
+      tags:
+      - Admin Auth
+      summary: Authenticate admin and return Bearer JWT
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/admin/auth/change-password:
+    post:
+      tags:
+      - Admin Auth
+      summary: Change current admin password
+      operationId: changePassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/admin/platforms/{id}/permission:
+    patch:
+      tags:
+      - Admin Platforms
+      summary: Grant or revoke platform automated-collection permission
+      operationId: updatePermission
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePermissionRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+      security:
+      - bearerAuth: []
+  /api/skills:
+    get:
+      tags:
+      - Dictionaries & Skills
+      summary: Autocomplete skills
+      operationId: searchSkills
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ""
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: object
+  /api/skills/hotwords:
+    get:
+      tags:
+      - Dictionaries & Skills
+      summary: Most frequent skills per position from mv_skill_hotwords
+      operationId: hotwords
+      parameters:
+      - name: positionId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: object
+  /api/registry/whitelist:
+    get:
+      tags:
+      - Registry
+      summary: Fetch platform permission whitelist (US 1.1)
+      operationId: getWhitelist
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: object
+  /api/registry/selectors:
+    get:
+      tags:
+      - Registry
+      summary: Fetch active approved selectors (optionally changed since timestamp)
+      operationId: getSelectors
+      parameters:
+      - name: since
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RegistrySelectorView"
+  /api/health:
+    get:
+      tags:
+      - health-controller
+      operationId: health
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+  /api/dictionaries/bootstrap:
+    get:
+      tags:
+      - Dictionaries & Skills
+      summary: Fetch all reference dictionaries in one payload
+      operationId: bootstrap
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/analytics/skills-demand:
+    get:
+      tags:
+      - OLAP Analytics & ETL
+      summary: Top skills per position with window ranking (ClickHouse)
+      operationId: topSkills
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+  /api/analytics/salary-by-country:
+    get:
+      tags:
+      - OLAP Analytics & ETL
+      summary: Salary medians & vacancy counts by country (ClickHouse)
+      operationId: salaryByCountry
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+  /api/admin/selectors/queue:
+    get:
+      tags:
+      - Admin Selectors
+      summary: List pending selector proposals with active diff
+      operationId: queue
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: object
+      security:
+      - bearerAuth: []
+  /api/admin/removal-requests:
+    get:
+      tags:
+      - Admin GDPR Removals
+      summary: List removal requests filtered by status
+      operationId: list_1
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          default: open
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: object
+      security:
+      - bearerAuth: []
+components:
+  schemas:
+    UpsertVacancyRequest:
+      type: object
+      properties:
+        platformId:
+          type: string
+          format: uuid
+        url:
+          type: string
+          maxLength: 2048
+          minLength: 0
+          pattern: ^https?://.*
+        fullPositionName:
+          type: string
+          maxLength: 255
+          minLength: 0
+        companyName:
+          type: string
+          maxLength: 255
+          minLength: 0
+        description:
+          type: string
+        address:
+          type: string
+        positionId:
+          type: string
+          format: uuid
+        regionId:
+          type: string
+          format: uuid
+        countryId:
+          type: string
+          format: uuid
+        cityId:
+          type: string
+          format: uuid
+        salaryFrom:
+          type: number
+          minimum: 0.0
+        salaryTo:
+          type: number
+          minimum: 0.0
+        currencyId:
+          type: string
+          format: uuid
+        levelId:
+          type: string
+          format: uuid
+        workFormatId:
+          type: string
+          format: uuid
+        employmentTypeId:
+          type: string
+          format: uuid
+        skillIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - platformId
+      - url
+    SubmitSelectorRequest:
+      type: object
+      properties:
+        platformId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        elementTypeId:
+          type: string
+          format: uuid
+        urlPattern:
+          type: string
+          maxLength: 255
+          minLength: 0
+        kind:
+          type: string
+          pattern: ^(css|xpath)$
+        selectorString:
+          type: string
+          maxLength: 2000
+          minLength: 1
+      required:
+      - elementTypeId
+      - kind
+      - platformId
+      - selectorString
+      - taskId
+    CreateRemovalRequest:
+      type: object
+      properties:
+        targetUrl:
+          type: string
+          pattern: ^https?://.*
+        note:
+          type: string
+      required:
+      - targetUrl
+    DeviceRegisterRequest:
+      type: object
+      properties:
+        pseudonymousId:
+          type: string
+          format: uuid
+      required:
+      - pseudonymousId
+    DeviceRegisterResponse:
+      type: object
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        pseudonymousId:
+          type: string
+          format: uuid
+        token:
+          type: string
+    ReviewCommentRequest:
+      type: object
+      properties:
+        comment:
+          type: string
+    ProcessRemovalRequest:
+      type: object
+      properties:
+        decision:
+          type: string
+          pattern: ^(done|rejected)$
+      required:
+      - decision
+    EtlRunResult:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        extracted:
+          type: integer
+          format: int32
+        loaded:
+          type: integer
+          format: int32
+        rejected:
+          type: integer
+          format: int32
+        status:
+          type: string
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+      - password
+      - username
+    ChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          maxLength: 2147483647
+          minLength: 10
+      required:
+      - currentPassword
+      - newPassword
+    UpdatePermissionRequest:
+      type: object
+      properties:
+        permissionStatus:
+          type: string
+          pattern: ^(none|pending|granted)$
+        permissionReference:
+          type: string
+      required:
+      - permissionStatus
+    Pageable:
+      type: object
+      properties:
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+        sort:
+          type: array
+          items:
+            type: string
+    PageVacancyFullView:
+      type: object
+      properties:
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/VacancyFullView"
+        number:
+          type: integer
+          format: int32
+        first:
+          type: boolean
+        last:
+          type: boolean
+        numberOfElements:
+          type: integer
+          format: int32
+        sort:
+          $ref: "#/components/schemas/SortObject"
+        pageable:
+          $ref: "#/components/schemas/PageableObject"
+        empty:
+          type: boolean
+    PageableObject:
+      type: object
+      properties:
+        offset:
+          type: integer
+          format: int64
+        sort:
+          $ref: "#/components/schemas/SortObject"
+        paged:
+          type: boolean
+        pageNumber:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+        unpaged:
+          type: boolean
+    SortObject:
+      type: object
+      properties:
+        empty:
+          type: boolean
+        sorted:
+          type: boolean
+        unsorted:
+          type: boolean
+    VacancyFullView:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        storageLevel:
+          type: string
+        platformCode:
+          type: string
+        fullPositionName:
+          type: string
+        positionName:
+          type: string
+        companyName:
+          type: string
+        cityName:
+          type: string
+        countryName:
+          type: string
+        regionName:
+          type: string
+        salaryFrom:
+          type: number
+        salaryTo:
+          type: number
+        currencyCode:
+          type: string
+        levelName:
+          type: string
+        workFormat:
+          type: string
+        employmentType:
+          type: string
+        description:
+          type: string
+        submissionCount:
+          type: integer
+          format: int32
+        isActive:
+          type: boolean
+        isVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RegistrySelectorView:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        platformCode:
+          type: string
+        taskCode:
+          type: string
+        elementTypeCode:
+          type: string
+        urlPattern:
+          type: string
+        selectorKind:
+          type: string
+        selectorString:
+          type: string
+        version:
+          type: integer
+          format: int32
+        updatedAt:
+          type: string
+          format: date-time
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT or DeviceToken
