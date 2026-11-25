@@ -1,6 +1,3 @@
-
----
-
 # Criterion: Backend
 
 ## Architecture Decision Record
@@ -35,15 +32,15 @@ Build a layered **Spring Boot 4.1.2 (Java 26)** backend backed by **PostgreSQL 1
 ### Consequences
 
 - **Positive:**
-    - Server-side database constraints, triggers, and column-level grants make privacy/whitelist violations impossible even if a controller bug occurs.
-    - Redis caching with explicit TTLs (`CacheNames`) protects PostgreSQL from repeated whitelist/dictionary/selector reads.
-    - Automated CI/CD enforces Checkstyle (`maxWarnings = 0`), unit + real PostgreSQL Testcontainers integration tests, `>= 80%` JaCoCo line coverage, and Trivy vulnerability scans before pushing or deploying images.
-    - Low-RAM tuning lets the full stack (app, Postgres, ClickHouse, Redis, Prometheus, Loki, Promtail, Grafana, Alertmanager) run comfortably on modest hosts.
+  - Server-side database constraints, triggers, and column-level grants make privacy/whitelist violations impossible even if a controller bug occurs.
+  - Redis caching with explicit TTLs (`CacheNames`) protects PostgreSQL from repeated whitelist/dictionary/selector reads.
+  - Automated CI/CD enforces Checkstyle (`maxWarnings = 0`), unit + real PostgreSQL Testcontainers integration tests, `>= 80%` JaCoCo line coverage, and Trivy vulnerability scans before pushing or deploying images.
+  - Low-RAM tuning lets the full stack (app, Postgres, ClickHouse, Redis, Prometheus, Loki, Promtail, Grafana, Alertmanager) run comfortably on modest hosts.
 - **Negative:**
-    - Because the backend is currently a single Spring Boot application without RabbitMQ/Kafka, it does not yet satisfy the microservices and asynchronous broker criteria of the 10-point maximum rubric.
-    - Alertmanager currently points to a placeholder webhook (`http://localhost:9999/alerts`) until a real Telegram/Slack/email receiver is configured.
+  - Because the backend is currently a single Spring Boot application without RabbitMQ/Kafka, it does not yet satisfy the microservices and asynchronous broker criteria of the 10-point maximum rubric.
+  - Alertmanager currently points to a placeholder webhook (`http://localhost:9999/alerts`) until a real Telegram/Slack/email receiver is configured.
 - **Neutral:**
-    - Mixing JPA (for `Admin`, `Device`, and read-only views) with `JdbcTemplate` (for PL/pgSQL functions `upsert_vacancy`, `submit_selector`, `approve_selector`, `reject_selector`, and ClickHouse ETL) keeps complex database logic atomic inside PostgreSQL while preserving ORM schema validation (`ddl-auto: validate`).
+  - Mixing JPA (for `Admin`, `Device`, and read-only views) with `JdbcTemplate` (for PL/pgSQL functions `upsert_vacancy`, `submit_selector`, `approve_selector`, `reject_selector`, and ClickHouse ETL) keeps complex database logic atomic inside PostgreSQL while preserving ORM schema validation (`ddl-auto: validate`).
 
 ---
 
@@ -58,13 +55,14 @@ Build a layered **Spring Boot 4.1.2 (Java 26)** backend backed by **PostgreSQL 1
 docs/
 ├── api/
 │   └── openapi.yaml                              # OpenAPI 3.1.0 contract (200/201/202/204/4xx, ErrorResponseBody)
+├── 02-technical/
+│   └── backend.md                                # This ADR & criteria report
 └── criteria/
-    ├── backend.md                                # This ADR & criteria report
     └── database-dictionary.md                    # OLTP/OLAP/IndexedDB data dictionary
 src/server/AutoOffer/
 ├── Dockerfile                                    # Multi-stage Temurin 26 JDK/JRE non-root build (SerialGC, low RAM)
 ├── docker-compose.yml                            # App, Postgres, ClickHouse, Redis, Prometheus, Alertmanager, Loki, Promtail, Grafana
-├── docker-compose.override.yml                   # Local dev port exposures & JDWP debug
+├── docker-compose.override.yml                   # Local dev port mappings (5432, 8123, 6379, 5005)
 ├── build.gradle                                  # Dependencies, Checkstyle (maxWarnings=0), JaCoCo (>= 0.80)
 ├── config/checkstyle/checkstyle.xml              # Static analysis rules
 ├── docker/                                       # Postgres role init, ClickHouse OLAP DDL, Prometheus, Alertmanager, Loki, Promtail, Grafana
@@ -221,18 +219,18 @@ Legend: ✅ Fully implemented · ⚠️ Partially implemented / needs verificati
 ## References
 
 - **Repository API & Database Docs:**
-    - `docs/api/openapi.yaml`
-    - `docs/criteria/database-dictionary.md`
-    - `.github/workflows/ci-cd.yml`
-    - `src/server/AutoOffer/build.gradle`
-    - `src/server/AutoOffer/docker-compose.yml`
-    - `src/server/AutoOffer/main/resources/db/changelog/`
+  - `docs/api/openapi.yaml`
+  - `docs/criteria/database-dictionary.md`
+  - `.github/workflows/ci-cd.yml`
+  - `src/server/AutoOffer/build.gradle`
+  - `src/server/AutoOffer/docker-compose.yml`
+  - `src/server/AutoOffer/main/resources/db/changelog/`
 - **External Documentation:**
-    - [Spring Boot Documentation](https://docs.spring.io/spring-boot/index.html)
-    - [Spring Data Redis Caching](https://docs.spring.io/spring-data/redis/reference/redis/redis-cache.html)
-    - [Liquibase Documentation](https://docs.liquibase.com/)
-    - [PostgreSQL 16 Privileges & PL/pgSQL](https://www.postgresql.org/docs/16/ddl-priv.html)
-    - [ClickHouse ReplacingMergeTree & SummingMergeTree](https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/replacingmergetree)
-    - [Testcontainers for Java](https://java.testcontainers.org/)
-    - [OpenAPI 3.1.0 Specification](https://spec.openapis.org/oas/v3.1.0)
-    - [Prometheus, Alertmanager, Loki & Grafana](https://grafana.com/docs/)
+  - [Spring Boot Documentation](https://docs.spring.io/spring-boot/index.html)
+  - [Spring Data Redis Caching](https://docs.spring.io/spring-data/redis/reference/redis/redis-cache.html)
+  - [Liquibase Documentation](https://docs.liquibase.com/)
+  - [PostgreSQL 16 Privileges & PL/pgSQL](https://www.postgresql.org/docs/16/ddl-priv.html)
+  - [ClickHouse ReplacingMergeTree & SummingMergeTree](https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/replacingmergetree)
+  - [Testcontainers for Java](https://java.testcontainers.org/)
+  - [OpenAPI 3.1.0 Specification](https://spec.openapis.org/oas/v3.1.0)
+  - [Prometheus, Alertmanager, Loki & Grafana](https://grafana.com/docs/)
