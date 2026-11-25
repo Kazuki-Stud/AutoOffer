@@ -48,10 +48,11 @@ We implemented a **polyglot persistence architecture** matching each workload to
 
 ```text
 AutoOffer/
-├── docs/criteria/
-│   ├── database-dictionary.md                  # Auto-generated full data dictionary (OLTP, OLAP, NoSQL)
-│   ├── database-live-verification.txt          # Live psql grant audit & ClickHouse table verification
-│   └── assets/diagrams/db-diagrams.md          # Multi-DBMS DFD & Mermaid ER diagrams
+├── docs/02-technical/assets/
+│   ├── db/
+│   │   ├── database-dictionary.md              # Auto-generated full data dictionary (OLTP, OLAP, NoSQL)
+│   │   └── database-live-verification.txt      # Live psql grant audit & ClickHouse table verification
+│   └── diagrams/db-diagrams.md                 # Multi-DBMS DFD & Mermaid ER diagrams
 ├── scripts/
 │   └── generate_db_docs.py                     # Automated DDL/schema scraper for docs & diagrams
 ├── src/server/AutoOffer/
@@ -194,7 +195,7 @@ export async function createApplication({ profile_id, vacancy_id, resume_id = nu
 
 * [Multi-DBMS Architecture, OLAP Data Flow & Logical ER Diagrams](assets/diagrams/db-diagrams.md)
 * [Complete Auto-Scraped Data Dictionary](assets/db/database-dictionary.md)
-* [Live Database Verification Output (PostgreSQL Grants & ClickHouse Tables)](../criteria/database-live-verification.txt)
+* [Live Database Verification Output (PostgreSQL Grants & ClickHouse Tables)](assets/db/database-live-verification.txt)
 
 ---
 
@@ -204,7 +205,7 @@ export async function createApplication({ profile_id, vacancy_id, resume_id = nu
 
 | # | Requirement | Status | Evidence/Notes |
 | :--- | :--- | :--- | :--- |
-| 1 | Data dictionary, integrity & transaction handling, logical schema, DDL script | ✅ | `01__schema.sql`, `docs/criteria/database-dictionary.md`, `docs/criteria/assets/diagrams/db-diagrams.md`; `@Transactional` in `VacancyServiceImpl.java` & `DeviceAuthServiceImpl.java` |
+| 1 | Data dictionary, integrity & transaction handling, logical schema, DDL script | ✅ | `01__schema.sql`, `docs/02-technical/assets/db/database-dictionary.md`, `docs/02-technical/assets/diagrams/db-diagrams.md`; `@Transactional` in `VacancyServiceImpl.java` & `DeviceAuthServiceImpl.java` |
 | 2 | Modern RDBMS, 3NF normalization, PK/FK/NOT NULL/UNIQUE/CHECK, meaningful types | ✅ | PostgreSQL 16.6; 21 tables; `vacancies_single_location` 3NF check; `numeric(10,2)`, `timestamptz`, `uuid`, `char(64)` |
 | 3 | Reproducible deployment via SQL migrations in Git (not manual) | ✅ | Liquibase `db.changelog-master.xml` running `01__schema.sql` through `V5__etl_meta.sql` and `test_data.sql` |
 | 4 | Reference seed data & test/edge-case data | ✅ | `04__seed_reference.sql` (deterministic UUIDs) + `test_data.sql` (deduplication, sanitization, and negative `check_violation` tests `(a)`–`(e)`) |
@@ -263,4 +264,4 @@ export async function createApplication({ profile_id, vacancy_id, resume_id = nu
   * `src/server/AutoOffer/docker/clickhouse/init/01-olap-schema.sql`
   * `src/server/AutoOffer/main/java/AutoOffer/etl/VacancyEtlService.java`, `ClickHouseClient.java`, `AnalyticsController.java`
   * `src/client/extension/database/database.js`, `validation.js`, `repository.js`, `crypto.js`, `seed.js`
-  * `docs/criteria/database-dictionary.md`, `docs/criteria/assets/diagrams/db-diagrams.md`, `docs/criteria/database-live-verification.txt`
+  * `docs/02-technical/assets/db/database-dictionary.md`, `docs/02-technical/assets/diagrams/db-diagrams.md`, `docs/02-technical/assets/db/database-live-verification.txt`

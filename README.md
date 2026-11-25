@@ -51,21 +51,21 @@ AutoOffer/
 │   │   ├── adaptive-ui.md         # Adaptive UI ADR (280px–4K responsive layout, 44px touch targets, themes)
 │   │   ├── database.md            # Databases Criterion ADR, implementation & checklist (OLTP, OLAP, NoSQL)
 │   │   └── assets/
-│   │       ├── db/database-dictionary.md  # Auto-generated data dictionary (PG, ClickHouse, Dexie)
+│   │       ├── db/
+│   │       │   ├── database-dictionary.md         # Auto-generated data dictionary (PG, ClickHouse, Dexie)
+│   │       │   └── database-live-verification.txt # Live PostgreSQL grant audit & ClickHouse table stats
 │   │       ├── diagrams/db-diagrams.md    # Multi-DBMS DFD & Mermaid ER diagrams
 │   │       └── screenshots/               # Auto-generated 3-device Playwright screenshots
 │   ├── 03-user-guide/             # User guide & FAQ
-│   ├── api/                       # Structured API Documentation Hub
-│   │   ├── README.md              # API docs entry point & navigation
-│   │   ├── openapi.yaml           # Validated OpenAPI 3.1.0 specification
-│   │   ├── redocly.yaml           # Redocly CLI lint configuration
-│   │   ├── CHANGELOG.md           # API release notes & versioning policy
-│   │   ├── guides/                # Getting Started, Integration Tutorials & Architecture Deep Dive
-│   │   ├── reference/             # Complete endpoint reference
-│   │   ├── examples/              # Runnable HTTP/curl request collection
-│   │   └── schemas/               # Data model & validation reference
-│   └── criteria/
-│       └── database-live-verification.txt # Live PostgreSQL grant audit & ClickHouse table stats
+│   └── api/                       # Structured API Documentation Hub
+│       ├── README.md              # API docs entry point & navigation
+│       ├── openapi.yaml           # Validated OpenAPI 3.1.0 specification
+│       ├── redocly.yaml           # Redocly CLI lint configuration
+│       ├── CHANGELOG.md           # API release notes & versioning policy
+│       ├── guides/                # Getting Started, Integration Tutorials & Architecture Deep Dive
+│       ├── reference/             # Complete endpoint reference
+│       ├── examples/              # Runnable HTTP/curl request collection
+│       └── schemas/               # Data model & validation reference
 ├── scripts/
 │   └── generate_db_docs.py        # DDL/schema scraper regenerating dictionary & Mermaid diagrams
 └── src/
@@ -222,7 +222,7 @@ npm run build      # outputs unpacked build to src/client/extension/dist
 * **Primary Criterion Document (ADR, Checklist, Limitations):** [`docs/02-technical/database.md`](docs/02-technical/database.md)
 * **Complete Data Dictionary (OLTP, OLAP, NoSQL):** [`docs/02-technical/assets/db/database-dictionary.md`](docs/02-technical/assets/db/database-dictionary.md)
 * **Logical Schemas, ER Diagrams & OLAP Data Flow:** [`docs/02-technical/assets/diagrams/db-diagrams.md`](docs/02-technical/assets/diagrams/db-diagrams.md)
-* **Live Verification Log (Grants Audit & ClickHouse Row Counts):** [`docs/criteria/database-live-verification.txt`](docs/criteria/database-live-verification.txt)
+* **Live Verification Log (Grants Audit & ClickHouse Row Counts):** [`docs/02-technical/assets/db/database-live-verification.txt`](docs/02-technical/assets/db/database-live-verification.txt)
 * **Problem Statement & Privacy Goals:** [`docs/01-project-overview/problem-and-goals.md`](docs/01-project-overview/problem-and-goals.md)
 
 To regenerate the scraped data dictionary and Mermaid diagrams from the SQL/JS files on disk:
