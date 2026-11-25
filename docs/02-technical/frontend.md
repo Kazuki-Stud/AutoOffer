@@ -50,7 +50,7 @@ src/client/pwa/
 ├── .prettierrc                  # Formatting rules
 ├── playwright.config.mjs        # Playwright E2E configuration
 ├── e2e/
-│   └── pwa.spec.js              # Multi-viewport E2E & Adaptive UI verification
+│   └── pwa.spec.js              # Multi-viewport route & modal E2E + Adaptive UI verification
 ├── tests/
 │   ├── pwa.spec.js              # Real-backend & real-DOM unit tests (6 specs)
 │   ├── components.spec.js       # Offline component & page unit tests (6 specs)
@@ -70,7 +70,7 @@ src/client/pwa/
     │   ├── logger.js            # Structured console logger
     │   └── resumeExport.js      # Client-side PDF (print frame) & Word (.doc) generation
     ├── utils/helpers.js         # URL safety, date formatting, base64/blob & array helpers
-    ├── styles/main.css          # Design tokens, responsive layout, 44px touch rules, skeletons/toasts
+    ├── styles/main.css          # Design tokens, WCAG AA contrast, responsive/modal layout, 44px touch rules
     ├── components/
     │   ├── AppHeader.vue        # Brand, connection status badge, nav links/bottom bar, theme toggle
     │   ├── StatsGrid.vue        # Reusable KPI summary grid component
@@ -210,8 +210,8 @@ flowchart LR
 | 8 | Centralized HTTP handling, global error boundary, toasts, skeleton loading states | ✅ | `httpClient.js`, `ErrorBoundary.vue`, `ToastContainer.vue`, `.ao-skeleton` across views |
 | 9 | Forms with validation, tables/lists, search/filter/sort | ✅ | `ProfilePage.vue`, `JobsPage.vue`, `SettingsPage.vue`, `VacanciesPage.vue`, `ApplicationsPage.vue` |
 | 10 | ESLint + Prettier + logging | ✅ | `eslint.config.js`, `.prettierrc`, `src/services/logger.js` |
-| 11 | Unit tests (≥ 3 components/services) + Integration/E2E tests | ✅ | `tests/pwa.spec.js` (6 specs), `tests/components.spec.js` (6 specs), `tests/integration.spec.js` (4 specs), `e2e/pwa.spec.js` (9 specs) |
-| 12 | Lighthouse ≥ 90 benchmark report | ⚠️ | Code splitting & SW configured; benchmark score to be captured on deployed GitHub Pages build |
+| 11 | Unit tests (≥ 3 components/services) + Integration/E2E tests | ✅ | `tests/pwa.spec.js` (6 specs), `tests/components.spec.js` (6 specs), `tests/integration.spec.js` (4 specs), `e2e/pwa.spec.js` (14 specs covering 9 viewports, theme/scale/form flow, and small-viewport modal flows) |
+| 12 | Lighthouse ≥ 90 benchmark report | ⚠️ | Code splitting, SW, WCAG 2.1 AA contrast fixes (`.hub-badge`, `.skill-chip-sm`, `.clear-button:hover`), and sequential heading hierarchy (`<h2 class="sr-only">Vacancies</h2>`) applied; final Lighthouse desktop/mobile score to be captured on deployed build |
 
 ## Known Limitations
 

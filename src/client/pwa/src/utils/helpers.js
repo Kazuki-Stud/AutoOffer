@@ -5,7 +5,8 @@ export const BACKUP_EXCLUDED_TABLES = new Set([
 ]);
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const optUuid = (val) => (typeof val === 'string' && UUID_RE.test(val.trim()) ? val.trim() : null);
+export const optUuid = (val) =>
+    typeof val === 'string' && UUID_RE.test(val.trim()) ? val.trim() : null;
 
 export const helpers = {
     cachedVacancies: [],
@@ -79,7 +80,10 @@ export function formatDateTime(dateVal) {
 }
 
 export function parseProfileLinks(rawText) {
-    const urls = (rawText || '').split(/[\s,]+/).map((s) => s.trim()).filter(isSafeHttpUrl);
+    const urls = (rawText || '')
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter(isSafeHttpUrl);
     return {
         github: urls.find((u) => u.includes('github.com')) || null,
         linkedin: urls.find((u) => u.includes('linkedin.com')) || null,
@@ -89,7 +93,10 @@ export function parseProfileLinks(rawText) {
 
 export function toStringArray(raw) {
     if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
-    return (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
+    return (raw || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 }
 
 export function fileToBase64(file) {

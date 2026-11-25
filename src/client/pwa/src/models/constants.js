@@ -12,7 +12,13 @@ export const KNOWN_SKILLS = [
 
 export const AI_MODEL_PRESETS = {
     openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'o4-mini'],
-    gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+    gemini: [
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash-lite',
+        'gemini-2.0-flash',
+        'gemini-1.5-pro',
+    ],
     local: ['llama3.2', 'llama3.1', 'qwen2.5:7b', 'mistral', 'gemma3:4b', 'deepseek-r1:8b'],
     local_cosine: ['local-cosine'],
 };

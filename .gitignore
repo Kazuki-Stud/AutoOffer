@@ -32,3 +32,4 @@ Road.txt
 /docs/Goals
 .context/
 src/client/pwa/test-results/.last-run.json
+/src/client/pwa/test-results
