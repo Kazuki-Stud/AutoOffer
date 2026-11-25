@@ -1,7 +1,9 @@
 package AutoOffer.configuration;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -12,10 +14,10 @@ import java.time.Duration;
 import java.util.Map;
 
 @Configuration
-@ConditionalOnProperty(name = "spring.cache.type", havingValue = "redis")
 public class CacheConfig {
 
     @Bean
+    @ConditionalOnProperty(name = "spring.cache.type", havingValue = "redis")
     public CacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
         RedisCacheConfiguration defaults = RedisCacheConfiguration.defaultCacheConfig()
                 .disableCachingNullValues()
@@ -32,5 +34,16 @@ public class CacheConfig {
                 .cacheDefaults(defaults)
                 .withInitialCacheConfigurations(perCache)
                 .build();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(CacheManager.class)
+    public CacheManager fallbackCacheManager() {
+        return new ConcurrentMapCacheManager(
+                CacheNames.WHITELIST,
+                CacheNames.DICTIONARIES_BOOTSTRAP,
+                CacheNames.SELECTORS,
+                CacheNames.SKILL_HOTWORDS
+        );
     }
 }

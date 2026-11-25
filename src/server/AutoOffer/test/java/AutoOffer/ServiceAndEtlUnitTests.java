@@ -343,5 +343,6 @@ server.expect(method(HttpMethod.GET))
 
                                                     CacheConfig cacheConfig = new CacheConfig();
                                                     assertThat(cacheConfig.redisCacheManager(mock(RedisConnectionFactory.class))).isNotNull();
+                                                    assertThat(cacheConfig.fallbackCacheManager()).isNotNull();
                                                 }
                                             }
