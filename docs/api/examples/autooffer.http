@@ -1,0 +1,127 @@
+### Variables
+@baseUrl = http://localhost:8080
+@pseudonymousId = 0b6a5c1e-2b0f-4f0b-9d54-5f7a6c1f0099
+@deviceToken = replace-with-token-from-register
+@adminJwt = replace-with-jwt-from-login
+@demoBoardId = 10000000-0000-4000-8000-0000000000ff
+@indeedId = 10000000-0000-4000-8000-000000000001
+
+### 1. Health check
+GET {{baseUrl}}/api/health
+
+### 2. Register pseudonymous device (201 Created)
+POST {{baseUrl}}/api/devices/register
+Content-Type: application/json
+
+{
+  "pseudonymousId": "{{pseudonymousId}}"
+}
+
+### 3. Whitelist & approved selectors
+GET {{baseUrl}}/api/registry/whitelist
+
+###
+GET {{baseUrl}}/api/registry/selectors?since=2026-11-01T00:00:00Z
+
+### 4. Bootstrap dictionaries, skill autocomplete & hotwords
+GET {{baseUrl}}/api/dictionaries/bootstrap
+
+###
+GET {{baseUrl}}/api/skills?q=java
+
+###
+GET {{baseUrl}}/api/skills/hotwords
+
+### 5. Submit vacancy on permitted board (200 OK, stored full & sanitized)
+POST {{baseUrl}}/api/vacancies
+Content-Type: application/json
+X-Device-Id: {{pseudonymousId}}
+Authorization: Bearer {{deviceToken}}
+
+{
+  "platformId": "{{demoBoardId}}",
+  "url": "https://demo-board.test/jobs/3001#details",
+  "fullPositionName": "Senior Backend Engineer",
+  "companyName": "Cloud Systems",
+  "description": "Java 26, Spring Boot, PostgreSQL. Contact: Jane Doe at jane@example.com.",
+  "salaryFrom": 4500,
+  "salaryTo": 6500,
+  "currencyId": "40000000-0000-4000-8000-000000000002"
+}
+
+### 6. Submit vacancy on non-whitelisted board (200 OK, server forces url_only)
+POST {{baseUrl}}/api/vacancies
+Content-Type: application/json
+X-Device-Id: {{pseudonymousId}}
+Authorization: Bearer {{deviceToken}}
+
+{
+  "platformId": "{{indeedId}}",
+  "url": "https://www.indeed.com/viewjob?jk=xyz999",
+  "fullPositionName": "Ignored on url_only board",
+  "description": "Discarded by server policy"
+}
+
+### 7. List active vacancies (paginated)
+GET {{baseUrl}}/api/vacancies?platformCode=demo-board.test&page=0&size=20&sort=updatedAt,desc
+
+### 8. Submit selector proposal (201 Created) & invalid script edge case (400)
+POST {{baseUrl}}/api/selectors
+Content-Type: application/json
+X-Device-Id: {{pseudonymousId}}
+Authorization: Bearer {{deviceToken}}
+
+{
+  "platformId": "10000000-0000-4000-8000-000000000003",
+  "taskId": "20000000-0000-4000-8000-000000000001",
+  "elementTypeId": "30000000-0000-4000-8000-000000000002",
+  "urlPattern": "weworkremotely.com",
+  "kind": "css",
+  "selectorString": "span.title, h3.new-title"
+}
+
+###
+POST {{baseUrl}}/api/selectors
+Content-Type: application/json
+X-Device-Id: {{pseudonymousId}}
+Authorization: Bearer {{deviceToken}}
+
+{
+  "platformId": "10000000-0000-4000-8000-000000000003",
+  "taskId": "20000000-0000-4000-8000-000000000001",
+  "elementTypeId": "30000000-0000-4000-8000-000000000002",
+  "kind": "css",
+  "selectorString": "javascript:alert(1)"
+}
+
+### 9. Anonymous GDPR Art. 17 removal request (202 Accepted)
+POST {{baseUrl}}/api/removal-requests
+Content-Type: application/json
+
+{
+  "targetUrl": "https://demo-board.test/jobs/3001",
+  "note": "GDPR Art. 17 request"
+}
+
+### 10. ClickHouse OLAP analytics
+GET {{baseUrl}}/api/analytics/skills-demand
+
+###
+GET {{baseUrl}}/api/analytics/salary-by-country
+
+### 11. Admin login (never pass X-Device-Id on /api/admin/**)
+POST {{baseUrl}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "replace-with-admin-password"
+}
+
+### 12. Admin selector queue & manual ETL trigger
+GET {{baseUrl}}/api/admin/selectors/queue
+Authorization: Bearer {{adminJwt}}
+
+###
+POST {{baseUrl}}/api/admin/etl/run
+Authorization: Bearer {{adminJwt}}
