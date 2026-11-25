@@ -1,5 +1,6 @@
 package AutoOffer.controller;
 
+import AutoOffer.dto.registry.WhitelistPlatformDto;
 import AutoOffer.entity.view.RegistrySelectorView;
 import AutoOffer.repository.RegistrySelectorViewRepository;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/registry")
@@ -38,16 +38,18 @@ public class RegistryController {
     @GetMapping("/whitelist")
     @Cacheable("whitelist")
     @Operation(summary = "Fetch platform permission whitelist (US 1.1)")
-    public ResponseEntity<List<Map<String, Object>>> getWhitelist() {
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT platform_code AS "platformCode",
-                       name,
-                       url,
-                       permission_status AS "permissionStatus",
-                       updated_at AS "updatedAt"
-                  FROM autooffer.v_registry_whitelist
-                 ORDER BY name
-                """);
+    public ResponseEntity<List<WhitelistPlatformDto>> getWhitelist() {
+        List<WhitelistPlatformDto> rows = jdbc.query("""
+            SELECT platform_code, name, url, permission_status, updated_at
+            FROM autooffer.v_registry_whitelist
+            ORDER BY name
+            """,
+            (rs, n) -> new WhitelistPlatformDto(
+                rs.getString("platform_code"),
+                rs.getString("name"),
+                rs.getString("url"),
+                rs.getString("permission_status"),
+                rs.getObject("updated_at", OffsetDateTime.class)));
         return ResponseEntity.ok(rows);
     }
 }

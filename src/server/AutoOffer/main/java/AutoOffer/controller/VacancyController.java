@@ -1,5 +1,6 @@
 package AutoOffer.controller;
 
+import AutoOffer.dto.common.IdResponse;
 import AutoOffer.dto.vacancy.UpsertVacancyRequest;
 import AutoOffer.entity.view.VacancyFullView;
 import AutoOffer.security.DevicePrincipal;
@@ -17,7 +18,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -31,11 +31,11 @@ public class VacancyController {
     @PostMapping
     @Operation(summary = "Submit/deduplicate vacancy via server-side upsert_vacancy()")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Map<String, UUID>> upsert(
-            @AuthenticationPrincipal DevicePrincipal device,
-            @Valid @RequestBody UpsertVacancyRequest request) {
+    public ResponseEntity<IdResponse> upsert(
+        @AuthenticationPrincipal DevicePrincipal device,
+        @Valid @RequestBody UpsertVacancyRequest request) {
         UUID id = vacancyService.upsertVacancy(device.deviceId(), request);
-        return ResponseEntity.ok(Map.of("id", id));
+        return ResponseEntity.ok(new IdResponse(id));
     }
 
     @GetMapping

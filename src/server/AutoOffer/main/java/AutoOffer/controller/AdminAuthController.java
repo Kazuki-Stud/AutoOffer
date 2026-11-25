@@ -1,5 +1,6 @@
 package AutoOffer.controller;
 
+import AutoOffer.dto.auth.AdminLoginResponse;
 import AutoOffer.repository.AdminRepository;
 import AutoOffer.security.JwtUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,7 +17,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -34,18 +34,14 @@ public class AdminAuthController {
 
     @PostMapping("/login")
     @Operation(summary = "Authenticate admin and return Bearer JWT")
-    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
+    public ResponseEntity<AdminLoginResponse> login(@Valid @RequestBody LoginRequest req) {
         var admin = adminRepository.findByUsernameAndIsActiveTrue(req.username().trim())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
         if (!passwordEncoder.matches(req.password(), admin.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
         String token = jwtUtils.generateAdminToken(admin.getId(), admin.getUsername());
-        return ResponseEntity.ok(Map.of(
-                "token", token,
-                "adminId", admin.getId(),
-                "username", admin.getUsername()
-        ));
+        return ResponseEntity.ok(new AdminLoginResponse(token, admin.getId(), admin.getUsername()));
     }
 
     @PostMapping("/change-password")

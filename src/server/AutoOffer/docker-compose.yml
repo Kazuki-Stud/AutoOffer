@@ -96,17 +96,85 @@ services:
       start_period: 40s
     stop_grace_period: 25s
     deploy:
-      resources:
-        limits:
-          cpus: "1.5"
-          memory: 768M
+    resources:
+    limits:
+    cpus: "1.5"
+    memory: 768M
 
-volumes:
-  pg_data:
-  ch_data:
+    prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: autooffer-prometheus
+    restart: unless-stopped
+    volumes:
+    - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    - prom_data:/prometheus
+    networks:
+    - db-internal
+    depends_on:
+    - app
 
-networks:
-  db-internal:
+    alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: autooffer-alertmanager
+    restart: unless-stopped
+    volumes:
+    - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+    - db-internal
+
+    loki:
+    image: grafana/loki:3.1.0
+    container_name: autooffer-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+    - ./docker/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+    - loki_data:/loki
+    networks:
+    - db-internal
+
+    promtail:
+    image: grafana/promtail:3.1.0
+    container_name: autooffer-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+    - ./docker/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+    - db-internal
+    depends_on:
+    - loki
+
+    grafana:
+    image: grafana/grafana:11.2.0
+    container_name: autooffer-grafana
+    restart: unless-stopped
+    ports:
+    - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+    GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+    GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+    - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    - grafana_data:/var/lib/grafana
+    networks:
+    - db-internal
+    - app-public
+    depends_on:
+    - prometheus
+    - loki
+
+    volumes:
+    pg_data:
+    ch_data:
+    prom_data:
+    loki_data:
+    grafana_data:
+
+    networks:
+    db-internal:
     internal: true
-  app-public:
+    app-public:
     driver: bridge

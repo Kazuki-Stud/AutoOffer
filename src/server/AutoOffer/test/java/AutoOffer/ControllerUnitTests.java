@@ -3,6 +3,12 @@ package AutoOffer;
 import AutoOffer.controller.*;
 import AutoOffer.controller.admin.*;
 import AutoOffer.dto.auth.DeviceRegisterResponse;
+import AutoOffer.dto.dictionary.BootstrapDictionariesResponse.*;
+import AutoOffer.dto.dictionary.SkillHotwordDto;
+import AutoOffer.dto.dictionary.SkillSearchDto;
+import AutoOffer.dto.registry.SelectorReviewQueueItemDto;
+import AutoOffer.dto.registry.WhitelistPlatformDto;
+import AutoOffer.dto.removal.RemovalRequestDto;
 import AutoOffer.entity.Admin;
 import AutoOffer.entity.view.RegistrySelectorView;
 import AutoOffer.entity.view.VacancyFullView;
@@ -23,6 +29,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -93,20 +100,47 @@ class ControllerUnitTests {
 
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NamedParameterJdbcTemplate namedJdbc = mock(NamedParameterJdbcTemplate.class);
-        when(jdbc.queryForList(anyString())).thenReturn(List.of(Map.of("id", "1")));
-        when(namedJdbc.queryForList(anyString(), any(MapSqlParameterSource.class))).thenReturn(List.of(Map.of("skillName", "Java")));
-        MockMvc dictMvc = mvcFor(new DictionaryController(jdbc, namedJdbc));
-        dictMvc.perform(get("/api/dictionaries/bootstrap")).andExpect(status().isOk()).andExpect(jsonPath("$.platforms").isArray());
-        dictMvc.perform(get("/api/skills/hotwords").param("positionId", UUID.randomUUID().toString())).andExpect(status().isOk());
-        dictMvc.perform(get("/api/skills").param("q", "ja")).andExpect(status().isOk());
+        when(jdbc.query(contains("platforms_dict"), org.mockito.ArgumentMatchers.<RowMapper<PlatformItem>>any()))
+        .thenReturn(List.of(new PlatformItem(UUID.randomUUID(), "Indeed", "indeed.com", "https://www.indeed.com", "none")));
+                    when(jdbc.query(contains("selector_tasks_dict"), org.mockito.ArgumentMatchers.<RowMapper<CodeNameItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("selector_element_types_dict"), org.mockito.ArgumentMatchers.<RowMapper<CodeNameItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("currencies_dict"), org.mockito.ArgumentMatchers.<RowMapper<CodeNameItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("regions_dict"), org.mockito.ArgumentMatchers.<RowMapper<CodeNameItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("countries_dict"), org.mockito.ArgumentMatchers.<RowMapper<CountryItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("cities_dict"), org.mockito.ArgumentMatchers.<RowMapper<CityItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("levels_dict"), org.mockito.ArgumentMatchers.<RowMapper<IdNameItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("work_formats_dict"), org.mockito.ArgumentMatchers.<RowMapper<IdNameItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("employment_types_dict"), org.mockito.ArgumentMatchers.<RowMapper<IdNameItem>>any()))
+                    .thenReturn(List.of());
+                    when(jdbc.query(contains("positions_dict"), org.mockito.ArgumentMatchers.<RowMapper<PositionItem>>any()))
+                    .thenReturn(List.of());
+                    when(namedJdbc.query(contains("mv_skill_hotwords"), any(MapSqlParameterSource.class), org.mockito.ArgumentMatchers.<RowMapper<SkillHotwordDto>>any()))
+                    .thenReturn(List.of(new SkillHotwordDto(UUID.randomUUID(), "Backend", UUID.randomUUID(), "Java", 5)));
+                    when(namedJdbc.query(contains("FROM autooffer.skills"), any(MapSqlParameterSource.class), org.mockito.ArgumentMatchers.<RowMapper<SkillSearchDto>>any()))
+                    .thenReturn(List.of(new SkillSearchDto(UUID.randomUUID(), "Java", true)));
 
-        RegistrySelectorViewRepository selRepo = mock(RegistrySelectorViewRepository.class);
-        when(selRepo.findAll()).thenReturn(List.of(new RegistrySelectorView()));
-        when(selRepo.findByUpdatedAtAfterOrderByUpdatedAtAsc(any(OffsetDateTime.class))).thenReturn(List.of());
-        MockMvc regMvc = mvcFor(new RegistryController(selRepo, jdbc));
-        regMvc.perform(get("/api/registry/selectors")).andExpect(status().isOk());
-        regMvc.perform(get("/api/registry/selectors").param("since", "2026-01-01T00:00:00Z")).andExpect(status().isOk());
-        regMvc.perform(get("/api/registry/whitelist")).andExpect(status().isOk());
+                    MockMvc dictMvc = mvcFor(new DictionaryController(jdbc, namedJdbc));
+                    dictMvc.perform(get("/api/dictionaries/bootstrap")).andExpect(status().isOk()).andExpect(jsonPath("$.platforms[0].code").value("indeed.com"));
+                    dictMvc.perform(get("/api/skills/hotwords").param("positionId", UUID.randomUUID().toString())).andExpect(status().isOk()).andExpect(jsonPath("$[0].skillName").value("Java"));
+                    dictMvc.perform(get("/api/skills").param("q", "ja")).andExpect(status().isOk()).andExpect(jsonPath("$[0].name").value("Java"));
+
+                    RegistrySelectorViewRepository selRepo = mock(RegistrySelectorViewRepository.class);
+                    when(selRepo.findAll()).thenReturn(List.of(new RegistrySelectorView()));
+                    when(selRepo.findByUpdatedAtAfterOrderByUpdatedAtAsc(any(OffsetDateTime.class))).thenReturn(List.of());
+                    when(jdbc.query(contains("v_registry_whitelist"), org.mockito.ArgumentMatchers.<RowMapper<WhitelistPlatformDto>>any()))
+                    .thenReturn(List.of(new WhitelistPlatformDto("indeed.com", "Indeed", "https://www.indeed.com", "none", OffsetDateTime.now())));
+                                MockMvc regMvc = mvcFor(new RegistryController(selRepo, jdbc));
+                                regMvc.perform(get("/api/registry/selectors")).andExpect(status().isOk());
+                                regMvc.perform(get("/api/registry/selectors").param("since", "2026-01-01T00:00:00Z")).andExpect(status().isOk());
+                                regMvc.perform(get("/api/registry/whitelist")).andExpect(status().isOk()).andExpect(jsonPath("$[0].platformCode").value("indeed.com"));
 
         UUID remId = UUID.randomUUID();
         when(namedJdbc.queryForObject(anyString(), any(MapSqlParameterSource.class), eq(UUID.class))).thenReturn(remId);
@@ -182,10 +216,10 @@ class ControllerUnitTests {
 
         MockMvc remAdminMvc = mvcFor(new AdminRemovalController(namedJdbc));
         UUID remId = UUID.randomUUID();
-        when(namedJdbc.queryForList(contains("FROM autooffer.removal_requests WHERE status"), any(MapSqlParameterSource.class)))
-                .thenReturn(List.of(Map.of("id", remId.toString())));
-        remAdminMvc.perform(get("/api/admin/removal-requests").param("status", "open")).andExpect(status().isOk());
-        remAdminMvc.perform(get("/api/admin/removal-requests").param("status", "invalid")).andExpect(status().isBadRequest());
+        when(namedJdbc.query(contains("FROM autooffer.removal_requests WHERE status"), any(MapSqlParameterSource.class), org.mockito.ArgumentMatchers.<RowMapper<RemovalRequestDto>>any()))
+        .thenReturn(List.of(new RemovalRequestDto(remId, "https://indeed.com/1", null, "open", OffsetDateTime.now(), null, null)));
+                    remAdminMvc.perform(get("/api/admin/removal-requests").param("status", "open")).andExpect(status().isOk()).andExpect(jsonPath("$[0].status").value("open"));
+                    remAdminMvc.perform(get("/api/admin/removal-requests").param("status", "invalid")).andExpect(status().isBadRequest());
 
         when(namedJdbc.queryForList(contains("FOR UPDATE"), any(MapSqlParameterSource.class)))
                 .thenReturn(List.of(Map.of("target_url", "https://indeed.com/1", "status", "open")));
@@ -206,10 +240,11 @@ class ControllerUnitTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"done\"}"))
                 .andExpect(status().isNotFound());
 
-        when(jdbc.queryForList(anyString())).thenReturn(List.of(Map.of("id", UUID.randomUUID().toString())));
+        when(jdbc.query(contains("v_selector_review_queue"), org.mockito.ArgumentMatchers.<RowMapper<SelectorReviewQueueItemDto>>any()))
+        .thenReturn(List.of(new SelectorReviewQueueItemDto(UUID.randomUUID(), "indeed.com", "parse_vacancy_list", "title", "indeed.com", "css", 1, null, "h1", UUID.randomUUID(), OffsetDateTime.now())));
         when(namedJdbc.queryForList(contains("reject_selector"), any(MapSqlParameterSource.class))).thenReturn(List.of());
         MockMvc selAdminMvc = mvcFor(new AdminSelectorController(jdbc, namedJdbc));
-        selAdminMvc.perform(get("/api/admin/selectors/queue")).andExpect(status().isOk());
+        selAdminMvc.perform(get("/api/admin/selectors/queue")).andExpect(status().isOk()).andExpect(jsonPath("$[0].platformCode").value("indeed.com"));
         selAdminMvc.perform(post("/api/admin/selectors/{id}/reject", UUID.randomUUID()).principal(adminAuth)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"comment\":\"invalid\"}"))
                 .andExpect(status().isNoContent());

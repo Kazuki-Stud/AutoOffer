@@ -26,6 +26,9 @@ private static final String STATUS_SUCCESS = "success";
 private static final String STATUS_FAILED = "failed";
 private static final String TABLE_RAW = "raw_vacancies";
 private static final String TABLE_STAGING = "stg_vacancies";
+private static final String DEFAULT_UNSPECIFIED = "Unspecified";
+private static final String DEFAULT_UNKNOWN = "Unknown";
+private static final String DEFAULT_REGION = "OTHER";
 
     private static final Map<String, Double> FX_TO_EUR = Map.of(
             "EUR", 1.0,
@@ -232,17 +235,17 @@ private static final String TABLE_STAGING = "stg_vacancies";
         int qualityOk = (r.platform_code() != null && validSalaryOrder) ? 1 : 0;
 
         return new StgVacancyRow(
-                r.vacancy_id(), r.platform_code(), r.storage_level(),
-                coalesce(r.position_name(), "Unspecified"),
-                coalesce(r.company_name(), "Unknown"),
-                coalesce(r.country_name(), "Unknown"),
-                coalesce(r.region_name(), "OTHER"),
-                eurFrom, eurTo, eurMid,
-                coalesce(r.level_name(), "Unspecified"),
-                coalesce(r.work_format(), "Unspecified"),
-                coalesce(r.employment_type(), "Unspecified"),
-                r.submission_count(), r.is_active(), qualityOk, r.skills(),
-                r.created_at(), r.updated_at()
+            r.vacancy_id(), r.platform_code(), r.storage_level(),
+            coalesce(r.position_name(), DEFAULT_UNSPECIFIED),
+            coalesce(r.company_name(), DEFAULT_UNKNOWN),
+            coalesce(r.country_name(), DEFAULT_UNKNOWN),
+            coalesce(r.region_name(), DEFAULT_REGION),
+            eurFrom, eurTo, eurMid,
+            coalesce(r.level_name(), DEFAULT_UNSPECIFIED),
+            coalesce(r.work_format(), DEFAULT_UNSPECIFIED),
+            coalesce(r.employment_type(), DEFAULT_UNSPECIFIED),
+            r.submission_count(), r.is_active(), qualityOk, r.skills(),
+            r.created_at(), r.updated_at()
         );
     }
 

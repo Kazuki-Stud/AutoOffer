@@ -1,5 +1,6 @@
 package AutoOffer.controller;
 
+import AutoOffer.dto.removal.RemovalRequestSubmittedResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -12,7 +13,6 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -20,6 +20,8 @@ import java.util.UUID;
 @Tag(name = "GDPR Removal", description = "Anonymous Art. 17 removal requests (BA 2.8)")
 @RequiredArgsConstructor
 public class RemovalRequestController {
+
+    private static final String STATUS_OPEN = "open";
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -30,7 +32,7 @@ public class RemovalRequestController {
 
     @PostMapping
     @Operation(summary = "Submit an anonymous GDPR Art. 17 removal request")
-    public ResponseEntity<Map<String, Object>> submit(@Valid @RequestBody CreateRemovalRequest req) {
+    public ResponseEntity<RemovalRequestSubmittedResponse> submit(@Valid @RequestBody CreateRemovalRequest req) {
         UUID id = jdbc.queryForObject("""
                 INSERT INTO autooffer.removal_requests (target_url, note)
                 VALUES (autooffer.normalize_url(:url), :note)
@@ -38,6 +40,6 @@ public class RemovalRequestController {
                 """,
                 new MapSqlParameterSource().addValue("url", req.targetUrl()).addValue("note", req.note()),
                 UUID.class);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("id", id, "status", "open"));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(new RemovalRequestSubmittedResponse(id, STATUS_OPEN));
     }
 }

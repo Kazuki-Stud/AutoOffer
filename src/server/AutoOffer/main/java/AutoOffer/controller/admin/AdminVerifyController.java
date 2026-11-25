@@ -22,38 +22,51 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminVerifyController {
 
+    private enum VerifyTarget {
+COMPANY("companies_dict"),
+POSITION("positions_dict"),
+SKILL("skills"),
+VACANCY("vacancies");
+
+        private final String table;
+
+        VerifyTarget(String table) {
+            this.table = table;
+        }
+    }
+
     private final NamedParameterJdbcTemplate jdbc;
 
     @PostMapping("/companies/{id}/verify")
     @Operation(summary = "Verify company")
     public ResponseEntity<Void> verifyCompany(@PathVariable UUID id, Authentication auth) {
-        return verify("companies_dict", id, auth);
+        return verify(VerifyTarget.COMPANY, id, auth);
     }
 
     @PostMapping("/positions/{id}/verify")
     @CacheEvict(cacheNames = {"dictionariesBootstrap", "skillHotwords"}, allEntries = true)
     @Operation(summary = "Verify position")
     public ResponseEntity<Void> verifyPosition(@PathVariable UUID id, Authentication auth) {
-        return verify("positions_dict", id, auth);
+        return verify(VerifyTarget.POSITION, id, auth);
     }
 
     @PostMapping("/skills/{id}/verify")
     @CacheEvict(cacheNames = {"dictionariesBootstrap", "skillHotwords"}, allEntries = true)
     @Operation(summary = "Verify skill")
     public ResponseEntity<Void> verifySkill(@PathVariable UUID id, Authentication auth) {
-        return verify("skills", id, auth);
+        return verify(VerifyTarget.SKILL, id, auth);
     }
 
     @PostMapping("/vacancies/{id}/verify")
     @Operation(summary = "Verify vacancy")
     public ResponseEntity<Void> verifyVacancy(@PathVariable UUID id, Authentication auth) {
-        return verify("vacancies", id, auth);
+        return verify(VerifyTarget.VACANCY, id, auth);
     }
 
-    private ResponseEntity<Void> verify(String table, UUID id, Authentication auth) {
+    private ResponseEntity<Void> verify(VerifyTarget target, UUID id, Authentication auth) {
         UUID adminId = UUID.fromString(auth.getName());
         int n = jdbc.update(
-                "UPDATE autooffer." + table + " SET is_verified = true, verified_by_admin_id = CAST(:adminId AS uuid) WHERE id = CAST(:id AS uuid)",
+                "UPDATE autooffer." + target.table + " SET is_verified = true, verified_by_admin_id = CAST(:adminId AS uuid) WHERE id = CAST(:id AS uuid)",
                 new MapSqlParameterSource().addValue("adminId", adminId).addValue("id", id)
         );
         if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Record not found");

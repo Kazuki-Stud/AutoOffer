@@ -1,5 +1,6 @@
 package AutoOffer.controller.admin;
 
+import AutoOffer.dto.registry.SelectorReviewQueueItemDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,8 +13,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -30,8 +31,21 @@ public class AdminSelectorController {
 
     @GetMapping("/queue")
     @Operation(summary = "List pending selector proposals with active diff")
-    public ResponseEntity<List<Map<String, Object>>> queue() {
-        return ResponseEntity.ok(jdbc.queryForList("SELECT * FROM autooffer.v_selector_review_queue ORDER BY created_at ASC"));
+    public ResponseEntity<List<SelectorReviewQueueItemDto>> queue() {
+        return ResponseEntity.ok(jdbc.query(
+                "SELECT * FROM autooffer.v_selector_review_queue ORDER BY created_at ASC",
+                (rs, n) -> new SelectorReviewQueueItemDto(
+                    rs.getObject("id", UUID.class),
+                    rs.getString("platform_code"),
+                    rs.getString("task_code"),
+                    rs.getString("element_type_code"),
+                    rs.getString("url_pattern"),
+                    rs.getString("selector_kind"),
+                    rs.getInt("version"),
+                    rs.getString("active_selector_string"),
+                    rs.getString("proposed_selector_string"),
+                    rs.getObject("submitted_by_device_id", UUID.class),
+                    rs.getObject("created_at", OffsetDateTime.class))));
     }
 
     @PostMapping("/{id}/approve")

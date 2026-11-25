@@ -4,6 +4,7 @@ import AutoOffer.configuration.SecurityProperties;
 import AutoOffer.controller.SelectorController;
 import AutoOffer.controller.admin.AdminSelectorController;
 import AutoOffer.dto.auth.DeviceRegisterResponse;
+import AutoOffer.dto.common.IdResponse;
 import AutoOffer.dto.vacancy.UpsertVacancyRequest;
 import AutoOffer.entity.Device;
 import AutoOffer.repository.DeviceRepository;
@@ -211,7 +212,7 @@ class AutoOfferApplicationTests {
 
         var submitResponse = selectorController.submit(principal, validReq);
         assertThat(submitResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(submitResponse.getBody()).containsEntry("id", selectorId);
+        assertThat(submitResponse.getBody()).isEqualTo(new IdResponse(selectorId));
 
         when(namedJdbc.queryForList(contains("autooffer.approve_selector"), any(MapSqlParameterSource.class)))
                 .thenReturn(List.of(Map.of()));

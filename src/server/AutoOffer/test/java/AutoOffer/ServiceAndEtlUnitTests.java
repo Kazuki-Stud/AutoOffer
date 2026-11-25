@@ -1,5 +1,6 @@
 package AutoOffer;
 
+import AutoOffer.configuration.CorrelationIdFilter;
 import AutoOffer.configuration.SecurityProperties;
 import AutoOffer.dto.vacancy.UpsertVacancyRequest;
 import AutoOffer.entity.Device;
@@ -15,6 +16,7 @@ import AutoOffer.service.impl.VacancyServiceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -48,6 +50,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -125,18 +128,26 @@ class ServiceAndEtlUnitTests {
         server.expect(method(HttpMethod.POST))
 .andExpect(queryParam("database", "autooffer_olap"))
 .andExpect(queryParam("date_time_input_format", "best_effort"))
+.andExpect(header(CorrelationIdFilter.HEADER_NAME, "trace-ch-1"))
 .andRespond(withSuccess());
 server.expect(method(HttpMethod.POST))
 .andExpect(queryParam("database", "autooffer_olap"))
+.andExpect(header(CorrelationIdFilter.HEADER_NAME, "trace-ch-1"))
 .andRespond(withSuccess());
 server.expect(method(HttpMethod.GET))
 .andExpect(queryParam("database", "autooffer_olap"))
+.andExpect(header(CorrelationIdFilter.HEADER_NAME, "trace-ch-1"))
 .andRespond(withSuccess("{\"data\":[]}", MediaType.APPLICATION_JSON));
 
-        client.insertJsonEachRow("raw_vacancies", List.of());
-        client.insertJsonEachRow("raw_vacancies", List.of(java.util.Map.of("k", "v")));
-        client.executeStatement("TRUNCATE TABLE autooffer_olap.dm_skill_demand");
-        assertThat(client.queryJson("SELECT 1")).isEqualTo("{\"data\":[]}");
+        MDC.put(CorrelationIdFilter.MDC_KEY, "trace-ch-1");
+        try {
+            client.insertJsonEachRow("raw_vacancies", List.of());
+            client.insertJsonEachRow("raw_vacancies", List.of(java.util.Map.of("k", "v")));
+            client.executeStatement("TRUNCATE TABLE autooffer_olap.dm_skill_demand");
+            assertThat(client.queryJson("SELECT 1")).isEqualTo("{\"data\":[]}");
+        } finally {
+            MDC.remove(CorrelationIdFilter.MDC_KEY);
+        }
 
         server.verify();
     }

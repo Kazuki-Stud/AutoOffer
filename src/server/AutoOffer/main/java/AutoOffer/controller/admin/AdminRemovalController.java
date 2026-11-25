@@ -1,5 +1,6 @@
 package AutoOffer.controller.admin;
 
+import AutoOffer.dto.removal.RemovalRequestDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,8 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -38,14 +39,22 @@ private static final Set<String> VALID_STATUSES = Set.of(STATUS_OPEN, DECISION_D
 
     @GetMapping
     @Operation(summary = "List removal requests filtered by status")
-    public ResponseEntity<List<Map<String, Object>>> list(@RequestParam(defaultValue = STATUS_OPEN) String status) {
+    public ResponseEntity<List<RemovalRequestDto>> list(@RequestParam(defaultValue = STATUS_OPEN) String status) {
         if (!VALID_STATUSES.contains(status)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status must be one of: open, done, rejected");
         }
-        return ResponseEntity.ok(jdbc.queryForList(
-                "SELECT * FROM autooffer.removal_requests WHERE status = :status ORDER BY created_at ASC",
-                new MapSqlParameterSource("status", status)
-        ));
+        var rows = jdbc.query(
+            "SELECT id, target_url, note, status, created_at, processed_at, processed_by_admin_id FROM autooffer.removal_requests WHERE status = :status ORDER BY created_at ASC",
+            new MapSqlParameterSource("status", status),
+            (rs, n) -> new RemovalRequestDto(
+                rs.getObject("id", UUID.class),
+                rs.getString("target_url"),
+                rs.getString("note"),
+                rs.getString("status"),
+                rs.getObject("created_at", OffsetDateTime.class),
+                rs.getObject("processed_at", OffsetDateTime.class),
+                rs.getObject("processed_by_admin_id", UUID.class)));
+        return ResponseEntity.ok(rows);
     }
 
     @PostMapping("/{id}/process")

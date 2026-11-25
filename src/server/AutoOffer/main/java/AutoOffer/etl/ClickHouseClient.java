@@ -1,8 +1,11 @@
 package AutoOffer.etl;
 
+import AutoOffer.configuration.CorrelationIdFilter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -43,34 +46,44 @@ public class ClickHouseClient {
                         .queryParam("date_time_input_format", "best_effort")
                         .queryParam("query", "INSERT INTO " + props.database() + "." + table + " FORMAT JSONEachRow")
                         .build())
+                .headers(ClickHouseClient::applyCorrelationHeader)
                 .contentType(MediaType.APPLICATION_NDJSON)
                 .body(ndjson)
                 .retrieve()
                 .toBodilessEntity();
-    }
+            }
 
-    public void executeStatement(String sql) {
-        restClient.post()
+            public void executeStatement(String sql) {
+                restClient.post()
                 .uri(uriBuilder -> uriBuilder
-                        .path("/")
-                        .queryParam("database", props.database())
-                        .build())
+                    .path("/")
+                    .queryParam("database", props.database())
+                    .build())
+                .headers(ClickHouseClient::applyCorrelationHeader)
                 .contentType(MediaType.TEXT_PLAIN)
                 .body(sql)
                 .retrieve()
                 .toBodilessEntity();
-    }
+            }
 
-    public String queryJson(String sql) {
-        return restClient.get()
+            public String queryJson(String sql) {
+                return restClient.get()
                 .uri(uriBuilder -> uriBuilder
-                        .path("/")
-                        .queryParam("database", props.database())
-                        .queryParam("query", sql + " FORMAT JSON")
-                        .build())
+                    .path("/")
+                    .queryParam("database", props.database())
+                    .queryParam("query", sql + " FORMAT JSON")
+                    .build())
+                .headers(ClickHouseClient::applyCorrelationHeader)
                 .retrieve()
                 .body(String.class);
-    }
+            }
+
+            private static void applyCorrelationHeader(HttpHeaders headers) {
+                String requestId = MDC.get(CorrelationIdFilter.MDC_KEY);
+                if (requestId != null && !requestId.isBlank()) {
+                    headers.set(CorrelationIdFilter.HEADER_NAME, requestId);
+                }
+            }
 
     private String toJson(Object row) {
         try {

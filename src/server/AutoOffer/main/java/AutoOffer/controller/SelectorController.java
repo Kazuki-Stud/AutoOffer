@@ -1,5 +1,6 @@
 package AutoOffer.controller;
 
+import AutoOffer.dto.common.IdResponse;
 import AutoOffer.security.DevicePrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -18,7 +19,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -45,32 +45,32 @@ public class SelectorController {
     @PostMapping
     @Operation(summary = "Submit a pending selector proposal for admin review")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Map<String, UUID>> submit(
-            @AuthenticationPrincipal DevicePrincipal device,
-            @Valid @RequestBody SubmitSelectorRequest req) {
+    public ResponseEntity<IdResponse> submit(
+        @AuthenticationPrincipal DevicePrincipal device,
+        @Valid @RequestBody SubmitSelectorRequest req) {
         if (UNSAFE.matcher(req.selectorString()).find()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selector must not contain scripts or URLs");
         }
         UUID id = jdbc.queryForObject("""
-                SELECT autooffer.submit_selector(
-                    CAST(:deviceId AS uuid),
-                    CAST(:platformId AS uuid),
-                    CAST(:taskId AS uuid),
-                    CAST(:elementTypeId AS uuid),
-                    CAST(:urlPattern AS varchar),
-                    CAST(:kind AS varchar),
-                    CAST(:selectorString AS text)
-                )
-                """,
-                new MapSqlParameterSource()
-                        .addValue("deviceId", device.deviceId())
-                        .addValue("platformId", req.platformId())
-                        .addValue("taskId", req.taskId())
-                        .addValue("elementTypeId", req.elementTypeId())
-                        .addValue("urlPattern", req.urlPattern())
-                        .addValue("kind", req.kind())
-                        .addValue("selectorString", req.selectorString()),
-                UUID.class);
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", id));
+            SELECT autooffer.submit_selector(
+                CAST(:deviceId AS uuid),
+                CAST(:platformId AS uuid),
+                CAST(:taskId AS uuid),
+                CAST(:elementTypeId AS uuid),
+                CAST(:urlPattern AS varchar),
+                CAST(:kind AS varchar),
+                CAST(:selectorString AS text)
+            )
+            """,
+            new MapSqlParameterSource()
+            .addValue("deviceId", device.deviceId())
+            .addValue("platformId", req.platformId())
+            .addValue("taskId", req.taskId())
+            .addValue("elementTypeId", req.elementTypeId())
+            .addValue("urlPattern", req.urlPattern())
+            .addValue("kind", req.kind())
+            .addValue("selectorString", req.selectorString()),
+            UUID.class);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new IdResponse(id));
     }
 }
