@@ -114,6 +114,8 @@ tasks.named('jacocoTestReport') {
     }
 }
 
+def jacocoXmlFile = layout.buildDirectory.file('reports/jacoco/test/jacocoTestReport.xml')
+
 tasks.named('jacocoTestCoverageVerification') {
     dependsOn tasks.named('jacocoTestReport')
     violationRules {
@@ -125,7 +127,29 @@ tasks.named('jacocoTestCoverageVerification') {
             }
         }
     }
-}
+    doFirst {
+        def xmlFile = jacocoXmlFile.get().asFile
+        if (xmlFile.exists()) {
+            def factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+            factory.setFeature('http://apache.org/xml/features/nonvalidating/load-external-dtd', false)
+                def doc = factory.newDocumentBuilder().parse(xmlFile)
+                def children = doc.documentElement.childNodes
+                for (int i = 0; i < children.length; i++) {
+                    def node = children.item(i)
+                    if (node.nodeName == 'counter') {
+                        def type = node.attributes.getNamedItem('type')?.nodeValue
+                        if (type == 'LINE' || type == 'BRANCH') {
+                            long missed = node.attributes.getNamedItem('missed').nodeValue as long
+                            long covered = node.attributes.getNamedItem('covered').nodeValue as long
+                            long total = missed + covered
+                            double pct = total > 0 ? (covered * 100.0d / total) : 0.0d
+                            println String.format('JaCoCo %s coverage: %d/%d (%.2f%%)', type, covered, total, pct)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
 tasks.named('check') {
     dependsOn tasks.named('jacocoTestCoverageVerification')

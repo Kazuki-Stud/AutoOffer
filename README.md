@@ -125,7 +125,7 @@ cd src/server/AutoOffer
 ./gradlew check
 ```
 
-Coverage HTML report is generated at `src/server/AutoOffer/build/reports/jacoco/test/html/index.html`.
+Verified coverage (`./gradlew check`): **88.73% LINE** (`606/683`) and **72.07% BRANCH** (`129/179`). Coverage HTML report is generated at `src/server/AutoOffer/build/reports/jacoco/test/html/index.html`.
 
 ### 4. Verify Endpoints & Observability
 Once `docker compose ps` shows all services healthy (replace `localhost:8080` with your deployed production URL if accessing externally):
@@ -180,7 +180,7 @@ npm run build      # outputs unpacked build to src/client/extension/dist
 | **Security & Input Validation** | `security/` (`DeviceTokenAuthFilter`, `AdminJwtFilter`, `JwtUtils`), `BCryptPasswordEncoder(12)`, `HMAC-SHA-256`, Bean Validation DTOs, `db/changelog/01__schema.sql` & `03__roles.sql` |
 | **Redis Caching** | `configuration/CacheConfig.java`, `configuration/CacheNames.java`, `docker-compose.yml` (`redis:7.4-alpine`) |
 | **Observability (Metrics & Logs)** | `docker/prometheus/`, `docker/loki/`, `docker/promtail/`, `docker/grafana/`, `docker/alertmanager/` |
-| **Testing & Coverage (`>= 80%`)** | `src/server/AutoOffer/test/java/AutoOffer/` (5 unit test classes + `PostgresGrantsAndLiquibaseIntegrationTest` via Testcontainers), JaCoCo `0.80` check in `build.gradle` |
+| **Testing & Coverage (`>= 80%`)** | `src/server/AutoOffer/test/java/AutoOffer/` (5 unit test classes + `PostgresGrantsAndLiquibaseIntegrationTest` via Testcontainers), JaCoCo `0.80` check in `build.gradle` (**88.73% LINE**, **72.07% BRANCH**) |
 | **CI/CD & Production Deployment** | `.github/workflows/ci-cd.yml` (Checkstyle + tests + JaCoCo + Trivy + GHCR + SSH Compose deploy), `src/server/AutoOffer/Dockerfile`, `src/server/AutoOffer/docker-compose.yml` |
 
 ---
