@@ -31,3 +31,4 @@ client_bundle.txt
 Road.txt
 /docs/Goals
 .context/
+src/client/pwa/test-results/.last-run.json

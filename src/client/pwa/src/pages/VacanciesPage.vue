@@ -50,6 +50,7 @@
         </div>
 
         <section class="content-area" aria-label="Vacancies list">
+            <h2 class="sr-only">Vacancies</h2>
             <div v-if="store.loading && !store.vacancies.length" class="vacancies-grid">
                 <div v-for="n in 6" :key="n" class="ao-skeleton"></div>
             </div>
