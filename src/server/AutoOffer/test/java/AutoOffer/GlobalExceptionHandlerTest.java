@@ -13,8 +13,11 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.sql.SQLException;
 
@@ -88,6 +91,22 @@ class GlobalExceptionHandlerTest {
 
         DataAccessException generic = new RecoverableDataAccessException("generic", new RuntimeException("io"));
         assertThat(handler.handleDatabaseError(generic).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void handleHttpProtocolErrors_returns404_405_406() {
+        var notSupported = handler.handleMethodNotSupported(
+            new HttpRequestMethodNotSupportedException("DELETE"));
+        assertThat(notSupported.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(notSupported.getBody().code()).isEqualTo(ErrorCode.VALIDATION_ERROR);
+
+        var notAcceptable = handler.handleNotAcceptable(
+            new HttpMediaTypeNotAcceptableException("text/xml"));
+        assertThat(notAcceptable.getStatusCode()).isEqualTo(HttpStatus.NOT_ACCEPTABLE);
+
+        var noResource = handler.handleNoResourceFound(mock(NoResourceFoundException.class));
+        assertThat(noResource.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(noResource.getBody().code()).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
     }
 
     @Test

@@ -45,6 +45,7 @@ public class SelectorController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Submit a pending selector proposal for admin review")
     @SecurityRequirement(name = "bearerAuth")
+    @SecurityRequirement(name = "deviceIdHeader")
     @ApiResponse(responseCode = "201", description = "Pending selector created")
     @ApiResponse(responseCode = "400", description = "Invalid or unsafe selector",
             content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))

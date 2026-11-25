@@ -39,6 +39,7 @@ public class VacancyController {
     @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Submit/deduplicate vacancy via server-side upsert_vacancy()")
     @SecurityRequirement(name = "bearerAuth")
+    @SecurityRequirement(name = "deviceIdHeader")
     @ApiResponse(responseCode = "200", description = "Vacancy upserted")
     @ApiResponse(responseCode = "400", description = "Validation or policy violation",
             content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
