@@ -51,7 +51,7 @@ await page.goto('./');
             ['Profile & Resumes', /#\/profile/],
             ['Settings & Sync', /#\/settings/],
         ]) {
-            await page.getByRole('link', { name: label }).click();
+            await page.getByRole('link', { name: label, exact: true }).click();
             await expect(page).toHaveURL(urlRe);
             const routeOverflow = await page.evaluate(
                 () => document.documentElement.scrollWidth > window.innerWidth
@@ -71,12 +71,12 @@ await page.goto('./');
     await page.getByRole('button', { name: 'Toggle theme' }).click();
     await expect(html).toHaveAttribute('data-theme', 'light');
 
-    await page.getByRole('link', { name: 'Settings & Sync' }).click();
+    await page.getByRole('link', { name: 'Settings & Sync', exact: true }).click();
     await page.locator('#display-scale').selectOption('120');
     const rootFontSize = await page.evaluate(() => document.documentElement.style.fontSize);
     expect(rootFontSize).toBe('120%');
 
-    await page.getByRole('link', { name: 'Profile & Resumes' }).click();
+    await page.getByRole('link', { name: 'Profile & Resumes', exact: true }).click();
     await expect(page).toHaveURL(/#\/profile/);
     await page.getByRole('button', { name: 'Save Profile Changes' }).click();
     await expect(page.getByText('First name, last name, and valid email are required.')).toBeVisible();

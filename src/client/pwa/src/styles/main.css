@@ -1627,7 +1627,7 @@ flex-shrink: 0;
 display: none;
 }
 
-@media (pointer: coarse), (max-width: 768px) {
+@media (pointer: coarse), (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
 .pwa-nav-btn,
 .primary-btn,
 .secondary-btn,

@@ -1,7 +1,5 @@
 <template>
     <div class="pwa-view">
-        <StatsGrid :stats="dashboardStats" />
-
         <div v-if="!store.isExtensionConnected" class="pwa-card">
             <span class="status-msg">
                 Browser extension is not connected. Standalone local mode is active; import/export JSON or set your Extension ID in Settings &amp; Sync.
@@ -112,7 +110,6 @@
 <script setup>
 import { computed, ref } from 'vue';
 import HotwordsChart from '../components/HotwordsChart.vue';
-import StatsGrid from '../components/StatsGrid.vue';
 import { APPLICATION_STATUSES } from '../models/constants.js';
 import { useAppStore } from '../stores/appStore.js';
 import { formatDate, isSafeHttpUrl } from '../utils/helpers.js';
@@ -141,16 +138,6 @@ function resetFilters() {
 function skillsFor(item) {
     return store.extractVacancySkills(item);
 }
-
-const dashboardStats = computed(() => {
-    const total = store.vacancies.length;
-    const detailed = store.vacancies.filter((v) => v.status === 'complete' && v.description?.length > 50).length;
-    return [
-        { value: total, label: 'Total Vacancies' },
-        { value: detailed, label: 'Detailed' },
-        { value: store.storageWeight.formatted, label: 'Storage Weight' },
-    ];
-});
 
 const availableSources = computed(() => {
     const set = new Set(store.vacancies.map((v) => store.resolveSourceLabel(v)).filter(Boolean));
