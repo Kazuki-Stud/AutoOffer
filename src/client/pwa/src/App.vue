@@ -1,7 +1,7 @@
 <template>
     <div class="layout-container">
         <a href="#main-content" class="skip-link">Skip to main content</a>
-        <AppHeader :theme="store.theme" @toggle-theme="store.toggleTheme()" />
+        <AppHeader :theme="store.theme" :connected="store.isExtensionConnected" @toggle-theme="store.toggleTheme()" />
         <main id="main-content" tabindex="-1">
             <ErrorBoundary>
                 <router-view />
@@ -29,10 +29,12 @@ import ErrorBoundary from './components/ErrorBoundary.vue';
 import ReviewApplyModal from './components/ReviewApplyModal.vue';
 import ToastContainer from './components/ToastContainer.vue';
 import VacancyModal from './components/VacancyModal.vue';
+import { useDeviceInfo } from './composables/useDeviceInfo.js';
 import { registerGlobalHttpErrorHandler } from './services/httpClient.js';
 import { useAppStore } from './stores/appStore.js';
 
 const store = useAppStore();
+useDeviceInfo();
 
 function openReviewApply(vacancy) {
     store.selectedVacancyForModal = null;

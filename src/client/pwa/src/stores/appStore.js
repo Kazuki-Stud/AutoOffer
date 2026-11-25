@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { toRaw } from 'vue';
 import { db } from '../../../extension/database/database.js';
 import { migrateLegacySecrets, saveAiConfiguration } from '../../../extension/database/crypto.js';
 import {
@@ -41,9 +42,10 @@ const SKILL_PATTERNS = KNOWN_SKILLS.map((name) => {
 
 export const useAppStore = defineStore('app', {
     state: () => ({
-        theme: localStorage.getItem('ao_theme') === 'light' ? 'light' : 'dark',
-        uiScale: Number(localStorage.getItem('ao_ui_scale')) || 100,
-        extensionId: localStorage.getItem('autooffer_extension_id') || '',
+            theme: localStorage.getItem('ao_theme') === 'light' ? 'light' : 'dark',
+            uiScale: Number(localStorage.getItem('ao_ui_scale')) || 100,
+            uiDensity: localStorage.getItem('ao_ui_density') === 'compact' ? 'compact' : 'comfortable',
+            extensionId: localStorage.getItem('autooffer_extension_id') || '',
         isExtensionConnected: false,
         syncStatusText: 'Ready',
         syncStatusType: 'normal',
@@ -127,6 +129,12 @@ export const useAppStore = defineStore('app', {
             document.documentElement.style.fontSize = `${clean}%`;
             localStorage.setItem('ao_ui_scale', String(clean));
         },
+        setUiDensity(density) {
+            const clean = density === 'compact' ? 'compact' : 'comfortable';
+            this.uiDensity = clean;
+            document.documentElement.setAttribute('data-density', clean);
+            localStorage.setItem('ao_ui_density', clean);
+        },
         resolveSourceLabel(item) {
             const plat = item.platform_id ? this.platformsMap.get(item.platform_id) : null;
             if (plat) return plat.name || plat.code;
@@ -170,6 +178,7 @@ export const useAppStore = defineStore('app', {
         async bootstrap() {
             this.setTheme(this.theme);
             this.setUiScale(this.uiScale);
+            this.setUiDensity(this.uiDensity);
             const urlExtId = new URLSearchParams(window.location.search).get('extId')?.trim();
             if (urlExtId) {
                 localStorage.setItem('autooffer_extension_id', urlExtId);
@@ -554,9 +563,13 @@ export const useAppStore = defineStore('app', {
         async loadJobs() {
             if (this.isExtensionConnected) {
                 try {
-                    this.jobs = await callExtension('get_jobs');
+                    const remoteJobs = await callExtension('get_jobs');
+                    const plainJobs = Array.isArray(remoteJobs)
+                    ? JSON.parse(JSON.stringify(remoteJobs))
+                    : [];
                     await db.automation_jobs.clear();
-                    if (this.jobs.length) await db.automation_jobs.bulkPut(this.jobs);
+                    if (plainJobs.length) await db.automation_jobs.bulkPut(plainJobs);
+                    this.jobs = plainJobs;
                     return;
                 } catch (err) {
                     logger.warn('appStore.loadJobs', 'Extension jobs load failed; using local cache', err);
@@ -566,11 +579,12 @@ export const useAppStore = defineStore('app', {
         },
 
         async saveJob(job) {
+            const plainJob = JSON.parse(JSON.stringify(toRaw(job)));
             if (this.isExtensionConnected) {
-                const saved = await callExtension('save_job', { job });
-                await db.automation_jobs.put(saved);
+                const saved = await callExtension('save_job', { job: plainJob });
+                await db.automation_jobs.put(JSON.parse(JSON.stringify(saved)));
             } else {
-                await db.automation_jobs.put(job);
+                await db.automation_jobs.put(plainJob);
             }
             await this.loadJobs();
             await this.refreshDisplay();

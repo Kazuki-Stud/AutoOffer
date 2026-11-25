@@ -68,7 +68,8 @@
                 <span class="tag-status">{{ store.jobs.length }} jobs</span>
             </div>
             <div class="jobs-list">
-                <div v-if="!store.jobs.length" class="status-msg">
+                <div v-if="store.loading && !store.jobs.length" class="ao-skeleton"></div>
+                <div v-else-if="!store.jobs.length" class="status-msg">
                     No saved automation jobs yet. Create one above and run it from the Extension popup.
                 </div>
                 <div v-for="j in store.jobs" :key="j.id" class="job-row-card">

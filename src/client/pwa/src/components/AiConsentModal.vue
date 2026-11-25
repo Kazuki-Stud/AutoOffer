@@ -8,7 +8,7 @@
         aria-labelledby="ai-consent-title"
         @click.self="store.resolveAiConsent(false)"
     >
-        <div class="ao-modal-card">
+        <div ref="modalCard" class="ao-modal-card" tabindex="-1">
             <div class="ao-modal-header">
                 <h2 id="ai-consent-title" class="ao-modal-title">GDPR AI Data Processing Consent</h2>
             </div>
@@ -29,6 +29,26 @@
 </template>
 
 <script setup>
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useAppStore } from '../stores/appStore.js';
+
 const store = useAppStore();
+const modalCard = ref(null);
+
+watch(
+    () => store.consentRequest,
+    async (val) => {
+        if (val) {
+            await nextTick();
+            modalCard.value?.focus();
+        }
+    }
+);
+
+function onKey(e) {
+    if (e.key === 'Escape' && store.consentRequest) store.resolveAiConsent(false);
+}
+
+onMounted(() => window.addEventListener('keydown', onKey));
+onUnmounted(() => window.removeEventListener('keydown', onKey));
 </script>

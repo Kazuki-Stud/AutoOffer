@@ -38,7 +38,7 @@ function mapStatusMessage(status, fallback, serverDetail, url) {
     if (status === 400) return `Invalid request sent to ${url} · HTTP 400.${detailSuffix}`;
     if (status === 401) return `Authentication required or token expired for ${url} · HTTP 401.${detailSuffix}`;
     if (status === 403) return `Access denied by server policy for ${url} · HTTP 403.${detailSuffix}`;
-    if (status === 404) return `Backend endpoint not found at ${url} · HTTP 404. Verify Server API Base URL in Settings & Sync.`;
+    if (status === 404) return `Backend endpoint not found at ${url} · HTTP 404.${detailSuffix} Verify Server API Base URL in Settings & Sync.`;
     if (status >= 500) return `Backend server error at ${url} · HTTP ${status}.${detailSuffix} Check server logs and retry.`;
     return `${fallback || 'Request failed'} (${url}) · HTTP ${status}.${detailSuffix}`;
 }

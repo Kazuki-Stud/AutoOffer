@@ -1,7 +1,5 @@
 <template>
     <div class="pwa-view">
-        <StatsGrid :stats="dashboardStats" />
-
         <div v-if="!store.isExtensionConnected" class="pwa-card">
             <span class="status-msg">
                 Browser extension is not connected. Standalone local mode is active; import/export JSON or set your Extension ID in Settings &amp; Sync.
@@ -10,7 +8,11 @@
 
         <div class="view-controls-bar">
             <div class="search-input-wrap">
-                <input v-model="filterText" type="text" placeholder="Search by title, company, skills or description..." autocomplete="off" />
+                <input v-model="filterText" type="text" aria-label="Search vacancies" placeholder="Search by title, company, skills or description..." autocomplete="off" />
+                <svg class="search-input-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                </svg>
             </div>
             <div class="view-mode-toggle" role="group" aria-label="Vacancies layout">
                 <button type="button" class="view-mode-btn" :class="{ active: layout === 'grid' }" @click="setLayout('grid')">Grid</button>
@@ -54,7 +56,11 @@
             <div v-else-if="filteredVacancies.length" :class="layout === 'list' ? 'vacancies-list' : 'vacancies-grid'">
                 <div v-for="item in filteredVacancies" :key="item.id" class="vacancy-item" @click="store.selectedVacancyForModal = item">
                     <div :class="layout === 'list' ? 'vacancy-list-main' : ''">
-                        <div class="vacancy-title">{{ item.full_position_name || 'Untitled Position' }}</div>
+                        <div class="vacancy-title">
+<button type="button" class="vacancy-title-btn" @click.stop="store.selectedVacancyForModal = item">
+{{ item.full_position_name || 'Untitled Position' }}
+</button>
+</div>
                         <div class="vacancy-company-source-row">
                             <span class="vacancy-company">{{ store.resolveCompanyLabel(item) || 'Company not specified' }}</span>
                             <span class="vacancy-source-badge">{{ store.resolveSourceLabel(item) }}</span>
@@ -112,7 +118,6 @@
 <script setup>
 import { computed, ref } from 'vue';
 import HotwordsChart from '../components/HotwordsChart.vue';
-import StatsGrid from '../components/StatsGrid.vue';
 import { APPLICATION_STATUSES } from '../models/constants.js';
 import { useAppStore } from '../stores/appStore.js';
 import { formatDate, isSafeHttpUrl } from '../utils/helpers.js';
@@ -141,16 +146,6 @@ function resetFilters() {
 function skillsFor(item) {
     return store.extractVacancySkills(item);
 }
-
-const dashboardStats = computed(() => {
-    const total = store.vacancies.length;
-    const detailed = store.vacancies.filter((v) => v.status === 'complete' && v.description?.length > 50).length;
-    return [
-        { value: total, label: 'Total Vacancies' },
-        { value: detailed, label: 'Detailed' },
-        { value: store.storageWeight.formatted, label: 'Storage Weight' },
-    ];
-});
 
 const availableSources = computed(() => {
     const set = new Set(store.vacancies.map((v) => store.resolveSourceLabel(v)).filter(Boolean));

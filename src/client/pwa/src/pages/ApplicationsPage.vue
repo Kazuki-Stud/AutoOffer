@@ -7,14 +7,19 @@
             </div>
             <div class="view-controls-bar ao-section-spaced">
                 <div class="search-input-wrap">
-                    <input v-model="searchQuery" type="text" placeholder="Filter by company, role, resume or notes..." autocomplete="off" />
+                    <input v-model="searchQuery" type="text" aria-label="Filter applications" placeholder="Filter by company, role, resume or notes..." autocomplete="off" />
+                    <svg class="search-input-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.35-4.35" />
+                    </svg>
                 </div>
                 <select v-model="statusFilter" class="form-select ao-select-compact" aria-label="Filter applications by status">
                     <option value="">All Statuses</option>
                     <option v-for="st in APPLICATION_STATUSES" :key="st" :value="st">{{ st }}</option>
                 </select>
             </div>
-            <div v-if="!rows.length" class="empty-state">
+            <div v-if="store.loading && !rows.length" class="ao-skeleton ao-section-spaced"></div>
+<div v-else-if="!rows.length" class="empty-state">
                 <h3>No Applications Tracked Yet</h3>
                 <p>Change a vacancy status in the Vacancies tab or submit via Review &amp; Apply to start tracking your pipeline.</p>
             </div>

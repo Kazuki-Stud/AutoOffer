@@ -8,7 +8,7 @@
         aria-labelledby="ai-modal-title"
         @click.self="$emit('close')"
     >
-        <div class="ao-modal-card ai-modal-card">
+        <div ref="modalCard" class="ao-modal-card ai-modal-card" tabindex="-1">
             <div class="ao-modal-header">
                 <h2 id="ai-modal-title" class="ao-modal-title">Review &amp; Apply: {{ vacancy.full_position_name || 'Vacancy' }}</h2>
                 <button class="ao-modal-close" type="button" aria-label="Close" @click="$emit('close')">&times;</button>
@@ -112,7 +112,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { db } from '../../../extension/database/database.js';
 import {
     createApplication,
@@ -132,6 +132,7 @@ import { isSafeHttpUrl } from '../utils/helpers.js';
 const props = defineProps({ vacancy: { type: Object, default: null } });
 const emit = defineEmits(['close']);
 const store = useAppStore();
+const modalCard = ref(null);
 
 const selectedResumeId = ref('');
 const matchResult = ref(null);
@@ -165,6 +166,8 @@ watch(
     () => props.vacancy,
     async (vac) => {
         if (!vac) return;
+        await nextTick();
+        modalCard.value?.focus();
         aiStatus.value = '';
         applyStatus.value = '';
         captchaDetected.value = false;
@@ -398,6 +401,12 @@ async function executeAutofill(reuseTabId = null) {
         filling.value = false;
     }
 }
+
+function onKey(e) {
+    if (e.key === 'Escape' && props.vacancy) emit('close');
+}
+onMounted(() => window.addEventListener('keydown', onKey));
+onUnmounted(() => window.removeEventListener('keydown', onKey));
 
 async function confirmAndSubmit() {
     if (!props.vacancy) return;

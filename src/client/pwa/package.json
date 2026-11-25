@@ -2,6 +2,7 @@
   "name": "autooffer-pwa",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -23,6 +24,7 @@
     "@vue/test-utils": "*",
     "eslint": "*",
     "eslint-plugin-vue": "*",
+    "fake-indexeddb": "^6.2.8",
     "jsdom": "*",
     "prettier": "*",
     "vite": "^8.3.3",

@@ -30,6 +30,20 @@
     --overlay-bg: rgba(3, 7, 18, 0.78);
     --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+}
+
+[data-density="compact"] .pwa-card {
+    padding: 14px 16px;
+}
+
+[data-density="compact"] .vacancy-item {
+    padding: 12px 14px;
+    min-height: 100px;
 }
 
 [data-theme="light"] {
@@ -101,6 +115,8 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
 }
 
 .header-brand-logo {
@@ -396,6 +412,7 @@ body {
     border-radius: 12px;
     padding: 22px 16px;
     text-align: center;
+    min-width: 0;
     box-shadow: var(--card-shadow);
     transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
 }
@@ -469,11 +486,13 @@ ao-modal[open],
 }
 
 .ao-modal-card {
+    outline: none;
     background: var(--bg-surface);
     border-radius: 12px;
     max-width: 680px;
     width: 100%;
     max-height: 85vh;
+    max-height: 90dvh;
     overflow-y: auto;
     box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.4);
     border: 1px solid var(--border-color);
@@ -537,7 +556,7 @@ ao-modal[open],
 
 .ao-modal-meta-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
     gap: 10px;
     background: var(--input-bg);
     border: 1px solid var(--border-color);
@@ -634,6 +653,7 @@ ao-modal[open],
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .ao-btn {
@@ -818,11 +838,13 @@ ao-modal[open],
         grid-column: span 1;
     }
     .header-top-row {
-        flex-direction: column;
-        align-items: stretch;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
     }
     .header-actions {
-        justify-content: space-between;
+        justify-content: flex-end;
     }
     .pwa-card {
         padding: 16px;
@@ -830,9 +852,19 @@ ao-modal[open],
     .analytics-controls,
     .analytics-controls .form-select,
     .profile-toolbar .form-select,
-    .search-input-wrap {
+    .search-input-wrap,
+    .vacancies-filters-bar .form-select,
+    .ao-select-mode {
         min-width: 0;
         width: 100%;
+        flex: 1 1 100%;
+    }
+    .ao-modal-footer-actions {
+        width: 100%;
+    }
+    .ao-modal-footer-actions > * {
+        flex: 1 1 auto;
+        text-align: center;
     }
     .resume-variants-list {
         grid-template-columns: 1fr;
@@ -865,6 +897,24 @@ ao-modal[open],
     color: var(--color-primary);
     line-height: 1.35;
     margin: 0 0 6px 0;
+}
+
+.vacancy-title-btn,
+.resume-variant-title-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+}
+
+.vacancy-title-btn:hover,
+.resume-variant-title-btn:hover {
+    text-decoration: underline;
 }
 
 .vacancy-company-source-row {
@@ -1182,6 +1232,11 @@ ao-modal[open],
     flex-wrap: wrap;
 }
 
+.file-upload-row input[type="file"] {
+    max-width: 100%;
+    min-width: 0;
+}
+
 /* Applications Table & Responsive 360px Cards (US 5.3 & US 8.1) */
 .applications-table-wrap {
     width: 100%;
@@ -1277,6 +1332,10 @@ ao-modal[open],
         color: var(--text-muted);
         text-align: left;
         flex-shrink: 0;
+    }
+    .applications-table td > * {
+        min-width: 0;
+        max-width: 100%;
     }
     .applications-table td .form-select,
     .applications-table td .inline-notes-input {
@@ -1603,7 +1662,16 @@ margin-top: 0;
 margin-bottom: 16px;
 }
 
-@media (pointer: coarse), (max-width: 768px) {
+.nav-icon {
+display: none;
+flex-shrink: 0;
+}
+
+.nav-label-short {
+display: none;
+}
+
+@media (pointer: coarse), (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
 .pwa-nav-btn,
 .primary-btn,
 .secondary-btn,
@@ -1613,8 +1681,10 @@ margin-bottom: 16px;
 .platform-chip,
 .ao-btn,
 .ao-modal-close,
+.ao-toast-close,
 .theme-toggle-pill,
 .app-role-link,
+.vacancy-link,
 .form-select,
 .inline-notes-input,
 .search-input-wrap input,
@@ -1623,6 +1693,7 @@ min-height: 44px;
 }
 
     .ao-modal-close,
+    .ao-toast-close,
     .theme-toggle-pill {
         min-width: 44px;
     }
@@ -1647,21 +1718,95 @@ min-height: 44px;
         max-width: 100%;
     }
 
-    .pwa-nav {
-        width: 100%;
-        max-width: 100%;
-        min-width: 0;
-        flex-wrap: wrap;
-    }
-
-    .pwa-nav-btn {
-        flex: 1 1 auto;
-    }
-
     .applications-table td .inline-notes-input {
         min-width: 0;
         width: 100%;
     }
+}
+
+@media (max-width: 680px) {
+.layout-container {
+padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+
+    .pwa-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 9000;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        background: var(--bg-surface);
+        border: none;
+        border-top: 1px solid var(--border-color);
+        border-radius: 0;
+        padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.35);
+        justify-content: space-around;
+        flex-wrap: nowrap;
+        gap: 2px;
+    }
+
+    .pwa-nav-btn {
+        flex: 1 1 0;
+        flex-direction: column;
+        gap: 3px;
+        padding: 6px 4px;
+        min-height: 48px;
+        min-width: 0;
+        font-size: 0.68rem;
+        line-height: 1.1;
+    }
+
+    .nav-icon {
+        display: block;
+    }
+
+    .nav-label-full {
+        display: none;
+    }
+
+    .nav-label-short {
+        display: inline;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
+    .ao-toast-stack {
+        bottom: calc(80px + env(safe-area-inset-bottom));
+    }
+
+    html.ao-keyboard-open .pwa-nav {
+        display: none;
+    }
+
+    html.ao-keyboard-open .layout-container {
+        padding-bottom: 24px;
+    }
+}
+
+@media (max-width: 340px) {
+.layout-container {
+padding: 12px 8px calc(86px + env(safe-area-inset-bottom));
+}
+.app-header,
+.pwa-card {
+padding: 12px;
+}
+.header-brand-title {
+font-size: 1.1rem;
+}
+.pwa-nav-btn {
+font-size: 0.62rem;
+}
+.applications-table td .form-select,
+.applications-table td .inline-notes-input {
+max-width: 100%;
+}
 }
 
 .skip-link {
@@ -1686,6 +1831,17 @@ min-height: 44px;
     outline-offset: 2px;
 }
 
+.hub-badge--connected {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.35);
+}
+
+[data-theme="light"] .hub-badge {
+    color: #1d4ed8;
+}
+
+[data-theme="light"] .hub-badge--connected,
 [data-theme="light"] .tag-status {
     background: #d1fae5;
     color: #065f46;
@@ -1700,9 +1856,21 @@ min-height: 44px;
     color: #b91c1c;
 }
 
+[data-theme="light"] .skill-chip.missing {
+    background: #fee2e2;
+    color: #b91c1c;
+    border-color: #fca5a5;
+}
+
 @media (min-width: 1920px) {
     .layout-container {
         max-width: 1560px;
+    }
+}
+
+@media (min-width: 2560px) {
+    .layout-container {
+        max-width: 1840px;
     }
 }
 

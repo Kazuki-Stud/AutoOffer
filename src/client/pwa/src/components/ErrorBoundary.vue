@@ -1,9 +1,11 @@
 <template>
     <div v-if="capturedError" class="ao-error-banner" role="alert">
         <span><strong>Unexpected UI Error:</strong> {{ capturedError }}</span>
-        <button type="button" class="secondary-btn" @click="resetError">Dismiss</button>
+        <button type="button" class="secondary-btn" @click="resetError">
+            {{ renderCrashed ? 'Retry' : 'Dismiss' }}
+        </button>
     </div>
-    <slot />
+    <slot v-if="!renderCrashed" />
 </template>
 
 <script setup>
@@ -11,9 +13,11 @@ import { onErrorCaptured, onMounted, onUnmounted, ref } from 'vue';
 import { logger } from '../services/logger.js';
 
 const capturedError = ref(null);
+const renderCrashed = ref(false);
 
 function resetError() {
     capturedError.value = null;
+    renderCrashed.value = false;
 }
 
 function onUnhandledRejection(e) {
@@ -24,6 +28,7 @@ function onUnhandledRejection(e) {
 onErrorCaptured((err) => {
     logger.error('ErrorBoundary', err);
     capturedError.value = err?.message || 'Component rendering error';
+    renderCrashed.value = true;
     return false;
 });
 

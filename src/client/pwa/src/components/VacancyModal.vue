@@ -8,7 +8,7 @@
         aria-labelledby="ao-modal-title"
         @click.self="$emit('close')"
     >
-        <div class="ao-modal-card">
+        <div ref="modalCard" class="ao-modal-card" tabindex="-1">
             <div class="ao-modal-header">
                 <h2 id="ao-modal-title" class="ao-modal-title">{{ vacancy.full_position_name || 'Untitled Vacancy' }}</h2>
                 <button class="ao-modal-close" type="button" aria-label="Close" @click="$emit('close')">&times;</button>
@@ -45,7 +45,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useAppStore } from '../stores/appStore.js';
 import { formatDate, isSafeHttpUrl } from '../utils/helpers.js';
 
@@ -54,6 +54,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['close', 'review-apply']);
 const store = useAppStore();
+const modalCard = ref(null);
 
 const company = computed(() => (props.vacancy ? store.resolveCompanyLabel(props.vacancy) : null));
 const website = computed(() => (props.vacancy ? store.resolveSourceLabel(props.vacancy) : 'Direct'));
@@ -81,6 +82,16 @@ const metaItems = computed(() => {
     if (props.vacancy.address) items.push({ label: 'Location', value: props.vacancy.address });
     return items;
 });
+
+watch(
+    () => props.vacancy,
+    async (val) => {
+        if (val) {
+            await nextTick();
+            modalCard.value?.focus();
+        }
+    }
+);
 
 function onKey(e) {
     if (e.key === 'Escape' && props.vacancy) emit('close');

@@ -550,6 +550,57 @@ db.local_vacancies.hook('deleting', function () {
     };
 });
 
+document.getElementById('sync-registry-btn')?.addEventListener('click', () => {
+const btn = document.getElementById('sync-registry-btn');
+btn.disabled = true;
+btn.textContent = 'Syncing...';
+chrome.runtime.sendMessage({ action: 'manual_sync_registry' }, async (res) => {
+btn.disabled = false;
+btn.textContent = 'Sync Registry';
+if (chrome.runtime.lastError || !res?.success) {
+showInlineFeedback(
+'server-sync-feedback',
+res?.error || chrome.runtime.lastError?.message || 'Registry sync failed.',
+true
+);
+return;
+}
+showInlineFeedback(
+'server-sync-feedback',
+`Whitelist synced; ${res.selectorsApplied ?? 0} selector update(s) applied.`
+);
+await renderPlatformsRegistryList();
+await updateSystemMetrics();
+});
+});
+
+document.getElementById('push-vacancies-btn')?.addEventListener('click', () => {
+const btn = document.getElementById('push-vacancies-btn');
+btn.disabled = true;
+btn.textContent = 'Pushing...';
+chrome.runtime.sendMessage({ action: 'manual_push_vacancies' }, async (res) => {
+btn.disabled = false;
+btn.textContent = 'Push Vacancies';
+if (chrome.runtime.lastError || !res?.success) {
+showInlineFeedback(
+'server-sync-feedback',
+res?.error || chrome.runtime.lastError?.message || 'Push failed.',
+true
+);
+return;
+}
+if (res.privateUseOnly) {
+showInlineFeedback('server-sync-feedback', 'Private use only is ON — nothing sent to server.');
+return;
+}
+showInlineFeedback(
+'server-sync-feedback',
+`Pushed ${res.pushed ?? 0} vacancy record(s) (${res.skipped ?? 0} skipped).`
+);
+await updateSystemMetrics();
+});
+});
+
 document.getElementById('clear-db')?.addEventListener('click', async () => {
     try {
         let cleared = 0;
