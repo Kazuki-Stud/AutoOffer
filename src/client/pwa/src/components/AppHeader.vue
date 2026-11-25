@@ -4,7 +4,9 @@
             <div class="brand-group">
                 <img :src="`${baseUrl}image.svg`" alt="AutoOffer logo" class="header-brand-logo" width="30" height="30" />
                 <h1 class="header-brand-title">AutoOffer</h1>
-                <span class="hub-badge">Local Hub</span>
+                <span class="hub-badge" :class="{ 'hub-badge--connected': connected }">
+                    {{ connected ? 'Extension Connected' : 'Extension Disconnected' }}
+                </span>
             </div>
             <div class="header-actions">
                 <nav class="pwa-nav" aria-label="Main navigation">
@@ -51,7 +53,8 @@
 const baseUrl = import.meta.env.BASE_URL || '/';
 
 defineProps({
-    theme: { type: String, default: 'dark' },
+        theme: { type: String, default: 'dark' },
+        connected: { type: Boolean, default: false },
 });
 defineEmits(['toggle-theme']);
 

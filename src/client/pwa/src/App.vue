@@ -1,7 +1,7 @@
 <template>
     <div class="layout-container">
         <a href="#main-content" class="skip-link">Skip to main content</a>
-        <AppHeader :theme="store.theme" @toggle-theme="store.toggleTheme()" />
+        <AppHeader :theme="store.theme" :connected="store.isExtensionConnected" @toggle-theme="store.toggleTheme()" />
         <main id="main-content" tabindex="-1">
             <ErrorBoundary>
                 <router-view />

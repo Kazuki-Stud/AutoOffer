@@ -1783,6 +1783,17 @@ font-size: 0.62rem;
     outline-offset: 2px;
 }
 
+.hub-badge--connected {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.35);
+}
+
+[data-theme="light"] .hub-badge {
+    color: #1d4ed8;
+}
+
+[data-theme="light"] .hub-badge--connected,
 [data-theme="light"] .tag-status {
     background: #d1fae5;
     color: #065f46;
