@@ -101,7 +101,9 @@
                 </div>
             </div>
             <div class="sync-actions-bar">
-                <button type="button" class="primary-btn" @click="saveAiConfig">Save AI Configuration</button>
+                <button type="button" class="primary-btn" :disabled="savingAi" @click="saveAiConfig">
+                    {{ savingAi ? 'Saving...' : 'Save AI Configuration' }}
+                </button>
                 <span class="status-msg">{{ aiStatus }}</span>
             </div>
             <div class="ai-configs-list">
@@ -174,7 +176,9 @@
                 </div>
             </div>
             <div class="sync-actions-bar">
-                <button type="button" class="primary-btn" @click="store.manualSyncFromExtension(syncOpts)">Download / Sync Data</button>
+                <button type="button" class="primary-btn" :disabled="syncing" @click="syncData">
+                    {{ syncing ? 'Syncing...' : 'Download / Sync Data' }}
+                </button>
                 <button type="button" class="secondary-btn" @click="exportLocalBackup">Export Local Backup</button>
                 <button type="button" class="secondary-btn" @click="backupFileInput?.click()">
                     Import Backup
@@ -207,6 +211,8 @@ const store = useAppStore();
 const { deviceState } = useDeviceInfo();
 const backupFileInput = ref(null);
 const aiStatus = ref('');
+const savingAi = ref(false);
+const syncing = ref(false);
 const selectedPreset = ref('gpt-4o-mini');
 const aiForm = reactive({
     provider_name: 'openai',
@@ -249,21 +255,24 @@ async function saveAiConfig() {
         aiStatus.value = `An API key is required for ${aiForm.provider_name}. Paste your key or switch to Local Model / Offline Local Similarity.`;
         return;
     }
+    savingAi.value = true;
     try {
         await store.saveAiConfig({
-            provider_name: aiForm.provider_name,
-            api_endpoint: aiForm.api_endpoint.trim() || null,
-            api_key: aiForm.api_key.trim(),
-            model_name: aiForm.model_name.trim(),
-            is_active: aiForm.is_active ? 1 : 0,
+                provider_name: aiForm.provider_name,
+                api_endpoint: aiForm.api_endpoint.trim() || null,
+                api_key: aiForm.api_key.trim(),
+                model_name: aiForm.model_name.trim(),
+                is_active: aiForm.is_active ? 1 : 0,
         });
         aiForm.api_key = '';
         aiStatus.value = 'AI configuration saved. Key encrypted locally.';
         store.notify('AI configuration saved.', 'success');
-} catch (err) {
-    aiStatus.value = `Could not save AI configuration: ${err.message}`;
-    store.notify(aiStatus.value, 'error', 6000);
-}
+    } catch (err) {
+        aiStatus.value = `Could not save AI configuration: ${err.message}`;
+        store.notify(aiStatus.value, 'error', 6000);
+    } finally {
+        savingAi.value = false;
+    }
 }
 
 async function onExtIdChange() {
@@ -306,6 +315,15 @@ async function onImportBackup(e) {
         store.notify(`Imported backup from "${file.name}" into local IndexedDB.`, 'success');
     } catch (err) {
         store.notify(`Backup import failed: ${err.message}`, 'error', 6000);
+    }
+}
+
+async function syncData() {
+    syncing.value = true;
+    try {
+        await store.manualSyncFromExtension(syncOpts);
+    } finally {
+        syncing.value = false;
     }
 }
 

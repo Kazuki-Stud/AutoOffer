@@ -7,18 +7,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = path.resolve(__dirname, '../../../../docs/02-technical/assets/screenshots');
 
 const VIEWPORTS = [
-{ name: 'foldable-280', width: 280, height: 653, touchCheck: true, bottomNav: true, deviceAttr: 'foldable', screenshot: null },
-{ name: 'mobile-360', width: 360, height: 780, touchCheck: true, bottomNav: true, deviceAttr: 'mobile', screenshot: 'mobile-360.png' },
-{ name: 'mobile-landscape-780', width: 780, height: 360, touchCheck: true, bottomNav: false, deviceAttr: 'tablet', screenshot: null },
-{ name: 'tablet-768', width: 768, height: 1024, touchCheck: true, bottomNav: false, deviceAttr: 'tablet', screenshot: 'tablet-768.png' },
-{ name: 'desktop-1280', width: 1280, height: 800, touchCheck: false, bottomNav: false, deviceAttr: 'desktop', screenshot: 'desktop-1280.png' },
-{ name: 'ultrawide-1920', width: 1920, height: 1080, touchCheck: false, bottomNav: false, deviceAttr: 'ultrawide', screenshot: null },
+    { name: 'smartwatch-240', width: 240, height: 240, touchCheck: true, bottomNav: true, deviceAttr: 'smartwatch', screenshot: null },
+    { name: 'foldable-280', width: 280, height: 653, touchCheck: true, bottomNav: true, deviceAttr: 'foldable', screenshot: null },
+    { name: 'mobile-360', width: 360, height: 780, touchCheck: true, bottomNav: true, deviceAttr: 'mobile', screenshot: 'mobile-360.png' },
+    { name: 'mobile-landscape-780', width: 780, height: 360, touchCheck: true, bottomNav: false, deviceAttr: 'tablet', screenshot: null },
+    { name: 'tablet-768', width: 768, height: 1024, touchCheck: true, bottomNav: false, deviceAttr: 'tablet', screenshot: 'tablet-768.png' },
+    { name: 'desktop-1280', width: 1280, height: 800, touchCheck: false, bottomNav: false, deviceAttr: 'desktop', screenshot: 'desktop-1280.png' },
+    { name: 'ultrawide-1920', width: 1920, height: 1080, touchCheck: false, bottomNav: false, deviceAttr: 'ultrawide', screenshot: null },
+    { name: '2k-2560', width: 2560, height: 1440, touchCheck: false, bottomNav: false, deviceAttr: '2k', screenshot: null },
+    { name: '4k-3840', width: 3840, height: 2160, touchCheck: false, bottomNav: false, deviceAttr: '4k', screenshot: null },
 ];
 
 for (const vp of VIEWPORTS) {
-test(`renders cleanly without horizontal overflow on ${vp.name}`, async ({ page }) => {
-await page.setViewportSize({ width: vp.width, height: vp.height });
-await page.goto('./');
+    test(`renders cleanly without horizontal overflow on ${vp.name}`, async ({ page }) => {
+        await page.setViewportSize({ width: vp.width, height: vp.height });
+        await page.goto('./');
 
         await expect(page.locator('.header-brand-title')).toHaveText('AutoOffer');
         await expect(page.locator('html')).toHaveAttribute('data-device', vp.deviceAttr);
@@ -53,18 +56,38 @@ await page.goto('./');
         ]) {
             await page.getByRole('link', { name: label, exact: true }).click();
             await expect(page).toHaveURL(urlRe);
-            const routeOverflow = await page.evaluate(
-                () => document.documentElement.scrollWidth > window.innerWidth
-            );
-            expect(routeOverflow).toBe(false);
+            const overflowInfo = await page.evaluate(() => {
+                const vw = window.innerWidth;
+                const offenders = Array.from(document.querySelectorAll('*'))
+                    .map((el) => {
+                        const rect = el.getBoundingClientRect();
+                        return {
+                            tag: el.tagName.toLowerCase(),
+                            id: el.id || null,
+                            className: typeof el.className === 'string' ? el.className : null,
+                            right: Math.round(rect.right),
+                            width: Math.round(rect.width),
+                        };
+                    })
+                    .filter((item) => item.right > vw);
+                return {
+                    scrollWidth: document.documentElement.scrollWidth,
+                    innerWidth: vw,
+                    offenders: offenders.slice(0, 10),
+                };
+            });
+            expect(
+                overflowInfo.scrollWidth,
+                `Horizontal overflow on ${label}: ${JSON.stringify(overflowInfo)}`
+            ).toBeLessThanOrEqual(overflowInfo.innerWidth);
         }
         await expect(page.getByText('Display & Accessibility Preferences')).toBeVisible();
     });
 }
 
 test('toggles theme, scales text, and validates Profile form', async ({ page }) => {
-await page.setViewportSize({ width: 1280, height: 800 });
-await page.goto('./');
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('./');
 
     const html = page.locator('html');
     await expect(html).toHaveAttribute('data-theme', 'dark');

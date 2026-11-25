@@ -56,7 +56,9 @@
                 </div>
             </div>
             <div class="profile-actions-bar">
-                <button type="button" class="primary-btn" @click="onSave">Save Job</button>
+                <button type="button" class="primary-btn" :disabled="saving" @click="onSave">
+                    {{ saving ? 'Saving...' : 'Save Job' }}
+                </button>
                 <button v-if="editingJobId" type="button" class="secondary-btn" @click="resetForm">Cancel Edit</button>
                 <span class="status-msg">{{ statusMsg }}</span>
             </div>
@@ -100,6 +102,7 @@ const store = useAppStore();
 const editingJobId = ref(null);
 const selectedUrls = ref(new Set());
 const statusMsg = ref('');
+const saving = ref(false);
 const form = reactive({
     title: '',
     profile_id: '',
@@ -166,6 +169,7 @@ async function onSave() {
         return;
     }
 
+    saving.value = true;
     try {
         await store.saveJob({
                 id: editingJobId.value || newId(),
@@ -187,6 +191,8 @@ async function onSave() {
         logger.error('JobsPage.onSave', err);
         statusMsg.value = err.message;
         store.notify(err.message, 'error');
+    } finally {
+        saving.value = false;
     }
 }
 

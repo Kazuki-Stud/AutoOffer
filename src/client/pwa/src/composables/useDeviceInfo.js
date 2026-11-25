@@ -29,9 +29,12 @@ function formatAspect(w, h) {
 }
 
 function classifyDevice(width) {
+    if (width <= 250) return 'smartwatch';
     if (width <= 340) return 'foldable';
     if (width <= 680) return 'mobile';
     if (width <= 1024) return 'tablet';
+    if (width >= 3840) return '4k';
+    if (width >= 2560) return '2k';
     if (width >= 1920) return 'ultrawide';
     return 'desktop';
 }

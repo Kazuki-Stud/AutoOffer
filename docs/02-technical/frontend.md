@@ -27,7 +27,7 @@ We migrated `src/client/pwa` to a **Vue 3 SPA** built with **Vite**, using:
 
 **Positive:**
 - Clear separation between UI (`components/`, `pages/`), global state (`stores/appStore.js`), persistence/network (`services/`), typed contracts (`models/types.js`), and shared extension DB/AI modules.
-- Route-level code splitting via lazy `import()` chunks reduces initial bundle weight.
+- Route-level code splitting and async modal loading (`defineAsyncComponent`) reduce initial bundle weight and defer AI client modules until opened.
 - Global error handling, toast feedback, skeleton loaders across async views, and automated unit + integration + E2E tests prevent regressions.
 
 **Negative:**
@@ -53,7 +53,7 @@ src/client/pwa/
 │   └── pwa.spec.js              # Multi-viewport E2E & Adaptive UI verification
 ├── tests/
 │   ├── pwa.spec.js              # Real-backend & real-DOM unit tests (6 specs)
-│   ├── components.spec.js       # Offline component & page unit tests (4 specs)
+│   ├── components.spec.js       # Offline component & page unit tests (6 specs)
 │   └── integration.spec.js      # Real-IndexedDB & Router integration tests (4 specs)
 └── src/
     ├── main.js                  # App bootstrap, Pinia, Router, SW registration
@@ -93,7 +93,7 @@ src/client/pwa/
 | Decision | Rationale |
 |---|---|
 | Reuse `src/client/extension/database/*` and `aiClient.js` directly from `services/` & `stores/` | Prevents duplicating IndexedDB schema (Dexie v7), AES-GCM key encryption, and PII stripping across extension and PWA |
-| Hash routing (`createWebHashHistory`) + lazy `import()` routes | Works seamlessly offline (`sw.js`) and on static subpaths (`/AutoOffer/`) while enabling Vite chunk splitting |
+| Hash routing (`createWebHashHistory`), lazy `import()` routes & `defineAsyncComponent` modals | Works seamlessly offline (`sw.js`) and on static subpaths (`/AutoOffer/`), while keeping `aiClient.js` out of the initial chunk |
 | Centralized `httpClient.js` + `ErrorBoundary.vue` + `ToastContainer.vue` | Guarantees consistent `400`/`401`/`403`/`404`/`5xx` handling, backend error extraction, timeouts, and user-visible feedback |
 | JSDoc `@typedef` models (`src/models/types.js`) + runtime `validation.js` | Documents exact `camelCase` backend DTOs vs `snake_case` local IndexedDB entities without requiring TypeScript rewrite of extension modules |
 | Real-backend Vitest unit/integration tests + Playwright E2E | Verifies isolated components, form validation, IndexedDB persistence, and real-browser layout/routing |
@@ -210,7 +210,7 @@ flowchart LR
 | 8 | Centralized HTTP handling, global error boundary, toasts, skeleton loading states | ✅ | `httpClient.js`, `ErrorBoundary.vue`, `ToastContainer.vue`, `.ao-skeleton` across views |
 | 9 | Forms with validation, tables/lists, search/filter/sort | ✅ | `ProfilePage.vue`, `JobsPage.vue`, `SettingsPage.vue`, `VacanciesPage.vue`, `ApplicationsPage.vue` |
 | 10 | ESLint + Prettier + logging | ✅ | `eslint.config.js`, `.prettierrc`, `src/services/logger.js` |
-| 11 | Unit tests (≥ 3 components/services) + Integration/E2E tests | ✅ | `tests/pwa.spec.js` (6 specs), `tests/components.spec.js` (4 specs), `tests/integration.spec.js` (4 specs), `e2e/pwa.spec.js` (7 specs) |
+| 11 | Unit tests (≥ 3 components/services) + Integration/E2E tests | ✅ | `tests/pwa.spec.js` (6 specs), `tests/components.spec.js` (6 specs), `tests/integration.spec.js` (4 specs), `e2e/pwa.spec.js` (9 specs) |
 | 12 | Lighthouse ≥ 90 benchmark report | ⚠️ | Code splitting & SW configured; benchmark score to be captured on deployed GitHub Pages build |
 
 ## Known Limitations

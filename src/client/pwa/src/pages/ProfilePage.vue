@@ -64,7 +64,9 @@
                 </div>
             </div>
             <div class="profile-actions-bar">
-                <button type="button" class="primary-btn" @click="saveProfile">Save Profile Changes</button>
+                <button type="button" class="primary-btn" :disabled="savingProfile" @click="saveProfile">
+                    {{ savingProfile ? 'Saving...' : 'Save Profile Changes' }}
+                </button>
                 <span class="status-msg">{{ profStatus }}</span>
             </div>
         </div>
@@ -134,7 +136,9 @@
                 </div>
             </div>
             <div class="profile-actions-bar">
-                <button type="button" class="primary-btn" @click="saveResume">Save Resume Variant</button>
+                <button type="button" class="primary-btn" :disabled="savingResume" @click="saveResume">
+                    {{ savingResume ? 'Saving...' : 'Save Resume Variant' }}
+                </button>
                 <button type="button" class="secondary-btn" @click="doExportPdf(null)">Export PDF</button>
                 <button type="button" class="secondary-btn" @click="doExportWord(null)">Export Word</button>
                 <span class="status-msg">{{ resStatus }}</span>
@@ -158,6 +162,8 @@ const selectedProfileId = ref('');
 const selectedResumeId = ref('');
 const profStatus = ref('');
 const resStatus = ref('');
+const savingProfile = ref(false);
+const savingResume = ref(false);
 const pendingFile = ref(null);
 
 const profForm = reactive({
@@ -269,29 +275,32 @@ async function saveProfile() {
             profStatus.value = `Invalid profile link "${badLink}". All links must start with http:// or https://.`;
             return;
         }
+        savingProfile.value = true;
         try {
-        await store.saveProfile({
-            profile_id: store.activeProfileId,
-            create_new: !store.activeProfileId,
-            profile_name: profForm.profile_name.trim() || 'Profile',
-            is_default: profForm.is_default ? 1 : 0,
-            first_name: profForm.first_name.trim(),
-            last_name: profForm.last_name.trim(),
-            email: profForm.email.trim(),
-            phone: profForm.phone.trim(),
-            location: profForm.location.trim(),
-            roles: profForm.roles.trim(),
-            locations: profForm.locations.trim(),
-            keywords: profForm.keywords.trim(),
-            links: profForm.links.trim(),
-        });
-        profStatus.value = 'Profile saved.';
-        store.notify('Profile saved locally.', 'success');
-} catch (err) {
-    logger.error('ProfilePage.saveProfile', err);
-    profStatus.value = `Could not save profile: ${err.message}`;
-    store.notify(profStatus.value, 'error', 6000);
-}
+            await store.saveProfile({
+                    profile_id: store.activeProfileId,
+                    create_new: !store.activeProfileId,
+                    profile_name: profForm.profile_name.trim() || 'Profile',
+                    is_default: profForm.is_default ? 1 : 0,
+                    first_name: profForm.first_name.trim(),
+                    last_name: profForm.last_name.trim(),
+                    email: profForm.email.trim(),
+                    phone: profForm.phone.trim(),
+                    location: profForm.location.trim(),
+                    roles: profForm.roles.trim(),
+                    locations: profForm.locations.trim(),
+                    keywords: profForm.keywords.trim(),
+                    links: profForm.links.trim(),
+            });
+            profStatus.value = 'Profile saved.';
+            store.notify('Profile saved locally.', 'success');
+        } catch (err) {
+            logger.error('ProfilePage.saveProfile', err);
+            profStatus.value = `Could not save profile: ${err.message}`;
+            store.notify(profStatus.value, 'error', 6000);
+        } finally {
+            savingProfile.value = false;
+        }
 }
 
 async function deleteProfile() {
@@ -366,6 +375,7 @@ async function saveResume() {
         return;
     }
     const plain = resForm.plain_text.trim() || [resForm.title.trim(), resForm.summary.trim(), resForm.skills.trim() ? `Skills: ${resForm.skills.trim()}` : ''].filter(Boolean).join('\n\n');
+    savingResume.value = true;
     try {
         await store.saveResume(
             {
@@ -381,11 +391,13 @@ async function saveResume() {
         pendingFile.value = null;
         resStatus.value = 'Resume variant saved.';
         store.notify('Resume variant saved.', 'success');
-} catch (err) {
-    logger.error('ProfilePage.saveResume', err);
-    resStatus.value = `Could not save resume variant: ${err.message}`;
-    store.notify(resStatus.value, 'error', 6000);
-}
+    } catch (err) {
+        logger.error('ProfilePage.saveResume', err);
+        resStatus.value = `Could not save resume variant: ${err.message}`;
+        store.notify(resStatus.value, 'error', 6000);
+    } finally {
+        savingResume.value = false;
+    }
 }
 
 async function deleteResume() {
