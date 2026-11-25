@@ -3,6 +3,7 @@ package AutoOffer.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -23,6 +24,7 @@ public class DictionaryController {
     private final NamedParameterJdbcTemplate namedJdbc;
 
     @GetMapping("/api/dictionaries/bootstrap")
+    @Cacheable("dictionariesBootstrap")
     @Operation(summary = "Fetch all reference dictionaries in one payload")
     public ResponseEntity<Map<String, Object>> bootstrap() {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -41,6 +43,7 @@ public class DictionaryController {
     }
 
     @GetMapping("/api/skills/hotwords")
+    @Cacheable(cacheNames = "skillHotwords", key = "#positionId != null ? #positionId : 'all'")
     @Operation(summary = "Most frequent skills per position from mv_skill_hotwords")
     public ResponseEntity<List<Map<String, Object>>> hotwords(@RequestParam(required = false) UUID positionId) {
         String sql = """

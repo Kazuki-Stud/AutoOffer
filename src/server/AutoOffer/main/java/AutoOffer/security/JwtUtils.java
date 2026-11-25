@@ -24,10 +24,10 @@ public class JwtUtils {
     public String generateAdminToken(UUID adminId, String username) {
         Date now = new Date();
         return Jwts.builder()
-                .subject(adminId.toString())
-                .claim("username", username)
-                .claim("role", "ROLE_ADMIN")
-                .issuedAt(now)
+        .subject(adminId.toString())
+        .claim(SecurityConstants.CLAIM_USERNAME, username)
+        .claim(SecurityConstants.CLAIM_ROLE, SecurityConstants.ROLE_ADMIN)
+        .issuedAt(now)
                 .expiration(new Date(now.getTime() + expirationMs))
                 .signWith(key)
                 .compact();

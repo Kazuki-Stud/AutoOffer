@@ -1,0 +1,44 @@
+name: Backend CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "src/server/AutoOffer/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "src/server/AutoOffer/**"
+
+jobs:
+  test-and-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 26
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 26
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-root-directory: src/server/AutoOffer
+
+      - name: Run unit tests and JaCoCo coverage gate (>= 80%)
+        working-directory: src/server/AutoOffer
+        run: ./gradlew check --no-daemon --no-configuration-cache
+
+      - name: Upload JaCoCo coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: src/server/AutoOffer/build/reports/jacoco/test/
+
+      - name: Build production Docker image
+        working-directory: src/server/AutoOffer
+        run: docker build -t autooffer-server:ci .

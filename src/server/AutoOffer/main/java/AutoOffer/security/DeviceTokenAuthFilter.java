@@ -31,21 +31,21 @@ public class DeviceTokenAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
-        String deviceHeader = req.getHeader("X-Device-Id");
-        String authHeader = req.getHeader("Authorization");
+        String deviceHeader = req.getHeader(SecurityConstants.DEVICE_ID_HEADER);
+        String authHeader = req.getHeader(SecurityConstants.AUTH_HEADER);
 
-        if (deviceHeader != null && authHeader != null && authHeader.startsWith("Bearer ")) {
+        if (deviceHeader != null && authHeader != null && authHeader.startsWith(SecurityConstants.BEARER_PREFIX)) {
             try {
                 UUID pseudonymousId = UUID.fromString(deviceHeader.trim());
-                String rawToken = authHeader.substring(7).trim();
+                String rawToken = authHeader.substring(SecurityConstants.BEARER_PREFIX.length()).trim();
                 deviceAuthService.authenticate(pseudonymousId, rawToken).ifPresent(device -> {
-                    var principal = new DevicePrincipal(device.getId(), device.getPseudonymousId());
-                    var auth = new UsernamePasswordAuthenticationToken(
-                            principal, null, List.of(new SimpleGrantedAuthority("ROLE_DEVICE")));
-                    SecurityContextHolder.getContext().setAuthentication(auth);
+                        var principal = new DevicePrincipal(device.getId(), device.getPseudonymousId());
+                        var auth = new UsernamePasswordAuthenticationToken(
+                            principal, null, List.of(new SimpleGrantedAuthority(SecurityConstants.ROLE_DEVICE)));
+                        SecurityContextHolder.getContext().setAuthentication(auth);
                 });
             } catch (IllegalArgumentException ignored) {
-                // Невалидный UUID — фильтр просто не аутентифицирует запрос
+                // Invalid UUID — request remains unauthenticated
             }
         }
         chain.doFilter(req, res);

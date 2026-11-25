@@ -18,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -27,13 +28,20 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminRemovalController {
 
+    private static final String STATUS_OPEN = "open";
+private static final String DECISION_DONE = "done";
+private static final Set<String> VALID_STATUSES = Set.of(STATUS_OPEN, DECISION_DONE, "rejected");
+
     private final NamedParameterJdbcTemplate jdbc;
 
     public record ProcessRemovalRequest(@NotBlank @Pattern(regexp = "^(done|rejected)$") String decision) {}
 
     @GetMapping
     @Operation(summary = "List removal requests filtered by status")
-    public ResponseEntity<List<Map<String, Object>>> list(@RequestParam(defaultValue = "open") String status) {
+    public ResponseEntity<List<Map<String, Object>>> list(@RequestParam(defaultValue = STATUS_OPEN) String status) {
+        if (!VALID_STATUSES.contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status must be one of: open, done, rejected");
+        }
         return ResponseEntity.ok(jdbc.queryForList(
                 "SELECT * FROM autooffer.removal_requests WHERE status = :status ORDER BY created_at ASC",
                 new MapSqlParameterSource("status", status)
@@ -53,11 +61,11 @@ public class AdminRemovalController {
                 new MapSqlParameterSource("id", id)
         );
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Removal request not found");
-        if (!"open".equals(rows.get(0).get("status"))) {
+        if (!STATUS_OPEN.equals(rows.get(0).get("status"))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Removal request already processed");
         }
 
-        if ("done".equals(req.decision())) {
+        if (DECISION_DONE.equals(req.decision())) {
             String targetUrl = (String) rows.get(0).get("target_url");
             jdbc.update(
                     "DELETE FROM autooffer.vacancies WHERE url = autooffer.normalize_url(:url)",

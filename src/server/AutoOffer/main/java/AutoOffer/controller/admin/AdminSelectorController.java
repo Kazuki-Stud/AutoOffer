@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -34,36 +35,35 @@ public class AdminSelectorController {
     }
 
     @PostMapping("/{id}/approve")
+    @CacheEvict(cacheNames = "selectors", allEntries = true)
     @Operation(summary = "Approve pending selector version")
     public ResponseEntity<Void> approve(
-            @PathVariable UUID id,
-            Authentication auth,
-            @RequestBody(required = false) ReviewCommentRequest body) {
-        UUID adminId = UUID.fromString(auth.getName());
-        namedJdbc.queryForList(
-                "SELECT autooffer.approve_selector(CAST(:id AS uuid), CAST(:adminId AS uuid), CAST(:comment AS text))",
-                new MapSqlParameterSource()
-                        .addValue("id", id)
-                        .addValue("adminId", adminId)
-                        .addValue("comment", body != null ? body.comment() : null)
-        );
+        @PathVariable UUID id,
+        Authentication auth,
+        @RequestBody(required = false) ReviewCommentRequest body) {
+        executeReview("approve_selector", id, auth, body);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/reject")
+    @CacheEvict(cacheNames = "selectors", allEntries = true)
     @Operation(summary = "Reject pending selector version")
     public ResponseEntity<Void> reject(
-            @PathVariable UUID id,
-            Authentication auth,
-            @RequestBody(required = false) ReviewCommentRequest body) {
+        @PathVariable UUID id,
+        Authentication auth,
+        @RequestBody(required = false) ReviewCommentRequest body) {
+        executeReview("reject_selector", id, auth, body);
+        return ResponseEntity.noContent().build();
+    }
+
+    private void executeReview(String functionName, UUID id, Authentication auth, ReviewCommentRequest body) {
         UUID adminId = UUID.fromString(auth.getName());
         namedJdbc.queryForList(
-                "SELECT autooffer.reject_selector(CAST(:id AS uuid), CAST(:adminId AS uuid), CAST(:comment AS text))",
-                new MapSqlParameterSource()
-                        .addValue("id", id)
-                        .addValue("adminId", adminId)
-                        .addValue("comment", body != null ? body.comment() : null)
+            "SELECT autooffer." + functionName + "(CAST(:id AS uuid), CAST(:adminId AS uuid), CAST(:comment AS text))",
+            new MapSqlParameterSource()
+            .addValue("id", id)
+            .addValue("adminId", adminId)
+            .addValue("comment", body != null ? body.comment() : null)
         );
-        return ResponseEntity.noContent().build();
     }
 }

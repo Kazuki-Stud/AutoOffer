@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -24,6 +25,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminPlatformController {
 
+    private static final String STATUS_GRANTED = "granted";
+
     private final NamedParameterJdbcTemplate jdbc;
 
     public record UpdatePermissionRequest(
@@ -32,13 +35,14 @@ public class AdminPlatformController {
     ) {}
 
     @PatchMapping("/{id}/permission")
+    @CacheEvict(cacheNames = {"whitelist", "dictionariesBootstrap"}, allEntries = true)
     @Operation(summary = "Grant or revoke platform automated-collection permission")
     public ResponseEntity<Void> updatePermission(
             @PathVariable UUID id,
             Authentication auth,
             @Valid @RequestBody UpdatePermissionRequest req) {
         UUID adminId = UUID.fromString(auth.getName());
-        if ("granted".equals(req.permissionStatus()) && (req.permissionReference() == null || req.permissionReference().isBlank())) {
+        if (STATUS_GRANTED.equals(req.permissionStatus()) && (req.permissionReference() == null || req.permissionReference().isBlank())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "permissionReference is required when granting permission");
         }
         int updated = jdbc.update("""

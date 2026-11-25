@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 public class VacancyServiceImpl implements VacancyService {
 
     private static final String MASKED_NAME = "[name removed]";
+private static final String STORAGE_LEVEL_FULL = "full";
 
     private static final Pattern LABELED_NAME_PATTERN = Pattern.compile(
             "((?i:\\b(?:Contact(?:\\h+person)?|Recruiter|Hiring\\h+Manager|HR(?:\\h+Manager)?|" +
@@ -134,7 +135,7 @@ public class VacancyServiceImpl implements VacancyService {
                 new MapSqlParameterSource("vacancyId", vacancyId),
                 String.class
         );
-        if (!"full".equals(storageLevel)) {
+        if (!STORAGE_LEVEL_FULL.equals(storageLevel)) {
             return;
         }
 

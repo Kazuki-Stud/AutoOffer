@@ -24,19 +24,23 @@ public class AdminJwtFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
-        if (SecurityContextHolder.getContext().getAuthentication() == null && req.getHeader("X-Device-Id") == null) {
-            String header = req.getHeader("Authorization");
-            if (header != null && header.startsWith("Bearer ")) {
+        if (SecurityContextHolder.getContext().getAuthentication() == null
+            && req.getHeader(SecurityConstants.DEVICE_ID_HEADER) == null) {
+            String header = req.getHeader(SecurityConstants.AUTH_HEADER);
+            if (header != null && header.startsWith(SecurityConstants.BEARER_PREFIX)) {
                 try {
-                    Claims claims = jwtUtils.parseAndValidate(header.substring(7).trim());
-                    String role = claims.get("role", String.class);
-                    if ("ROLE_ADMIN".equals(role)) {
+                    Claims claims = jwtUtils.parseAndValidate(
+                        header.substring(SecurityConstants.BEARER_PREFIX.length()).trim());
+                    String role = claims.get(SecurityConstants.CLAIM_ROLE, String.class);
+                    if (SecurityConstants.ROLE_ADMIN.equals(role)) {
                         var auth = new UsernamePasswordAuthenticationToken(
-                                claims.getSubject(), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+                            claims.getSubject(),
+                            null,
+                            List.of(new SimpleGrantedAuthority(SecurityConstants.ROLE_ADMIN)));
                         SecurityContextHolder.getContext().setAuthentication(auth);
                     }
                 } catch (Exception ignored) {
-                    // Spring Security вернёт 401/403 на защищённых роутах
+                    // Spring Security returns 401/403 on protected routes
                 }
             }
         }

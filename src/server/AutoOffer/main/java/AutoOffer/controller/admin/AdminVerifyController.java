@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -30,12 +31,14 @@ public class AdminVerifyController {
     }
 
     @PostMapping("/positions/{id}/verify")
+    @CacheEvict(cacheNames = {"dictionariesBootstrap", "skillHotwords"}, allEntries = true)
     @Operation(summary = "Verify position")
     public ResponseEntity<Void> verifyPosition(@PathVariable UUID id, Authentication auth) {
         return verify("positions_dict", id, auth);
     }
 
     @PostMapping("/skills/{id}/verify")
+    @CacheEvict(cacheNames = {"dictionariesBootstrap", "skillHotwords"}, allEntries = true)
     @Operation(summary = "Verify skill")
     public ResponseEntity<Void> verifySkill(@PathVariable UUID id, Authentication auth) {
         return verify("skills", id, auth);

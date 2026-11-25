@@ -5,6 +5,7 @@ import AutoOffer.repository.RegistrySelectorViewRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,6 +25,7 @@ public class RegistryController {
     private final JdbcTemplate jdbc;
 
     @GetMapping("/selectors")
+    @Cacheable(cacheNames = "selectors", key = "'all'", condition = "#since == null")
     @Operation(summary = "Fetch active approved selectors (optionally changed since timestamp)")
     public ResponseEntity<List<RegistrySelectorView>> getSelectors(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime since) {
@@ -34,6 +36,7 @@ public class RegistryController {
     }
 
     @GetMapping("/whitelist")
+    @Cacheable("whitelist")
     @Operation(summary = "Fetch platform permission whitelist (US 1.1)")
     public ResponseEntity<List<Map<String, Object>>> getWhitelist() {
         List<Map<String, Object>> rows = jdbc.queryForList("""
