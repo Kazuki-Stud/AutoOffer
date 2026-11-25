@@ -39,10 +39,10 @@ AutoOffer/
 ├── docs/
 │   ├── 01-project-overview/       # Problem statement, goals, features, scope, stakeholders
 │   ├── 02-technical/
-│   │   ├── criteria/
-│   │   │   ├── database.md    # Databases Criterion ADR, implementation & checklist (OLTP, OLAP, NoSQL)
-│   │   │   ├── frontend.md    # Front-End Architecture ADR (Vue 3 SPA, Pinia, Router, tests)
-│   │   │   └── adaptive-ui.md # Adaptive UI ADR (360px–4K responsive layout, 44px touch targets, themes)
+│   │   ├── frontend.md            # Front-End Architecture ADR (Vue 3 SPA, Pinia, Router, tests)
+│   │   ├── adaptive-ui.md         # Adaptive UI ADR (280px–4K responsive layout, 44px touch targets, themes)
+│   │   ├── assets/screenshots/    # Auto-generated 3-device Playwright screenshots
+│   │   ├── criteria/database.md   # Databases Criterion ADR, implementation & checklist (OLTP, OLAP, NoSQL)
 │   │   └── ...                    # Deployment, tech stack & other technical criteria
 │   ├── 03-user-guide/             # User guide & FAQ
 │   └── criteria/
@@ -143,14 +143,15 @@ npm run build      # outputs unpacked build to src/client/extension/dist
 
 ## Front-End & Adaptive UI Documentation (Evaluation Artifacts)
 
-* **Front-End Architecture Criterion (ADR, Diagrams, Checklist):** [`docs/02-technical/criteria/frontend.md`](docs/02-technical/criteria/frontend.md)
+* **Front-End Architecture Criterion (ADR, Diagrams, Checklist):** [`docs/02-technical/frontend.md`](docs/02-technical/frontend.md)
     * SPA Entry & Router: `src/client/pwa/src/main.js`, `src/client/pwa/src/App.vue`, `src/client/pwa/src/router/index.js`
-    * Pinia Store & Services: `src/client/pwa/src/stores/appStore.js`, `src/client/pwa/src/services/`
+    * Pinia Store, Models & Services: `src/client/pwa/src/stores/appStore.js`, `src/client/pwa/src/models/types.js`, `src/client/pwa/src/services/`
     * Components & Pages: `src/client/pwa/src/components/`, `src/client/pwa/src/pages/`
     * Unit, Integration & E2E Tests: `src/client/pwa/tests/pwa.spec.js`, `src/client/pwa/tests/integration.spec.js`, `src/client/pwa/e2e/pwa.spec.js`
-* **Adaptive UI Criterion (ADR, Breakpoints, Touch & Contrast Checklist):** [`docs/02-technical/criteria/adaptive-ui.md`](docs/02-technical/criteria/adaptive-ui.md)
+* **Adaptive UI Criterion (ADR, Breakpoints, Touch & Contrast Checklist):** [`docs/02-technical/adaptive-ui.md`](docs/02-technical/adaptive-ui.md)
     * Responsive CSS, Dark/Light Tokens & `44px` Touch Targets: `src/client/pwa/src/styles/main.css`
-    * User Display Scale & Theme Controls: `src/client/pwa/src/pages/SettingsPage.vue`
+    * Device Detection & Display Controls: `src/client/pwa/src/composables/useDeviceInfo.js`, `src/client/pwa/src/pages/SettingsPage.vue`
+    * Generated 3-Device Screenshots: `docs/02-technical/assets/screenshots/`
 
 ---
 

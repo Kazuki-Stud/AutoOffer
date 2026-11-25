@@ -1808,6 +1808,12 @@ font-size: 0.62rem;
     color: #b91c1c;
 }
 
+[data-theme="light"] .skill-chip.missing {
+    background: #fee2e2;
+    color: #b91c1c;
+    border-color: #fca5a5;
+}
+
 @media (min-width: 1920px) {
     .layout-container {
         max-width: 1560px;

@@ -14,7 +14,8 @@
                     <option v-for="st in APPLICATION_STATUSES" :key="st" :value="st">{{ st }}</option>
                 </select>
             </div>
-            <div v-if="!rows.length" class="empty-state">
+            <div v-if="store.loading && !rows.length" class="ao-skeleton ao-section-spaced"></div>
+<div v-else-if="!rows.length" class="empty-state">
                 <h3>No Applications Tracked Yet</h3>
                 <p>Change a vacancy status in the Vacancies tab or submit via Review &amp; Apply to start tracking your pipeline.</p>
             </div>

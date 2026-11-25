@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCREENSHOT_DIR = path.resolve(__dirname, '../../../../docs/02-technical/criteria/assets/screenshots');
+const SCREENSHOT_DIR = path.resolve(__dirname, '../../../../docs/02-technical/assets/screenshots');
 
 const VIEWPORTS = [
 { name: 'foldable-280', width: 280, height: 653, touchCheck: true, bottomNav: true, deviceAttr: 'foldable', screenshot: null },

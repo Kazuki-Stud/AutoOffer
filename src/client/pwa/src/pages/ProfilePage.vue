@@ -75,7 +75,8 @@
                 <span class="tag-status">{{ store.profileResumes.length }} variant{{ store.profileResumes.length === 1 ? '' : 's' }}</span>
             </div>
             <div class="resume-variants-list">
-                <div v-if="!store.profileResumes.length" class="status-msg">No resume variants yet for this profile.</div>
+                <div v-if="store.loading && !store.profileResumes.length" class="ao-skeleton"></div>
+                <div v-else-if="!store.profileResumes.length" class="status-msg">No resume variants yet for this profile.</div>
                 <div
                     v-for="r in store.profileResumes"
                     :key="r.id"
