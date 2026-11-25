@@ -1,19 +1,23 @@
 package AutoOffer.controller.admin;
 
 import AutoOffer.dto.registry.SelectorReviewQueueItemDto;
+import AutoOffer.exception.ErrorResponseBody;
+import AutoOffer.service.AdminModerationService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,60 +28,44 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminSelectorController {
 
-    private final JdbcTemplate jdbc;
-    private final NamedParameterJdbcTemplate namedJdbc;
+    private final AdminModerationService moderationService;
 
-    public record ReviewCommentRequest(String comment) {}
+    public record ReviewCommentRequest(@Size(max = 1000) String comment) {}
 
-    @GetMapping("/queue")
+    @GetMapping(value = "/queue", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "List pending selector proposals with active diff")
+    @ApiResponse(responseCode = "200", description = "Pending selector proposals")
     public ResponseEntity<List<SelectorReviewQueueItemDto>> queue() {
-        return ResponseEntity.ok(jdbc.query(
-                "SELECT * FROM autooffer.v_selector_review_queue ORDER BY created_at ASC",
-                (rs, n) -> new SelectorReviewQueueItemDto(
-                    rs.getObject("id", UUID.class),
-                    rs.getString("platform_code"),
-                    rs.getString("task_code"),
-                    rs.getString("element_type_code"),
-                    rs.getString("url_pattern"),
-                    rs.getString("selector_kind"),
-                    rs.getInt("version"),
-                    rs.getString("active_selector_string"),
-                    rs.getString("proposed_selector_string"),
-                    rs.getObject("submitted_by_device_id", UUID.class),
-                    rs.getObject("created_at", OffsetDateTime.class))));
+        return ResponseEntity.ok(moderationService.getSelectorReviewQueue());
     }
 
     @PostMapping("/{id}/approve")
-    @CacheEvict(cacheNames = "selectors", allEntries = true)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Approve pending selector version")
+    @ApiResponse(responseCode = "204", description = "Selector approved and activated")
+    @ApiResponse(responseCode = "404", description = "Selector not found",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
     public ResponseEntity<Void> approve(
-        @PathVariable UUID id,
-        Authentication auth,
-        @RequestBody(required = false) ReviewCommentRequest body) {
-        executeReview("approve_selector", id, auth, body);
+            @PathVariable UUID id,
+            Authentication auth,
+            @Valid @RequestBody(required = false) ReviewCommentRequest body) {
+        moderationService.approveSelector(
+                id, UUID.fromString(auth.getName()), body != null ? body.comment() : null);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/reject")
-    @CacheEvict(cacheNames = "selectors", allEntries = true)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Reject pending selector version")
+    @ApiResponse(responseCode = "204", description = "Selector rejected")
+    @ApiResponse(responseCode = "404", description = "Selector not found or not pending",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
     public ResponseEntity<Void> reject(
-        @PathVariable UUID id,
-        Authentication auth,
-        @RequestBody(required = false) ReviewCommentRequest body) {
-        executeReview("reject_selector", id, auth, body);
+            @PathVariable UUID id,
+            Authentication auth,
+            @Valid @RequestBody(required = false) ReviewCommentRequest body) {
+        moderationService.rejectSelector(
+                id, UUID.fromString(auth.getName()), body != null ? body.comment() : null);
         return ResponseEntity.noContent().build();
-    }
-
-    private void executeReview(String functionName, UUID id, Authentication auth, ReviewCommentRequest body) {
-        UUID adminId = UUID.fromString(auth.getName());
-        namedJdbc.queryForList(
-            "SELECT autooffer." + functionName + "(CAST(:id AS uuid), CAST(:adminId AS uuid), CAST(:comment AS text))",
-            new MapSqlParameterSource()
-            .addValue("id", id)
-            .addValue("adminId", adminId)
-            .addValue("comment", body != null ? body.comment() : null)
-        );
     }
 }

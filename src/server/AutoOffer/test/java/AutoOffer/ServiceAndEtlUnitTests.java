@@ -1,18 +1,38 @@
 package AutoOffer;
 
+import AutoOffer.configuration.CacheConfig;
 import AutoOffer.configuration.CorrelationIdFilter;
 import AutoOffer.configuration.SecurityProperties;
+import AutoOffer.dto.dictionary.BootstrapDictionariesResponse.CityItem;
+import AutoOffer.dto.dictionary.BootstrapDictionariesResponse.CodeNameItem;
+import AutoOffer.dto.dictionary.BootstrapDictionariesResponse.CountryItem;
+import AutoOffer.dto.dictionary.BootstrapDictionariesResponse.IdNameItem;
+import AutoOffer.dto.dictionary.BootstrapDictionariesResponse.PlatformItem;
+import AutoOffer.dto.dictionary.BootstrapDictionariesResponse.PositionItem;
+import AutoOffer.dto.dictionary.SkillHotwordDto;
+import AutoOffer.dto.dictionary.SkillSearchDto;
+import AutoOffer.dto.registry.SelectorReviewQueueItemDto;
+import AutoOffer.dto.registry.WhitelistPlatformDto;
+import AutoOffer.dto.removal.RemovalRequestDto;
 import AutoOffer.dto.vacancy.UpsertVacancyRequest;
-import AutoOffer.entity.Device;
+import AutoOffer.entity.view.RegistrySelectorView;
 import AutoOffer.entity.view.VacancyFullView;
 import AutoOffer.etl.ClickHouseClient;
 import AutoOffer.etl.ClickHouseProperties;
 import AutoOffer.etl.VacancyEtlService;
 import AutoOffer.repository.DeviceRepository;
+import AutoOffer.repository.RegistrySelectorViewRepository;
 import AutoOffer.repository.VacancyFullViewRepository;
 import AutoOffer.scheduler.SkillHotwordsScheduler;
+import AutoOffer.service.impl.AdminModerationServiceImpl;
 import AutoOffer.service.impl.DeviceAuthServiceImpl;
+import AutoOffer.service.impl.DictionaryServiceImpl;
+import AutoOffer.service.impl.RegistryServiceImpl;
+import AutoOffer.service.impl.RemovalRequestServiceImpl;
 import AutoOffer.service.impl.VacancyServiceImpl;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
@@ -36,6 +56,7 @@ import java.sql.Array;
 import java.sql.ResultSet;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -235,4 +256,92 @@ server.expect(method(HttpMethod.GET))
         scheduler.refreshSkillHotwords();
         verify(jdbc).execute("SELECT autooffer.refresh_skill_hotwords()");
     }
-}
+
+    @Test
+    void registryDictionaryRemovalAndModerationServices_coverAllOperations() {
+        RegistrySelectorViewRepository selRepo = mock(RegistrySelectorViewRepository.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NamedParameterJdbcTemplate namedJdbc = mock(NamedParameterJdbcTemplate.class);
+
+        when(selRepo.findAll()).thenReturn(List.of(new RegistrySelectorView()));
+        OffsetDateTime since = OffsetDateTime.parse("2026-01-01T00:00:00Z");
+        when(selRepo.findByUpdatedAtAfterOrderByUpdatedAtAsc(since)).thenReturn(List.of());
+        when(jdbc.query(contains("v_registry_whitelist"), ArgumentMatchers.<RowMapper<WhitelistPlatformDto>>any()))
+        .thenReturn(List.of(new WhitelistPlatformDto("indeed.com", "Indeed", "https://www.indeed.com", "none", since)));
+
+                    RegistryServiceImpl regService = new RegistryServiceImpl(selRepo, jdbc);
+                    assertThat(regService.getApprovedSelectors(null)).hasSize(1);
+                    assertThat(regService.getApprovedSelectors(since)).isEmpty();
+                    assertThat(regService.getWhitelist()).hasSize(1);
+
+                    when(jdbc.query(contains("platforms_dict"), ArgumentMatchers.<RowMapper<PlatformItem>>any()))
+                    .thenReturn(List.of(new PlatformItem(UUID.randomUUID(), "Indeed", "indeed.com", "https://www.indeed.com", "none")));
+                                when(jdbc.query(contains("selector_tasks_dict"), ArgumentMatchers.<RowMapper<CodeNameItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("selector_element_types_dict"), ArgumentMatchers.<RowMapper<CodeNameItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("currencies_dict"), ArgumentMatchers.<RowMapper<CodeNameItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("regions_dict"), ArgumentMatchers.<RowMapper<CodeNameItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("countries_dict"), ArgumentMatchers.<RowMapper<CountryItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("cities_dict"), ArgumentMatchers.<RowMapper<CityItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("levels_dict"), ArgumentMatchers.<RowMapper<IdNameItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("work_formats_dict"), ArgumentMatchers.<RowMapper<IdNameItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("employment_types_dict"), ArgumentMatchers.<RowMapper<IdNameItem>>any())).thenReturn(List.of());
+                                when(jdbc.query(contains("positions_dict"), ArgumentMatchers.<RowMapper<PositionItem>>any())).thenReturn(List.of());
+                                when(namedJdbc.query(contains("mv_skill_hotwords"), any(MapSqlParameterSource.class), ArgumentMatchers.<RowMapper<SkillHotwordDto>>any()))
+                                .thenReturn(List.of(new SkillHotwordDto(UUID.randomUUID(), "Backend", UUID.randomUUID(), "Java", 5)));
+                                when(namedJdbc.query(contains("FROM autooffer.skills"), any(MapSqlParameterSource.class), ArgumentMatchers.<RowMapper<SkillSearchDto>>any()))
+                                .thenReturn(List.of(new SkillSearchDto(UUID.randomUUID(), "Java", true)));
+
+                                DictionaryServiceImpl dictService = new DictionaryServiceImpl(jdbc, namedJdbc);
+                                assertThat(dictService.bootstrap().platforms()).hasSize(1);
+                                assertThat(dictService.getSkillHotwords(null)).hasSize(1);
+                                assertThat(dictService.searchSkills("50%_ja\\")).hasSize(1);
+
+                                UUID remId = UUID.randomUUID();
+                                when(namedJdbc.queryForObject(contains("INSERT INTO autooffer.removal_requests"), any(MapSqlParameterSource.class), eq(UUID.class)))
+                                .thenReturn(remId);
+                                RemovalRequestServiceImpl remService = new RemovalRequestServiceImpl(namedJdbc);
+                                assertThat(remService.submit("https://indeed.com/1", "note").id()).isEqualTo(remId);
+
+                                        AdminModerationServiceImpl modService = new AdminModerationServiceImpl(jdbc, namedJdbc);
+                                        UUID adminId = UUID.randomUUID();
+                                        UUID platId = UUID.randomUUID();
+                                        assertThatThrownBy(() -> modService.updatePlatformPermission(platId, adminId, "granted", " "))
+                                        .isInstanceOf(ResponseStatusException.class)
+                                        .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                                        .isEqualTo(HttpStatus.BAD_REQUEST);
+                                        when(namedJdbc.update(anyString(), any(MapSqlParameterSource.class))).thenReturn(0);
+                                        assertThatThrownBy(() -> modService.updatePlatformPermission(platId, adminId, "none", null))
+                                        .isInstanceOf(ResponseStatusException.class)
+                                        .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                                        .isEqualTo(HttpStatus.NOT_FOUND);
+                                        when(namedJdbc.update(anyString(), any(MapSqlParameterSource.class))).thenReturn(1);
+                                        modService.updatePlatformPermission(platId, adminId, "granted", "ref-1");
+
+                                        assertThatThrownBy(() -> modService.listRemovalRequests("bad"))
+                                        .isInstanceOf(ResponseStatusException.class)
+                                        .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                                        .isEqualTo(HttpStatus.BAD_REQUEST);
+                                        when(namedJdbc.query(contains("FROM autooffer.removal_requests"), any(MapSqlParameterSource.class), ArgumentMatchers.<RowMapper<RemovalRequestDto>>any()))
+                                        .thenReturn(List.of());
+                                        assertThat(modService.listRemovalRequests("open")).isEmpty();
+
+                                        when(namedJdbc.queryForList(contains("FOR UPDATE"), any(MapSqlParameterSource.class)))
+                                        .thenReturn(List.of(Map.of("target_url", "https://indeed.com/1", "status", "open")));
+                                                    modService.processRemovalRequest(remId, adminId, "done");
+                                                    verify(namedJdbc).update(contains("DELETE FROM autooffer.vacancies"), any(MapSqlParameterSource.class));
+
+                                                    when(jdbc.query(contains("v_selector_review_queue"), ArgumentMatchers.<RowMapper<SelectorReviewQueueItemDto>>any()))
+                                                    .thenReturn(List.of());
+                                                    assertThat(modService.getSelectorReviewQueue()).isEmpty();
+                                                    modService.approveSelector(UUID.randomUUID(), adminId, "ok");
+                                                    modService.rejectSelector(UUID.randomUUID(), adminId, "no");
+
+                                                    modService.verifyCompany(UUID.randomUUID(), adminId);
+                                                    modService.verifyPosition(UUID.randomUUID(), adminId);
+                                                    modService.verifySkill(UUID.randomUUID(), adminId);
+                                                    modService.verifyVacancy(UUID.randomUUID(), adminId);
+
+                                                    CacheConfig cacheConfig = new CacheConfig();
+                                                    assertThat(cacheConfig.redisCacheManager(mock(RedisConnectionFactory.class))).isNotNull();
+                                                }
+                                            }

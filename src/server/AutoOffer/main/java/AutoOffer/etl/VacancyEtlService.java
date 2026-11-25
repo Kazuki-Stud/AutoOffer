@@ -101,36 +101,40 @@ private static final String DEFAULT_REGION = "OTHER";
             return new EtlRunResult(runId, 0, 0, 0, STATUS_SUCCESS);
         }
 
-            List<StgVacancyRow> stgRows = new ArrayList<>();
-            int rejected = 0;
-            OffsetDateTime maxUpdatedAt = watermark;
+        List<StgVacancyRow> stgRows = new ArrayList<>();
+        int rejected = 0;
+        OffsetDateTime maxUpdatedAt = watermark;
 
-            for (RawVacancyRow raw : rawRows) {
-                OffsetDateTime rowUpd = OffsetDateTime.parse(raw.updated_at());
-                if (rowUpd.isAfter(maxUpdatedAt)) maxUpdatedAt = rowUpd;
-                StgVacancyRow stg = transform(raw);
-                if (stg.is_quality_ok() == 0) rejected++;
-                stgRows.add(stg);
+        for (RawVacancyRow raw : rawRows) {
+            OffsetDateTime rowUpd = OffsetDateTime.parse(raw.updated_at());
+            if (rowUpd.isAfter(maxUpdatedAt)) {
+                maxUpdatedAt = rowUpd;
             }
+            StgVacancyRow stg = transform(raw);
+            if (stg.is_quality_ok() == 0) {
+                rejected++;
+            }
+            stgRows.add(stg);
+        }
 
-            clickHouse.insertJsonEachRow(TABLE_RAW, rawRows);
-            clickHouse.insertJsonEachRow(TABLE_STAGING, stgRows);
+        clickHouse.insertJsonEachRow(TABLE_RAW, rawRows);
+        clickHouse.insertJsonEachRow(TABLE_STAGING, stgRows);
 
-            pg.update("""
-                UPDATE autooffer.etl_watermark
-                SET last_synced_at = :ts, updated_at = now()
-                WHERE pipeline_name = :p
-                """, new MapSqlParameterSource().addValue("ts", maxUpdatedAt).addValue("p", PIPELINE));
+        pg.update("""
+            UPDATE autooffer.etl_watermark
+            SET last_synced_at = :ts, updated_at = now()
+            WHERE pipeline_name = :p
+            """, new MapSqlParameterSource().addValue("ts", maxUpdatedAt).addValue("p", PIPELINE));
 
-        finishRun(runId, STATUS_SUCCESS, rawRows.size(), stgRows.size(), rejected, null);
-        log.info("ETL batch {} completed: extracted={}, loaded={}, qualityRejected={}",
-            batchId, rawRows.size(), stgRows.size(), rejected);
-        return new EtlRunResult(runId, rawRows.size(), stgRows.size(), rejected, STATUS_SUCCESS);
-    } catch (Exception ex) {
-        log.error("ETL run {} failed", runId, ex);
-        finishRun(runId, STATUS_FAILED, 0, 0, 0, ex.getMessage());
-        throw ex;
-    }
+    finishRun(runId, STATUS_SUCCESS, rawRows.size(), stgRows.size(), rejected, null);
+    log.info("ETL batch {} completed: extracted={}, loaded={}, qualityRejected={}",
+        batchId, rawRows.size(), stgRows.size(), rejected);
+    return new EtlRunResult(runId, rawRows.size(), stgRows.size(), rejected, STATUS_SUCCESS);
+} catch (Exception ex) {
+    log.error("ETL run {} failed", runId, ex);
+    finishRun(runId, STATUS_FAILED, 0, 0, 0, ex.getMessage());
+    throw ex;
+}
     }
 
     public void rebuildSkillDemandMart() {

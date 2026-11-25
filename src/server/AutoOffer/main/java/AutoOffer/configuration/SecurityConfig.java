@@ -7,6 +7,7 @@ import AutoOffer.security.SecurityConstants;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,6 +42,7 @@ public class SecurityConfig {
     private final CorrelationIdFilter correlationIdFilter;
     private final DeviceTokenAuthFilter deviceTokenAuthFilter;
     private final AdminJwtFilter adminJwtFilter;
+    private final ObjectProvider<ObjectMapper> objectMapperProvider;
 
     @Value("${app.cors.allowed-origins:*}")
     private String allowedOrigins;
@@ -80,10 +82,11 @@ public class SecurityConfig {
                     .build();
                 }
 
-                private static void writeErrorJson(HttpServletResponse res, int status, ErrorCode code, String message) throws IOException {
+                private void writeErrorJson(HttpServletResponse res, int status, ErrorCode code, String message) throws IOException {
                     res.setStatus(status);
                     res.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                    new ObjectMapper().writeValue(res.getOutputStream(), Map.of(
+                    ObjectMapper mapper = objectMapperProvider.getIfAvailable(ObjectMapper::new);
+                    mapper.writeValue(res.getOutputStream(), Map.of(
                             "timestamp", OffsetDateTime.now().toString(),
                             "status", status,
                             "code", code.name(),

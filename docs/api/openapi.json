@@ -122,11 +122,7 @@
             "content": {
               "*/*": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
+                  "$ref": "#/components/schemas/IdResponse"
                 }
               }
             }
@@ -162,11 +158,7 @@
             "content": {
               "*/*": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
+                  "$ref": "#/components/schemas/IdResponse"
                 }
               }
             }
@@ -202,10 +194,7 @@
             "content": {
               "*/*": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object"
-                  }
+                  "$ref": "#/components/schemas/RemovalRequestSubmittedResponse"
                 }
               }
             }
@@ -550,10 +539,7 @@
             "content": {
               "*/*": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object"
-                  }
+                  "$ref": "#/components/schemas/AdminLoginResponse"
                 }
               }
             }
@@ -656,10 +642,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "object"
-                    }
+                    "$ref": "#/components/schemas/SkillSearchDto"
                   }
                 }
               }
@@ -694,10 +677,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "object"
-                    }
+                    "$ref": "#/components/schemas/SkillHotwordDto"
                   }
                 }
               }
@@ -721,10 +701,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "object"
-                    }
+                    "$ref": "#/components/schemas/WhitelistPlatformDto"
                   }
                 }
               }
@@ -780,10 +757,7 @@
             "content": {
               "*/*": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "string"
-                  }
+                  "$ref": "#/components/schemas/HealthResponse"
                 }
               }
             }
@@ -804,10 +778,7 @@
             "content": {
               "*/*": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object"
-                  }
+                  "$ref": "#/components/schemas/BootstrapDictionariesResponse"
                 }
               }
             }
@@ -872,10 +843,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "object"
-                    }
+                    "$ref": "#/components/schemas/SelectorReviewQueueItemDto"
                   }
                 }
               }
@@ -915,10 +883,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "object"
-                    }
+                    "$ref": "#/components/schemas/RemovalRequestDto"
                   }
                 }
               }
@@ -1017,6 +982,15 @@
           "url"
         ]
       },
+      "IdResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "SubmitSelectorRequest": {
         "type": "object",
         "properties": {
@@ -1069,6 +1043,18 @@
         "required": [
           "targetUrl"
         ]
+      },
+      "RemovalRequestSubmittedResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
       },
       "DeviceRegisterRequest": {
         "type": "object",
@@ -1157,6 +1143,21 @@
           "username"
         ]
       },
+      "AdminLoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "adminId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
       "ChangePasswordRequest": {
         "type": "object",
         "properties": {
@@ -1235,21 +1236,21 @@
             "type": "integer",
             "format": "int32"
           },
+          "numberOfElements": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageable": {
+            "$ref": "#/components/schemas/PageableObject"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/SortObject"
+          },
           "first": {
             "type": "boolean"
           },
           "last": {
             "type": "boolean"
-          },
-          "numberOfElements": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "sort": {
-            "$ref": "#/components/schemas/SortObject"
-          },
-          "pageable": {
-            "$ref": "#/components/schemas/PageableObject"
           },
           "empty": {
             "type": "boolean"
@@ -1262,9 +1263,6 @@
           "offset": {
             "type": "integer",
             "format": "int64"
-          },
-          "sort": {
-            "$ref": "#/components/schemas/SortObject"
           },
           "paged": {
             "type": "boolean"
@@ -1279,6 +1277,9 @@
           },
           "unpaged": {
             "type": "boolean"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/SortObject"
           }
         }
       },
@@ -1288,10 +1289,10 @@
           "empty": {
             "type": "boolean"
           },
-          "sorted": {
+          "unsorted": {
             "type": "boolean"
           },
-          "unsorted": {
+          "sorted": {
             "type": "boolean"
           }
         }
@@ -1371,6 +1372,65 @@
           }
         }
       },
+      "SkillSearchDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isVerified": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SkillHotwordDto": {
+        "type": "object",
+        "properties": {
+          "positionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "positionName": {
+            "type": "string"
+          },
+          "skillId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "skillName": {
+            "type": "string"
+          },
+          "vacancyCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "WhitelistPlatformDto": {
+        "type": "object",
+        "properties": {
+          "platformCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "permissionStatus": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "RegistrySelectorView": {
         "type": "object",
         "properties": {
@@ -1403,6 +1463,252 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "BootstrapDictionariesResponse": {
+        "type": "object",
+        "properties": {
+          "platforms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformItem"
+            }
+          },
+          "selectorTasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodeNameItem"
+            }
+          },
+          "selectorElementTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodeNameItem"
+            }
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodeNameItem"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodeNameItem"
+            }
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountryItem"
+            }
+          },
+          "cities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CityItem"
+            }
+          },
+          "levels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdNameItem"
+            }
+          },
+          "workFormats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdNameItem"
+            }
+          },
+          "employmentTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdNameItem"
+            }
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PositionItem"
+            }
+          }
+        }
+      },
+      "CityItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "countryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CodeNameItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CountryItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "regionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "IdNameItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PlatformItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "permissionStatus": {
+            "type": "string"
+          }
+        }
+      },
+      "PositionItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isVerified": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SelectorReviewQueueItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "taskCode": {
+            "type": "string"
+          },
+          "elementTypeCode": {
+            "type": "string"
+          },
+          "urlPattern": {
+            "type": "string"
+          },
+          "selectorKind": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "activeSelectorString": {
+            "type": "string"
+          },
+          "proposedSelectorString": {
+            "type": "string"
+          },
+          "submittedByDeviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RemovalRequestDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "processedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "processedByAdminId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       }

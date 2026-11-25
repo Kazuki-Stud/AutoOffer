@@ -9,6 +9,7 @@ import AutoOffer.dto.dictionary.SkillSearchDto;
 import AutoOffer.dto.registry.SelectorReviewQueueItemDto;
 import AutoOffer.dto.registry.WhitelistPlatformDto;
 import AutoOffer.dto.removal.RemovalRequestDto;
+import AutoOffer.dto.removal.RemovalRequestSubmittedResponse;
 import AutoOffer.entity.Admin;
 import AutoOffer.entity.view.RegistrySelectorView;
 import AutoOffer.entity.view.VacancyFullView;
@@ -17,10 +18,13 @@ import AutoOffer.etl.ClickHouseClient;
 import AutoOffer.etl.VacancyEtlService;
 import AutoOffer.exception.GlobalExceptionHandler;
 import AutoOffer.repository.AdminRepository;
-import AutoOffer.repository.RegistrySelectorViewRepository;
 import AutoOffer.security.DevicePrincipal;
 import AutoOffer.security.JwtUtils;
+import AutoOffer.service.AdminModerationService;
 import AutoOffer.service.DeviceAuthService;
+import AutoOffer.service.DictionaryService;
+import AutoOffer.service.RegistryService;
+import AutoOffer.service.RemovalRequestService;
 import AutoOffer.service.VacancyService;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -28,10 +32,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -44,14 +46,14 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -98,60 +100,52 @@ class ControllerUnitTests {
         deviceMvc.perform(post("/api/devices/register").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isBadRequest());
 
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        NamedParameterJdbcTemplate namedJdbc = mock(NamedParameterJdbcTemplate.class);
-        when(jdbc.query(contains("platforms_dict"), org.mockito.ArgumentMatchers.<RowMapper<PlatformItem>>any()))
-        .thenReturn(List.of(new PlatformItem(UUID.randomUUID(), "Indeed", "indeed.com", "https://www.indeed.com", "none")));
-                    when(jdbc.query(contains("selector_tasks_dict"), org.mockito.ArgumentMatchers.<RowMapper<CodeNameItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("selector_element_types_dict"), org.mockito.ArgumentMatchers.<RowMapper<CodeNameItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("currencies_dict"), org.mockito.ArgumentMatchers.<RowMapper<CodeNameItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("regions_dict"), org.mockito.ArgumentMatchers.<RowMapper<CodeNameItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("countries_dict"), org.mockito.ArgumentMatchers.<RowMapper<CountryItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("cities_dict"), org.mockito.ArgumentMatchers.<RowMapper<CityItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("levels_dict"), org.mockito.ArgumentMatchers.<RowMapper<IdNameItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("work_formats_dict"), org.mockito.ArgumentMatchers.<RowMapper<IdNameItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("employment_types_dict"), org.mockito.ArgumentMatchers.<RowMapper<IdNameItem>>any()))
-                    .thenReturn(List.of());
-                    when(jdbc.query(contains("positions_dict"), org.mockito.ArgumentMatchers.<RowMapper<PositionItem>>any()))
-                    .thenReturn(List.of());
-                    when(namedJdbc.query(contains("mv_skill_hotwords"), any(MapSqlParameterSource.class), org.mockito.ArgumentMatchers.<RowMapper<SkillHotwordDto>>any()))
-                    .thenReturn(List.of(new SkillHotwordDto(UUID.randomUUID(), "Backend", UUID.randomUUID(), "Java", 5)));
-                    when(namedJdbc.query(contains("FROM autooffer.skills"), any(MapSqlParameterSource.class), org.mockito.ArgumentMatchers.<RowMapper<SkillSearchDto>>any()))
-                    .thenReturn(List.of(new SkillSearchDto(UUID.randomUUID(), "Java", true)));
+        DictionaryService dictService = mock(DictionaryService.class);
+        var bootstrapResp = new AutoOffer.dto.dictionary.BootstrapDictionariesResponse(
+            List.of(new PlatformItem(UUID.randomUUID(), "Indeed", "indeed.com", "https://www.indeed.com", "none")),
+                    List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                    List.of(), List.of(), List.of(), List.of());
+                when(dictService.bootstrap()).thenReturn(bootstrapResp);
+                when(dictService.getSkillHotwords(any()))
+                .thenReturn(List.of(new SkillHotwordDto(UUID.randomUUID(), "Backend", UUID.randomUUID(), "Java", 5)));
+                when(dictService.searchSkills("ja"))
+                .thenReturn(List.of(new SkillSearchDto(UUID.randomUUID(), "Java", true)));
 
-                    MockMvc dictMvc = mvcFor(new DictionaryController(jdbc, namedJdbc));
-                    dictMvc.perform(get("/api/dictionaries/bootstrap")).andExpect(status().isOk()).andExpect(jsonPath("$.platforms[0].code").value("indeed.com"));
-                    dictMvc.perform(get("/api/skills/hotwords").param("positionId", UUID.randomUUID().toString())).andExpect(status().isOk()).andExpect(jsonPath("$[0].skillName").value("Java"));
-                    dictMvc.perform(get("/api/skills").param("q", "ja")).andExpect(status().isOk()).andExpect(jsonPath("$[0].name").value("Java"));
+                MockMvc dictMvc = mvcFor(new DictionaryController(dictService));
+                dictMvc.perform(get("/api/dictionaries/bootstrap"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.platforms[0].code").value("indeed.com"));
+                dictMvc.perform(get("/api/skills/hotwords").param("positionId", UUID.randomUUID().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].skillName").value("Java"));
+                dictMvc.perform(get("/api/skills").param("q", "ja"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Java"));
 
-                    RegistrySelectorViewRepository selRepo = mock(RegistrySelectorViewRepository.class);
-                    when(selRepo.findAll()).thenReturn(List.of(new RegistrySelectorView()));
-                    when(selRepo.findByUpdatedAtAfterOrderByUpdatedAtAsc(any(OffsetDateTime.class))).thenReturn(List.of());
-                    when(jdbc.query(contains("v_registry_whitelist"), org.mockito.ArgumentMatchers.<RowMapper<WhitelistPlatformDto>>any()))
-                    .thenReturn(List.of(new WhitelistPlatformDto("indeed.com", "Indeed", "https://www.indeed.com", "none", OffsetDateTime.now())));
-                                MockMvc regMvc = mvcFor(new RegistryController(selRepo, jdbc));
-                                regMvc.perform(get("/api/registry/selectors")).andExpect(status().isOk());
-                                regMvc.perform(get("/api/registry/selectors").param("since", "2026-01-01T00:00:00Z")).andExpect(status().isOk());
-                                regMvc.perform(get("/api/registry/whitelist")).andExpect(status().isOk()).andExpect(jsonPath("$[0].platformCode").value("indeed.com"));
+                RegistryService registryService = mock(RegistryService.class);
+                when(registryService.getApprovedSelectors(null)).thenReturn(List.of(new RegistrySelectorView()));
+                when(registryService.getApprovedSelectors(any(OffsetDateTime.class))).thenReturn(List.of());
+                when(registryService.getWhitelist()).thenReturn(
+                    List.of(new WhitelistPlatformDto("indeed.com", "Indeed", "https://www.indeed.com", "none", OffsetDateTime.now())));
+                            MockMvc regMvc = mvcFor(new RegistryController(registryService));
+                            regMvc.perform(get("/api/registry/selectors")).andExpect(status().isOk());
+                            regMvc.perform(get("/api/registry/selectors").param("since", "2026-01-01T00:00:00Z")).andExpect(status().isOk());
+                            regMvc.perform(get("/api/registry/whitelist"))
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$[0].platformCode").value("indeed.com"));
 
-        UUID remId = UUID.randomUUID();
-        when(namedJdbc.queryForObject(anyString(), any(MapSqlParameterSource.class), eq(UUID.class))).thenReturn(remId);
-        MockMvc remMvc = mvcFor(new RemovalRequestController(namedJdbc));
-        remMvc.perform(post("/api/removal-requests").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"targetUrl\":\"https://indeed.com/job/1\",\"note\":\"gdpr\"}"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.id").value(remId.toString()));
-        remMvc.perform(post("/api/removal-requests").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"targetUrl\":\"ftp://bad\"}"))
-                .andExpect(status().isBadRequest());
+                            UUID remId = UUID.randomUUID();
+                            RemovalRequestService remService = mock(RemovalRequestService.class);
+                            when(remService.submit("https://indeed.com/job/1", "gdpr"))
+                                    .thenReturn(new RemovalRequestSubmittedResponse(remId, "open"));
+                                    MockMvc remMvc = mvcFor(new RemovalRequestController(remService));
+                                    remMvc.perform(post("/api/removal-requests").contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"targetUrl\":\"https://indeed.com/job/1\",\"note\":\"gdpr\"}"))
+                                                .andExpect(status().isAccepted())
+                                                .andExpect(jsonPath("$.id").value(remId.toString()));
+                                                remMvc.perform(post("/api/removal-requests").contentType(MediaType.APPLICATION_JSON)
+                                                    .content("{\"targetUrl\":\"ftp://bad\"}"))
+                                                            .andExpect(status().isBadRequest());
 
         VacancyService vacancyService = mock(VacancyService.class);
         UUID vacId = UUID.randomUUID();
@@ -178,85 +172,97 @@ class ControllerUnitTests {
         when(adminRepo.findById(adminId)).thenReturn(Optional.of(admin));
         when(encoder.matches("goodpass", "$2a$12$hash")).thenReturn(true);
         when(encoder.encode("newpassword123")).thenReturn("$2a$12$new");
+        when(adminRepo.updatePasswordHash(adminId, "$2a$12$new")).thenReturn(1);
         when(jwtUtils.generateAdminToken(adminId, "admin")).thenReturn("jwt-123");
 
         MockMvc authMvc = mvcFor(new AdminAuthController(adminRepo, encoder, jwtUtils));
         authMvc.perform(post("/api/admin/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"admin\",\"password\":\"goodpass\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").value("jwt-123"));
+            .content("{\"username\":\"admin\",\"password\":\"goodpass\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.token").value("jwt-123"));
         authMvc.perform(post("/api/admin/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"admin\",\"password\":\"wrong\"}"))
-                .andExpect(status().isUnauthorized());
+            .content("{\"username\":\"admin\",\"password\":\"wrong\"}"))
+        .andExpect(status().isUnauthorized());
         authMvc.perform(post("/api/admin/auth/change-password").principal(adminAuth).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"goodpass\",\"newPassword\":\"newpassword123\"}"))
-                .andExpect(status().isNoContent());
+            .content("{\"currentPassword\":\"goodpass\",\"newPassword\":\"newpassword123\"}"))
+        .andExpect(status().isNoContent());
+        verify(adminRepo).updatePasswordHash(adminId, "$2a$12$new");
         authMvc.perform(post("/api/admin/auth/change-password").principal(adminAuth).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"wrong\",\"newPassword\":\"newpassword123\"}"))
-                .andExpect(status().isBadRequest());
+            .content("{\"currentPassword\":\"wrong\",\"newPassword\":\"newpassword123\"}"))
+        .andExpect(status().isBadRequest());
 
-        NamedParameterJdbcTemplate namedJdbc = mock(NamedParameterJdbcTemplate.class);
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        MockMvc platMvc = mvcFor(new AdminPlatformController(namedJdbc));
+        AdminModerationService moderation = mock(AdminModerationService.class);
+        MockMvc platMvc = mvcFor(new AdminPlatformController(moderation));
         UUID platId = UUID.randomUUID();
-        when(namedJdbc.update(anyString(), any(MapSqlParameterSource.class))).thenReturn(1);
+        doNothing().when(moderation).updatePlatformPermission(platId, adminId, "granted", "email-2026");
         platMvc.perform(patch("/api/admin/platforms/{id}/permission", platId).principal(adminAuth)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"permissionStatus\":\"granted\",\"permissionReference\":\"email-2026\"}"))
-                .andExpect(status().isNoContent());
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"permissionStatus\":\"granted\",\"permissionReference\":\"email-2026\"}"))
+        .andExpect(status().isNoContent());
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "permissionReference is required"))
+        .when(moderation).updatePlatformPermission(platId, adminId, "granted", null);
         platMvc.perform(patch("/api/admin/platforms/{id}/permission", platId).principal(adminAuth)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"permissionStatus\":\"granted\"}"))
-                .andExpect(status().isBadRequest());
-        when(namedJdbc.update(anyString(), any(MapSqlParameterSource.class))).thenReturn(0);
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"permissionStatus\":\"granted\"}"))
+        .andExpect(status().isBadRequest());
+        doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Platform not found"))
+        .when(moderation).updatePlatformPermission(platId, adminId, "none", null);
         platMvc.perform(patch("/api/admin/platforms/{id}/permission", platId).principal(adminAuth)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"permissionStatus\":\"none\"}"))
-                .andExpect(status().isNotFound());
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"permissionStatus\":\"none\"}"))
+        .andExpect(status().isNotFound());
 
-        MockMvc remAdminMvc = mvcFor(new AdminRemovalController(namedJdbc));
+        MockMvc remAdminMvc = mvcFor(new AdminRemovalController(moderation));
         UUID remId = UUID.randomUUID();
-        when(namedJdbc.query(contains("FROM autooffer.removal_requests WHERE status"), any(MapSqlParameterSource.class), org.mockito.ArgumentMatchers.<RowMapper<RemovalRequestDto>>any()))
+        when(moderation.listRemovalRequests("open"))
         .thenReturn(List.of(new RemovalRequestDto(remId, "https://indeed.com/1", null, "open", OffsetDateTime.now(), null, null)));
-                    remAdminMvc.perform(get("/api/admin/removal-requests").param("status", "open")).andExpect(status().isOk()).andExpect(jsonPath("$[0].status").value("open"));
-                    remAdminMvc.perform(get("/api/admin/removal-requests").param("status", "invalid")).andExpect(status().isBadRequest());
+                    remAdminMvc.perform(get("/api/admin/removal-requests").param("status", "open"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].status").value("open"));
+                    when(moderation.listRemovalRequests("invalid"))
+                    .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid status"));
+                    remAdminMvc.perform(get("/api/admin/removal-requests").param("status", "invalid"))
+                    .andExpect(status().isBadRequest());
 
-        when(namedJdbc.queryForList(contains("FOR UPDATE"), any(MapSqlParameterSource.class)))
-                .thenReturn(List.of(Map.of("target_url", "https://indeed.com/1", "status", "open")));
-        when(namedJdbc.update(anyString(), any(MapSqlParameterSource.class))).thenReturn(1);
-        remAdminMvc.perform(post("/api/admin/removal-requests/{id}/process", remId).principal(adminAuth)
+                    doNothing().when(moderation).processRemovalRequest(remId, adminId, "done");
+                    remAdminMvc.perform(post("/api/admin/removal-requests/{id}/process", remId).principal(adminAuth)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"done\"}"))
-                .andExpect(status().isNoContent());
-        verify(namedJdbc).update(contains("DELETE FROM autooffer.vacancies"), any(MapSqlParameterSource.class));
+                    .andExpect(status().isNoContent());
+                    verify(moderation).processRemovalRequest(remId, adminId, "done");
 
-        when(namedJdbc.queryForList(contains("FOR UPDATE"), any(MapSqlParameterSource.class)))
-                .thenReturn(List.of(Map.of("target_url", "https://indeed.com/1", "status", "done")));
-        remAdminMvc.perform(post("/api/admin/removal-requests/{id}/process", remId).principal(adminAuth)
+                    doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "already processed"))
+                    .when(moderation).processRemovalRequest(remId, adminId, "rejected");
+                    remAdminMvc.perform(post("/api/admin/removal-requests/{id}/process", remId).principal(adminAuth)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"rejected\"}"))
-                .andExpect(status().isConflict());
+                    .andExpect(status().isConflict());
 
-        when(namedJdbc.queryForList(contains("FOR UPDATE"), any(MapSqlParameterSource.class))).thenReturn(List.of());
-        remAdminMvc.perform(post("/api/admin/removal-requests/{id}/process", remId).principal(adminAuth)
+                    doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "not found"))
+                    .when(moderation).processRemovalRequest(remId, adminId, "done");
+                    remAdminMvc.perform(post("/api/admin/removal-requests/{id}/process", remId).principal(adminAuth)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"done\"}"))
-                .andExpect(status().isNotFound());
+                    .andExpect(status().isNotFound());
 
-        when(jdbc.query(contains("v_selector_review_queue"), org.mockito.ArgumentMatchers.<RowMapper<SelectorReviewQueueItemDto>>any()))
-        .thenReturn(List.of(new SelectorReviewQueueItemDto(UUID.randomUUID(), "indeed.com", "parse_vacancy_list", "title", "indeed.com", "css", 1, null, "h1", UUID.randomUUID(), OffsetDateTime.now())));
-        when(namedJdbc.queryForList(contains("reject_selector"), any(MapSqlParameterSource.class))).thenReturn(List.of());
-        MockMvc selAdminMvc = mvcFor(new AdminSelectorController(jdbc, namedJdbc));
-        selAdminMvc.perform(get("/api/admin/selectors/queue")).andExpect(status().isOk()).andExpect(jsonPath("$[0].platformCode").value("indeed.com"));
-        selAdminMvc.perform(post("/api/admin/selectors/{id}/reject", UUID.randomUUID()).principal(adminAuth)
+                    when(moderation.getSelectorReviewQueue())
+                    .thenReturn(List.of(new SelectorReviewQueueItemDto(UUID.randomUUID(), "indeed.com", "parse_vacancy_list", "title", "indeed.com", "css", 1, null, "h1", UUID.randomUUID(), OffsetDateTime.now())));
+                    MockMvc selAdminMvc = mvcFor(new AdminSelectorController(moderation));
+                    selAdminMvc.perform(get("/api/admin/selectors/queue"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].platformCode").value("indeed.com"));
+                    UUID selId = UUID.randomUUID();
+                    selAdminMvc.perform(post("/api/admin/selectors/{id}/reject", selId).principal(adminAuth)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"comment\":\"invalid\"}"))
-                .andExpect(status().isNoContent());
+                    .andExpect(status().isNoContent());
+                    verify(moderation).rejectSelector(selId, adminId, "invalid");
 
-        MockMvc verifyMvc = mvcFor(new AdminVerifyController(namedJdbc));
-        when(namedJdbc.update(anyString(), any(MapSqlParameterSource.class))).thenReturn(1);
-        verifyMvc.perform(post("/api/admin/companies/{id}/verify", UUID.randomUUID()).principal(adminAuth)).andExpect(status().isNoContent());
-        verifyMvc.perform(post("/api/admin/positions/{id}/verify", UUID.randomUUID()).principal(adminAuth)).andExpect(status().isNoContent());
-        verifyMvc.perform(post("/api/admin/skills/{id}/verify", UUID.randomUUID()).principal(adminAuth)).andExpect(status().isNoContent());
-        verifyMvc.perform(post("/api/admin/vacancies/{id}/verify", UUID.randomUUID()).principal(adminAuth)).andExpect(status().isNoContent());
-        when(namedJdbc.update(anyString(), any(MapSqlParameterSource.class))).thenReturn(0);
-        verifyMvc.perform(post("/api/admin/vacancies/{id}/verify", UUID.randomUUID()).principal(adminAuth)).andExpect(status().isNotFound());
+                    MockMvc verifyMvc = mvcFor(new AdminVerifyController(moderation));
+                    UUID targetId = UUID.randomUUID();
+                    verifyMvc.perform(post("/api/admin/companies/{id}/verify", targetId).principal(adminAuth)).andExpect(status().isNoContent());
+                    verifyMvc.perform(post("/api/admin/positions/{id}/verify", targetId).principal(adminAuth)).andExpect(status().isNoContent());
+                    verifyMvc.perform(post("/api/admin/skills/{id}/verify", targetId).principal(adminAuth)).andExpect(status().isNoContent());
+                    verifyMvc.perform(post("/api/admin/vacancies/{id}/verify", targetId).principal(adminAuth)).andExpect(status().isNoContent());
+                    doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Record not found"))
+                    .when(moderation).verifyVacancy(targetId, adminId);
+                    verifyMvc.perform(post("/api/admin/vacancies/{id}/verify", targetId).principal(adminAuth)).andExpect(status().isNotFound());
 
         ClickHouseClient ch = mock(ClickHouseClient.class);
         VacancyEtlService etl = mock(VacancyEtlService.class);

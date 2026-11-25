@@ -25,7 +25,7 @@ COPY --from=builder --chown=1001:1001 /workspace/build/libs/*.jar app.jar
 USER 1001:1001
 EXPOSE 8080
 
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom"
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC -Xss256k -Djava.security.egd=file:/dev/urandom"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD curl -fsS http://localhost:8080/actuator/health/readiness || exit 1

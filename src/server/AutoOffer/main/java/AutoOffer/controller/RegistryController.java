@@ -2,14 +2,14 @@ package AutoOffer.controller;
 
 import AutoOffer.dto.registry.WhitelistPlatformDto;
 import AutoOffer.entity.view.RegistrySelectorView;
-import AutoOffer.repository.RegistrySelectorViewRepository;
+import AutoOffer.service.RegistryService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
@@ -21,35 +21,20 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RegistryController {
 
-    private final RegistrySelectorViewRepository selectorViewRepo;
-    private final JdbcTemplate jdbc;
+    private final RegistryService registryService;
 
-    @GetMapping("/selectors")
-    @Cacheable(cacheNames = "selectors", key = "'all'", condition = "#since == null")
+    @GetMapping(value = "/selectors", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Fetch active approved selectors (optionally changed since timestamp)")
+    @ApiResponse(responseCode = "200", description = "Active approved selectors")
     public ResponseEntity<List<RegistrySelectorView>> getSelectors(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime since) {
-        List<RegistrySelectorView> result = (since != null)
-                ? selectorViewRepo.findByUpdatedAtAfterOrderByUpdatedAtAsc(since)
-                : selectorViewRepo.findAll();
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(registryService.getApprovedSelectors(since));
     }
 
-    @GetMapping("/whitelist")
-    @Cacheable("whitelist")
+    @GetMapping(value = "/whitelist", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Fetch platform permission whitelist (US 1.1)")
+    @ApiResponse(responseCode = "200", description = "Platform whitelist")
     public ResponseEntity<List<WhitelistPlatformDto>> getWhitelist() {
-        List<WhitelistPlatformDto> rows = jdbc.query("""
-            SELECT platform_code, name, url, permission_status, updated_at
-            FROM autooffer.v_registry_whitelist
-            ORDER BY name
-            """,
-            (rs, n) -> new WhitelistPlatformDto(
-                rs.getString("platform_code"),
-                rs.getString("name"),
-                rs.getString("url"),
-                rs.getString("permission_status"),
-                rs.getObject("updated_at", OffsetDateTime.class)));
-        return ResponseEntity.ok(rows);
+        return ResponseEntity.ok(registryService.getWhitelist());
     }
 }

@@ -1,8 +1,13 @@
 package AutoOffer.controller;
 
 import AutoOffer.dto.common.IdResponse;
+import AutoOffer.exception.ErrorResponseBody;
 import AutoOffer.security.DevicePrincipal;
+import AutoOffer.service.SelectorService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -12,12 +17,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -27,11 +30,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SelectorController {
 
-    private static final java.util.regex.Pattern UNSAFE = java.util.regex.Pattern.compile(
-            "(javascript:|<\\s*script|https?://|data:)", java.util.regex.Pattern.CASE_INSENSITIVE
-    );
-
-    private final NamedParameterJdbcTemplate jdbc;
+    private final SelectorService selectorService;
 
     public record SubmitSelectorRequest(
             @NotNull UUID platformId,
@@ -42,35 +41,26 @@ public class SelectorController {
             @NotBlank @Size(min = 1, max = 2000) String selectorString
     ) {}
 
-    @PostMapping
+    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Submit a pending selector proposal for admin review")
     @SecurityRequirement(name = "bearerAuth")
+    @ApiResponse(responseCode = "201", description = "Pending selector created")
+    @ApiResponse(responseCode = "400", description = "Invalid or unsafe selector",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
+    @ApiResponse(responseCode = "401", description = "Device authentication required",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
     public ResponseEntity<IdResponse> submit(
-        @AuthenticationPrincipal DevicePrincipal device,
-        @Valid @RequestBody SubmitSelectorRequest req) {
-        if (UNSAFE.matcher(req.selectorString()).find()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selector must not contain scripts or URLs");
-        }
-        UUID id = jdbc.queryForObject("""
-            SELECT autooffer.submit_selector(
-                CAST(:deviceId AS uuid),
-                CAST(:platformId AS uuid),
-                CAST(:taskId AS uuid),
-                CAST(:elementTypeId AS uuid),
-                CAST(:urlPattern AS varchar),
-                CAST(:kind AS varchar),
-                CAST(:selectorString AS text)
-            )
-            """,
-            new MapSqlParameterSource()
-            .addValue("deviceId", device.deviceId())
-            .addValue("platformId", req.platformId())
-            .addValue("taskId", req.taskId())
-            .addValue("elementTypeId", req.elementTypeId())
-            .addValue("urlPattern", req.urlPattern())
-            .addValue("kind", req.kind())
-            .addValue("selectorString", req.selectorString()),
-            UUID.class);
+            @AuthenticationPrincipal DevicePrincipal device,
+            @Valid @RequestBody SubmitSelectorRequest req) {
+        UUID id = selectorService.submitSelector(
+                device.deviceId(),
+                req.platformId(),
+                req.taskId(),
+                req.elementTypeId(),
+                req.urlPattern(),
+                req.kind(),
+                req.selectorString());
         return ResponseEntity.status(HttpStatus.CREATED).body(new IdResponse(id));
     }
 }

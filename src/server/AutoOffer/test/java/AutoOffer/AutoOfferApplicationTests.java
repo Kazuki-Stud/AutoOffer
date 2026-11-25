@@ -10,7 +10,9 @@ import AutoOffer.entity.Device;
 import AutoOffer.repository.DeviceRepository;
 import AutoOffer.repository.VacancyFullViewRepository;
 import AutoOffer.security.DevicePrincipal;
+import AutoOffer.service.impl.AdminModerationServiceImpl;
 import AutoOffer.service.impl.DeviceAuthServiceImpl;
+import AutoOffer.service.impl.SelectorServiceImpl;
 import AutoOffer.service.impl.VacancyServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -185,8 +187,10 @@ class AutoOfferApplicationTests {
         NamedParameterJdbcTemplate namedJdbc = mock(NamedParameterJdbcTemplate.class);
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
 
-        SelectorController selectorController = new SelectorController(namedJdbc);
-        AdminSelectorController adminSelectorController = new AdminSelectorController(jdbc, namedJdbc);
+        SelectorServiceImpl selectorService = new SelectorServiceImpl(namedJdbc);
+        AdminModerationServiceImpl moderationService = new AdminModerationServiceImpl(jdbc, namedJdbc);
+        SelectorController selectorController = new SelectorController(selectorService);
+        AdminSelectorController adminSelectorController = new AdminSelectorController(moderationService);
 
         UUID deviceId = UUID.randomUUID();
         UUID platformId = UUID.randomUUID();

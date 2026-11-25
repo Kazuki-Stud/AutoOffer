@@ -1,5 +1,6 @@
 package AutoOffer.scheduler;
 
+import AutoOffer.configuration.CacheNames;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
@@ -15,7 +16,7 @@ public class SkillHotwordsScheduler {
     private final JdbcTemplate jdbcTemplate;
 
     @Scheduled(cron = "0 */10 * * * *")
-    @CacheEvict(cacheNames = "skillHotwords", allEntries = true)
+    @CacheEvict(cacheNames = CacheNames.SKILL_HOTWORDS, allEntries = true)
     public void refreshSkillHotwords() {
         log.debug("Refreshing mv_skill_hotwords");
         jdbcTemplate.execute("SELECT autooffer.refresh_skill_hotwords()");

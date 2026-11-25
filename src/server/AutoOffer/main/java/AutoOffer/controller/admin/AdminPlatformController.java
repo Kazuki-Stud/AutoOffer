@@ -1,20 +1,22 @@
 package AutoOffer.controller.admin;
 
+import AutoOffer.exception.ErrorResponseBody;
+import AutoOffer.service.AdminModerationService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -25,40 +27,27 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminPlatformController {
 
-    private static final String STATUS_GRANTED = "granted";
-
-    private final NamedParameterJdbcTemplate jdbc;
+    private final AdminModerationService moderationService;
 
     public record UpdatePermissionRequest(
             @NotBlank @Pattern(regexp = "^(none|pending|granted)$") String permissionStatus,
-            String permissionReference
+            @Size(max = 500) String permissionReference
     ) {}
 
     @PatchMapping("/{id}/permission")
-    @CacheEvict(cacheNames = {"whitelist", "dictionariesBootstrap"}, allEntries = true)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Grant or revoke platform automated-collection permission")
+    @ApiResponse(responseCode = "204", description = "Permission updated")
+    @ApiResponse(responseCode = "400", description = "Invalid permission update",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
+    @ApiResponse(responseCode = "404", description = "Platform not found",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
     public ResponseEntity<Void> updatePermission(
             @PathVariable UUID id,
             Authentication auth,
             @Valid @RequestBody UpdatePermissionRequest req) {
-        UUID adminId = UUID.fromString(auth.getName());
-        if (STATUS_GRANTED.equals(req.permissionStatus()) && (req.permissionReference() == null || req.permissionReference().isBlank())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "permissionReference is required when granting permission");
-        }
-        int updated = jdbc.update("""
-                UPDATE autooffer.platforms_dict
-                   SET permission_status = :status,
-                       permission_granted_at = CASE WHEN :status = 'granted' THEN now() ELSE NULL END,
-                       permission_reference = CASE WHEN :status = 'granted' THEN :ref ELSE permission_reference END,
-                       approved_by_admin_id = CASE WHEN :status = 'granted' THEN CAST(:adminId AS uuid) ELSE approved_by_admin_id END
-                 WHERE id = CAST(:id AS uuid)
-                """,
-                new MapSqlParameterSource()
-                        .addValue("id", id)
-                        .addValue("status", req.permissionStatus())
-                        .addValue("ref", req.permissionReference())
-                        .addValue("adminId", adminId));
-        if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Platform not found");
+        moderationService.updatePlatformPermission(
+                id, UUID.fromString(auth.getName()), req.permissionStatus(), req.permissionReference());
         return ResponseEntity.noContent().build();
     }
 }

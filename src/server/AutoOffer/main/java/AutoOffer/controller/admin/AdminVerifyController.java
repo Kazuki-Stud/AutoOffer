@@ -1,17 +1,18 @@
 package AutoOffer.controller.admin;
 
+import AutoOffer.exception.ErrorResponseBody;
+import AutoOffer.service.AdminModerationService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -22,54 +23,49 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminVerifyController {
 
-    private enum VerifyTarget {
-COMPANY("companies_dict"),
-POSITION("positions_dict"),
-SKILL("skills"),
-VACANCY("vacancies");
-
-        private final String table;
-
-        VerifyTarget(String table) {
-            this.table = table;
-        }
-    }
-
-    private final NamedParameterJdbcTemplate jdbc;
+    private final AdminModerationService moderationService;
 
     @PostMapping("/companies/{id}/verify")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Verify company")
+    @ApiResponse(responseCode = "204", description = "Company verified")
+    @ApiResponse(responseCode = "404", description = "Company not found",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
     public ResponseEntity<Void> verifyCompany(@PathVariable UUID id, Authentication auth) {
-        return verify(VerifyTarget.COMPANY, id, auth);
+        moderationService.verifyCompany(id, UUID.fromString(auth.getName()));
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/positions/{id}/verify")
-    @CacheEvict(cacheNames = {"dictionariesBootstrap", "skillHotwords"}, allEntries = true)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Verify position")
+    @ApiResponse(responseCode = "204", description = "Position verified")
+    @ApiResponse(responseCode = "404", description = "Position not found",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
     public ResponseEntity<Void> verifyPosition(@PathVariable UUID id, Authentication auth) {
-        return verify(VerifyTarget.POSITION, id, auth);
+        moderationService.verifyPosition(id, UUID.fromString(auth.getName()));
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/skills/{id}/verify")
-    @CacheEvict(cacheNames = {"dictionariesBootstrap", "skillHotwords"}, allEntries = true)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Verify skill")
+    @ApiResponse(responseCode = "204", description = "Skill verified")
+    @ApiResponse(responseCode = "404", description = "Skill not found",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
     public ResponseEntity<Void> verifySkill(@PathVariable UUID id, Authentication auth) {
-        return verify(VerifyTarget.SKILL, id, auth);
+        moderationService.verifySkill(id, UUID.fromString(auth.getName()));
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/vacancies/{id}/verify")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Verify vacancy")
+    @ApiResponse(responseCode = "204", description = "Vacancy verified")
+    @ApiResponse(responseCode = "404", description = "Vacancy not found",
+            content = @Content(schema = @Schema(implementation = ErrorResponseBody.class)))
     public ResponseEntity<Void> verifyVacancy(@PathVariable UUID id, Authentication auth) {
-        return verify(VerifyTarget.VACANCY, id, auth);
-    }
-
-    private ResponseEntity<Void> verify(VerifyTarget target, UUID id, Authentication auth) {
-        UUID adminId = UUID.fromString(auth.getName());
-        int n = jdbc.update(
-                "UPDATE autooffer." + target.table + " SET is_verified = true, verified_by_admin_id = CAST(:adminId AS uuid) WHERE id = CAST(:id AS uuid)",
-                new MapSqlParameterSource().addValue("adminId", adminId).addValue("id", id)
-        );
-        if (n == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Record not found");
+        moderationService.verifyVacancy(id, UUID.fromString(auth.getName()));
         return ResponseEntity.noContent().build();
     }
 }

@@ -1,9 +1,11 @@
 package AutoOffer.etl;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -43,16 +45,19 @@ public class AnalyticsController {
                 """));
     }
 
-    @PostMapping("/api/admin/etl/run")
+    @PostMapping(value = "/api/admin/etl/run", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Trigger incremental Postgres -> ClickHouse ETL manually (ROLE_ADMIN)")
     @SecurityRequirement(name = "bearerAuth")
+    @ApiResponse(responseCode = "200", description = "ETL run completed")
     public ResponseEntity<VacancyEtlService.EtlRunResult> triggerEtl() {
         return ResponseEntity.ok(etlService.runIncremental());
     }
 
     @PostMapping("/api/admin/etl/rebuild-mart")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Rebuild dm_skill_demand from stg_vacancies FINAL (ROLE_ADMIN)")
     @SecurityRequirement(name = "bearerAuth")
+    @ApiResponse(responseCode = "204", description = "Data mart rebuilt")
     public ResponseEntity<Void> rebuildMart() {
         etlService.rebuildSkillDemandMart();
         return ResponseEntity.noContent().build();
