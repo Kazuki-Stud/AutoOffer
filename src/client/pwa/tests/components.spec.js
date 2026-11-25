@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, reactive } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { db } from '../../extension/database/database.js';
 import { seedDatabase } from '../../extension/database/seed.js';
@@ -182,11 +182,31 @@ describe('PWA Component & Page Offline Unit Tests', () => {
         expect(wrapper.findAll('tbody tr')).toHaveLength(2);
 
         return wrapper
-            .find('select[aria-label="Filter applications by status"]')
-            .setValue('Interview')
-            .then(() => {
+        .find('select[aria-label="Filter applications by status"]')
+        .setValue('Interview')
+        .then(() => {
                 expect(wrapper.findAll('tbody tr')).toHaveLength(1);
                 expect(wrapper.text()).toContain('Backend Engineer');
-            });
-    });
+        });
+});
+
+it('appStore.saveJob unwraps Vue reactive proxies before storing in IndexedDB', async () => {
+        const store = useAppStore();
+        const reactiveJob = reactive({
+                id: '00000000-0000-4000-8000-000000000501',
+                title: 'Reactive Proxy Job',
+                websites: 'https://www.indeed.com',
+                roles: 'Backend Developer',
+                locations: '',
+                keywords: '',
+                profile_id: '00000000-0000-4000-8000-000000000001',
+                fields_mode: 'all',
+                limit: 2,
+                status: 'ready',
+                created_at: '2026-11-23T10:00:00Z',
+        });
+        await store.saveJob(reactiveJob);
+        expect(store.jobs).toHaveLength(1);
+        expect(store.jobs[0].title).toBe('Reactive Proxy Job');
+});
 });
