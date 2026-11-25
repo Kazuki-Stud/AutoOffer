@@ -1,167 +1,85 @@
 openapi: 3.1.0
 info:
   title: AutoOffer Registry API
-  description: "Public vacancy registry, selector registry & admin moderation API"
+  summary: Privacy-first public vacancy registry, selector registry, OLAP analytics & admin moderation API
+  description: |
+    AutoOffer central backend API. Stores strictly non-personal public registry data:
+    pseudonymous device identifiers, declarative CSS/XPath selectors, platform permission whitelists,
+    sanitized/deduplicated public vacancies, anonymous GDPR Art. 17 removal requests, and ClickHouse OLAP analytics.
+
+    ## Authentication Modes
+    1. **Public:** Read-only registry, dictionaries, vacancies, analytics, health, device registration, and anonymous GDPR removal submission.
+    2. **Device Auth (`bearerAuth` + `deviceIdHeader`):** Requires both `Authorization: Bearer <raw-token>` and `X-Device-Id: <pseudonymous-uuid>`.
+    3. **Admin Auth (`bearerAuth`):** Requires `Authorization: Bearer <admin-jwt>` (without `X-Device-Id`).
   version: 0.1.0
+  contact:
+    name: AutoOffer Maintainers
+    url: https://github.com/Kazuki-Stud/AutoOffer
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
 servers:
-- url: http://localhost:8080
-  description: Generated server url
+  - url: http://localhost:8080
+    description: Local Docker Compose / Spring Boot development server
 tags:
-- name: Admin Selectors
-  description: Selector review workflow (US 2.4)
-- name: Devices
-  description: Pseudonymous client registration (US 7.1)
-- name: Registry
-  description: "Approved selectors & platform whitelist (US 1.1, US 2.1)"
-- name: Health
-  description: Service health check
-- name: Admin Verification
-  description: Verify community dictionaries and vacancies
-- name: OLAP Analytics & ETL
-  description: ClickHouse data marts & incremental ETL pipeline
-- name: GDPR Removal
-  description: Anonymous Art. 17 removal requests (BA 2.8)
-- name: Vacancies
-  description: Public vacancy registry & ingestion (US 1.3)
-- name: Dictionaries & Skills
-  description: Reference dictionaries & skill hotwords (E6)
-- name: Admin GDPR Removals
-  description: Process Art. 17 removal requests
-- name: Admin Platforms
-  description: "Whitelist permission management (BA 2.8, R7)"
-- name: Admin Auth
-  description: Registry administrator authentication
-- name: Selectors
-  description: "Community selector submission (US 2.3, US 2.4)"
+  - name: Health
+    description: Service liveness and availability checks
+  - name: Devices
+    description: Pseudonymous client registration and bearer token rotation (US 7.1)
+  - name: Registry
+    description: Approved CSS/XPath selectors and platform permission whitelist (US 1.1, US 2.1)
+  - name: Dictionaries & Skills
+    description: Reference dictionaries, skill autocomplete & skill hotwords (E6)
+  - name: Vacancies
+    description: Public vacancy registry, PII sanitization & SHA-256 deduplication (US 1.3)
+  - name: Selectors
+    description: Community selector submission for administrator moderation (US 2.3, US 2.4)
+  - name: GDPR Removal
+    description: Anonymous GDPR Art. 17 takedown requests (BA 2.8)
+  - name: OLAP Analytics & ETL
+    description: ClickHouse analytical queries and incremental Postgres-to-ClickHouse ETL
+  - name: Admin Auth
+    description: Registry administrator JWT login and password management
+  - name: Admin Platforms
+    description: Whitelist permission grant/revocation with automatic full-text purge (BA 2.8, R7)
+  - name: Admin Selectors
+    description: Pending selector review queue, approval and rejection workflow (US 2.4)
+  - name: Admin GDPR Removals
+    description: Process anonymous Art. 17 removal requests (delete matching vacancies or reject)
+  - name: Admin Verification
+    description: Mark community-submitted companies, positions, skills, and vacancies as verified
+
 paths:
-  /api/vacancies:
+  /api/health:
     get:
-      tags:
-      - Vacancies
-      summary: List active vacancies from v_vacancies_full
-      operationId: list
-      parameters:
-      - name: platformCode
-        in: query
-        required: false
-        schema:
-          type: string
-          maxLength: 50
-          minLength: 0
-      - name: pageable
-        in: query
-        required: true
-        schema:
-          $ref: "#/components/schemas/Pageable"
+      tags: [Health]
+      summary: Check API health
+      description: Lightweight application health check returning `UP` when the Spring Web context is serving requests.
+      operationId: health
       responses:
         "200":
-          description: Paginated active vacancies
+          description: Service is up
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PageVacancyFullView"
-    post:
-      tags:
-      - Vacancies
-      summary: Submit/deduplicate vacancy via server-side upsert_vacancy()
-      operationId: upsert
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpsertVacancyRequest"
-        required: true
-      responses:
-        "200":
-          description: Vacancy upserted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IdResponse"
-        "400":
-          description: Validation or policy violation
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-        "401":
-          description: Device authentication required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/selectors:
-    post:
-      tags:
-      - Selectors
-      summary: Submit a pending selector proposal for admin review
-      operationId: submit
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SubmitSelectorRequest"
-        required: true
-      responses:
-        "201":
-          description: Pending selector created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IdResponse"
-        "400":
-          description: Invalid or unsafe selector
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-        "401":
-          description: Device authentication required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/removal-requests:
-    post:
-      tags:
-      - GDPR Removal
-      summary: Submit an anonymous GDPR Art. 17 removal request
-      operationId: submit_1
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateRemovalRequest"
-        required: true
-      responses:
-        "202":
-          description: Removal request accepted for review
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RemovalRequestSubmittedResponse"
-        "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: UP
+
   /api/devices/register:
     post:
-      tags:
-      - Devices
+      tags: [Devices]
       summary: Register pseudonymous device or rotate bearer token
+      description: Registers a client-generated random UUID (`pseudonymousId`) or rotates its 256-bit bearer token. Only the HMAC-SHA-256 hash is persisted.
       operationId: register
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DeviceRegisterRequest"
-        required: true
+            example:
+              pseudonymousId: "0b6a5c1e-2b0f-4f0b-9d54-5f7a6c1f0001"
       responses:
         "201":
           description: Device registered or bearer token rotated
@@ -169,375 +87,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeviceRegisterResponse"
+              example:
+                deviceId: "d0000000-0000-4000-8000-000000000001"
+                pseudonymousId: "0b6a5c1e-2b0f-4f0b-9d54-5f7a6c1f0001"
+                token: "9f4c2a1b8e7d6c5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a"
         "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-  /api/admin/vacancies/{id}/verify:
-    post:
-      tags:
-      - Admin Verification
-      summary: Verify vacancy
-      operationId: verifyVacancy
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: Vacancy verified
-        "404":
-          description: Vacancy not found
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/admin/skills/{id}/verify:
-    post:
-      tags:
-      - Admin Verification
-      summary: Verify skill
-      operationId: verifySkill
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: Skill verified
-        "404":
-          description: Skill not found
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/admin/selectors/{id}/reject:
-    post:
-      tags:
-      - Admin Selectors
-      summary: Reject pending selector version
-      operationId: reject
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReviewCommentRequest"
-      responses:
-        "204":
-          description: Selector rejected
-        "404":
-          description: Selector not found or not pending
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/admin/selectors/{id}/approve:
-    post:
-      tags:
-      - Admin Selectors
-      summary: Approve pending selector version
-      operationId: approve
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReviewCommentRequest"
-      responses:
-        "204":
-          description: Selector approved and activated
-        "404":
-          description: Selector not found
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/admin/removal-requests/{id}/process:
-    post:
-      tags:
-      - Admin GDPR Removals
-      summary: Approve (delete matching vacancy) or reject a removal request
-      operationId: process
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProcessRemovalRequest"
-        required: true
-      responses:
-        "204":
-          description: Removal request processed
-        "404":
-          description: Removal request not found
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-        "409":
-          description: Removal request already processed
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/admin/positions/{id}/verify:
-    post:
-      tags:
-      - Admin Verification
-      summary: Verify position
-      operationId: verifyPosition
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: Position verified
-        "404":
-          description: Position not found
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/admin/etl/run:
-    post:
-      tags:
-      - OLAP Analytics & ETL
-      summary: Trigger incremental Postgres -> ClickHouse ETL manually (ROLE_ADMIN)
-      operationId: triggerEtl
-      responses:
-        "200":
-          description: ETL run completed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EtlRunResult"
-      security:
-      - bearerAuth: []
-  /api/admin/etl/rebuild-mart:
-    post:
-      tags:
-      - OLAP Analytics & ETL
-      summary: Rebuild dm_skill_demand from stg_vacancies FINAL (ROLE_ADMIN)
-      operationId: rebuildMart
-      responses:
-        "204":
-          description: Data mart rebuilt
-      security:
-      - bearerAuth: []
-  /api/admin/companies/{id}/verify:
-    post:
-      tags:
-      - Admin Verification
-      summary: Verify company
-      operationId: verifyCompany
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: Company verified
-        "404":
-          description: Company not found
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/admin/auth/login:
-    post:
-      tags:
-      - Admin Auth
-      summary: Authenticate admin and return Bearer JWT
-      operationId: login
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LoginRequest"
-        required: true
-      responses:
-        "200":
-          description: Admin authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminLoginResponse"
-        "401":
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-  /api/admin/auth/change-password:
-    post:
-      tags:
-      - Admin Auth
-      summary: Change current admin password
-      operationId: changePassword
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ChangePasswordRequest"
-        required: true
-      responses:
-        "204":
-          description: Password updated
-        "400":
-          description: Validation or current password mismatch
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-        "401":
-          description: Unauthorized
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-        "403":
-          description: Inactive admin
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/admin/platforms/{id}/permission:
-    patch:
-      tags:
-      - Admin Platforms
-      summary: Grant or revoke platform automated-collection permission
-      operationId: updatePermission
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdatePermissionRequest"
-        required: true
-      responses:
-        "204":
-          description: Permission updated
-        "400":
-          description: Invalid permission update
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-        "404":
-          description: Platform not found
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
-      security:
-      - bearerAuth: []
-  /api/skills:
-    get:
-      tags:
-      - Dictionaries & Skills
-      summary: Autocomplete skills
-      operationId: searchSkills
-      parameters:
-      - name: q
-        in: query
-        required: false
-        schema:
-          type: string
-          default: ""
-          maxLength: 100
-          minLength: 0
-      responses:
-        "200":
-          description: Matching skills
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SkillSearchDto"
-  /api/skills/hotwords:
-    get:
-      tags:
-      - Dictionaries & Skills
-      summary: Most frequent skills per position from mv_skill_hotwords
-      operationId: hotwords
-      parameters:
-      - name: positionId
-        in: query
-        required: false
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: Top skills per position
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SkillHotwordDto"
+          $ref: "#/components/responses/ValidationError"
+
   /api/registry/whitelist:
     get:
-      tags:
-      - Registry
+      tags: [Registry]
       summary: Fetch platform permission whitelist (US 1.1)
+      description: Returns automated-collection permission status (`none`, `pending`, `granted`) for all registered job boards. Cached in Redis (`10m` TTL).
       operationId: getWhitelist
       responses:
         "200":
@@ -548,19 +109,33 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/WhitelistPlatformDto"
+              example:
+                - platformCode: "indeed.com"
+                  name: "Indeed"
+                  url: "https://www.indeed.com"
+                  permissionStatus: "none"
+                  updatedAt: "2026-11-16T10:00:00Z"
+                - platformCode: "demo-board.test"
+                  name: "Demo Board"
+                  url: "https://demo-board.test"
+                  permissionStatus: "granted"
+                  updatedAt: "2026-11-16T10:05:00Z"
+
   /api/registry/selectors:
     get:
-      tags:
-      - Registry
-      summary: Fetch active approved selectors (optionally changed since timestamp)
+      tags: [Registry]
+      summary: Fetch active approved selectors
+      description: Returns active, admin-approved CSS/XPath selectors. Pass `since` (ISO-8601) for incremental polling. Unfiltered responses are cached in Redis (`5m` TTL).
       operationId: getSelectors
       parameters:
-      - name: since
-        in: query
-        required: false
-        schema:
-          type: string
-          format: date-time
+        - name: since
+          in: query
+          description: Optional ISO-8601 timestamp to return only selectors updated after this instant
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2026-11-16T00:00:00Z"
       responses:
         "200":
           description: Active approved selectors
@@ -570,24 +145,24 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/RegistrySelectorView"
-  /api/health:
-    get:
-      tags:
-      - Health
-      summary: Check API health
-      operationId: health
-      responses:
-        "200":
-          description: Service is up
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthResponse"
+              example:
+                - id: "c0000000-0000-4000-8000-000000000001"
+                  platformCode: "indeed.com"
+                  taskCode: "parse_vacancy_list"
+                  elementTypeCode: "title"
+                  urlPattern: "indeed.com"
+                  selectorKind: "css"
+                  selectorString: ".jcs-JobTitle span[title], a.jcs-JobTitle"
+                  version: 1
+                  updatedAt: "2026-11-16T10:00:00Z"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
   /api/dictionaries/bootstrap:
     get:
-      tags:
-      - Dictionaries & Skills
+      tags: [Dictionaries & Skills]
       summary: Fetch all reference dictionaries in one payload
+      description: Returns platforms, selector tasks, element types, currencies, regions, countries, cities, levels, work formats, employment types, and positions. Cached in Redis (`30m` TTL).
       operationId: bootstrap
       responses:
         "200":
@@ -596,38 +171,372 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BootstrapDictionariesResponse"
+
+  /api/skills:
+    get:
+      tags: [Dictionaries & Skills]
+      summary: Autocomplete skills
+      description: Searches `autooffer.skills` with escaped `ILIKE` matching, prioritizing verified skills (max 20 results).
+      operationId: searchSkills
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive substring filter
+          required: false
+          schema:
+            type: string
+            default: ""
+            maxLength: 100
+          example: "java"
+      responses:
+        "200":
+          description: Matching skills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SkillSearchDto"
+              example:
+                - id: "e0000000-0000-4000-8000-000000000001"
+                  name: "Java"
+                  isVerified: true
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/skills/hotwords:
+    get:
+      tags: [Dictionaries & Skills]
+      summary: Most frequent skills per position
+      description: Queries `mv_skill_hotwords` (refreshed every 10 minutes) for the top 50 skills, optionally filtered by `positionId`. Cached in Redis (`10m` TTL).
+      operationId: hotwords
+      parameters:
+        - name: positionId
+          in: query
+          description: Optional normalized position UUID
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Top skills per position
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SkillHotwordDto"
+              example:
+                - positionId: "b0000000-0000-4000-8000-000000000002"
+                  positionName: "Backend Developer"
+                  skillId: "e0000000-0000-4000-8000-000000000001"
+                  skillName: "Java"
+                  vacancyCount: 14
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/vacancies:
+    get:
+      tags: [Vacancies]
+      summary: List active vacancies
+      description: Returns paginated active vacancies from `v_vacancies_full`, optionally filtered by `platformCode`. Page size is capped at `100`.
+      operationId: list
+      parameters:
+        - name: platformCode
+          in: query
+          description: Optional platform host code filter (e.g. `demo-board.test`)
+          required: false
+          schema:
+            type: string
+            maxLength: 50
+          example: "demo-board.test"
+        - name: page
+          in: query
+          description: Zero-based page index
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          description: Page size (1..100)
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          description: Sort criteria in `property,(asc|desc)` format
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+            default: ["updatedAt,desc"]
+      responses:
+        "200":
+          description: Paginated active vacancies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageVacancyFullView"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      tags: [Vacancies]
+      summary: Submit/deduplicate vacancy via server-side upsert_vacancy()
+      description: |
+        Ingests a public vacancy from an authenticated device. The server strips personal names/emails/phones, computes SHA-256 `dedup_hash`,
+        and forces `url_only` storage unless the board's `permission_status` is `granted`.
+      operationId: upsert
+      security:
+        - bearerAuth: []
+          deviceIdHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertVacancyRequest"
+            examples:
+              fullBoardVacancy:
+                summary: Permitted board submission (stored as full)
+                value:
+                  platformId: "10000000-0000-4000-8000-0000000000ff"
+                  url: "https://demo-board.test/jobs/1001"
+                  fullPositionName: "Senior Java Developer"
+                  companyName: "Enterprise Systems"
+                  description: "Java 21, Spring Boot, PostgreSQL."
+                  cityId: "70000000-0000-4000-8000-000000000002"
+                  salaryFrom: 4000
+                  salaryTo: 6000
+                  currencyId: "40000000-0000-4000-8000-000000000002"
+              urlOnlyBoardVacancy:
+                summary: Non-whitelisted board submission (server stores url_only)
+                value:
+                  platformId: "10000000-0000-4000-8000-000000000001"
+                  url: "https://www.indeed.com/viewjob?jk=abc123"
+      responses:
+        "200":
+          description: Vacancy upserted or deduplicated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+              example:
+                id: "11111111-2222-4333-8444-555555555555"
+        "400":
+          $ref: "#/components/responses/ValidationOrPolicyError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/selectors:
+    post:
+      tags: [Selectors]
+      summary: Submit a pending selector proposal for admin review
+      description: Submits a CSS/XPath selector proposal from an authenticated device. Rejects scripts and URLs (`javascript:`, `<script`, `http://`, `data:`).
+      operationId: submit
+      security:
+        - bearerAuth: []
+          deviceIdHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitSelectorRequest"
+            example:
+              platformId: "10000000-0000-4000-8000-000000000003"
+              taskId: "20000000-0000-4000-8000-000000000001"
+              elementTypeId: "30000000-0000-4000-8000-000000000002"
+              urlPattern: "weworkremotely.com"
+              kind: "css"
+              selectorString: "span.title, h3.new-title"
+      responses:
+        "201":
+          description: Pending selector created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+              example:
+                id: "22222222-3333-4444-8555-666666666666"
+        "400":
+          $ref: "#/components/responses/ValidationOrPolicyError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/removal-requests:
+    post:
+      tags: [GDPR Removal]
+      summary: Submit an anonymous GDPR Art. 17 removal request
+      description: Creates an open takedown ticket for a vacancy URL without storing any personal data about the requester.
+      operationId: submit_1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRemovalRequest"
+            example:
+              targetUrl: "https://demo-board.test/jobs/1001"
+              note: "Contains personal recruiter name"
+      responses:
+        "202":
+          description: Removal request accepted for review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemovalRequestSubmittedResponse"
+              example:
+                id: "33333333-4444-4555-8666-777777777777"
+                status: "open"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
   /api/analytics/skills-demand:
     get:
-      tags:
-      - OLAP Analytics & ETL
+      tags: [OLAP Analytics & ETL]
       summary: Top skills per position with window ranking (ClickHouse)
+      description: Queries `autooffer_olap.v_top_skills_by_position` (`skill_rank <= 10`) in ClickHouse `FORMAT JSON`.
       operationId: topSkills
       responses:
         "200":
-          description: OK
+          description: ClickHouse JSON result containing `data` array of `ClickHouseSkillDemandRow`
           content:
             application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/ClickHouseSkillDemandResponse"
+
   /api/analytics/salary-by-country:
     get:
-      tags:
-      - OLAP Analytics & ETL
+      tags: [OLAP Analytics & ETL]
       summary: Salary medians & vacancy counts by country (ClickHouse)
+      description: Queries `autooffer_olap.stg_vacancies FINAL` in ClickHouse `FORMAT JSON` for active vacancies with EUR-normalized salaries.
       operationId: salaryByCountry
       responses:
         "200":
-          description: OK
+          description: ClickHouse JSON result containing `data` array of country salary aggregations
           content:
             application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/ClickHouseSalaryByCountryResponse"
+
+  /api/admin/auth/login:
+    post:
+      tags: [Admin Auth]
+      summary: Authenticate admin and return Bearer JWT
+      description: Verifies active administrator credentials via BCrypt and returns a signed HS256 JWT.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: "admin"
+              password: "StrongPassword123!"
+      responses:
+        "200":
+          description: Admin authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginResponse"
+              example:
+                token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEifQ.signature"
+                adminId: "f0000000-0000-4000-8000-000000000001"
+                username: "admin"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/admin/auth/change-password:
+    post:
+      tags: [Admin Auth]
+      summary: Change current admin password
+      description: Updates `password_hash` via targeted column-safe query after verifying `currentPassword`.
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+            example:
+              currentPassword: "StrongPassword123!"
+              newPassword: "NewerStrongPassword456!"
+      responses:
+        "204":
+          description: Password updated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/admin/platforms/{id}/permission:
+    patch:
+      tags: [Admin Platforms]
+      summary: Grant or revoke platform automated-collection permission
+      description: Updates `permission_status`. Granting requires `permissionReference`. Revoking from `granted` triggers automatic purge of stored full-text descriptions for that board and evicts Redis caches.
+      operationId: updatePermission
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Platform UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePermissionRequest"
+            example:
+              permissionStatus: "granted"
+              permissionReference: "Written permission #2026-11"
+      responses:
+        "204":
+          description: Permission updated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /api/admin/selectors/queue:
     get:
-      tags:
-      - Admin Selectors
+      tags: [Admin Selectors]
       summary: List pending selector proposals with active diff
+      description: Reads `v_selector_review_queue` ordered oldest-first, showing both `activeSelectorString` and `proposedSelectorString`.
       operationId: queue
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Pending selector proposals
@@ -637,21 +546,95 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/SelectorReviewQueueItemDto"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/admin/selectors/{id}/approve:
+    post:
+      tags: [Admin Selectors]
+      summary: Approve pending selector version
+      description: Atomically deactivates the previous active selector for the same key, activates this selector (`review_status = 'approved'`), and evicts the Redis `selectors` cache.
+      operationId: approve
       security:
-      - bearerAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCommentRequest"
+            example:
+              comment: "Verified on 3 live pages"
+      responses:
+        "204":
+          description: Selector approved and activated
+        "400":
+          $ref: "#/components/responses/ValidationOrPolicyError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/selectors/{id}/reject:
+    post:
+      tags: [Admin Selectors]
+      summary: Reject pending selector version
+      description: Marks a pending selector as `rejected` (`is_active = false`) and evicts the Redis `selectors` cache.
+      operationId: reject
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCommentRequest"
+            example:
+              comment: "Matches navigation links as well as job cards"
+      responses:
+        "204":
+          description: Selector rejected
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /api/admin/removal-requests:
     get:
-      tags:
-      - Admin GDPR Removals
+      tags: [Admin GDPR Removals]
       summary: List removal requests filtered by status
+      description: Returns GDPR Art. 17 removal requests filtered by `status` (`open`, `done`, or `rejected`).
       operationId: list_1
+      security:
+        - bearerAuth: []
       parameters:
-      - name: status
-        in: query
-        required: false
-        schema:
-          type: string
-          default: open
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, done, rejected]
+            default: open
       responses:
         "200":
           description: Removal requests matching status
@@ -662,78 +645,282 @@ paths:
                 items:
                   $ref: "#/components/schemas/RemovalRequestDto"
         "400":
-          description: Invalid status filter
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/admin/removal-requests/{id}/process:
+    post:
+      tags: [Admin GDPR Removals]
+      summary: Approve (delete matching vacancy) or reject a removal request
+      description: Locks the open request row (`FOR UPDATE`); if `decision = done`, deletes any matching vacancy by normalized URL, then records `processed_at` and `processed_by_admin_id`.
+      operationId: process
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessRemovalRequest"
+            example:
+              decision: "done"
+      responses:
+        "204":
+          description: Removal request processed
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/companies/{id}/verify:
+    post:
+      tags: [Admin Verification]
+      summary: Verify company
+      description: Marks a community-created company as `is_verified = true`.
+      operationId: verifyCompany
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Company verified
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/positions/{id}/verify:
+    post:
+      tags: [Admin Verification]
+      summary: Verify position
+      description: Marks a position as verified and evicts `dictionariesBootstrap` and `skillHotwords` caches.
+      operationId: verifyPosition
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Position verified
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/skills/{id}/verify:
+    post:
+      tags: [Admin Verification]
+      summary: Verify skill
+      description: Marks a skill as verified and evicts `dictionariesBootstrap` and `skillHotwords` caches.
+      operationId: verifySkill
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Skill verified
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/vacancies/{id}/verify:
+    post:
+      tags: [Admin Verification]
+      summary: Verify vacancy
+      description: Marks a vacancy as verified by the authenticated administrator.
+      operationId: verifyVacancy
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Vacancy verified
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/etl/run:
+    post:
+      tags: [OLAP Analytics & ETL]
+      summary: Trigger incremental Postgres -> ClickHouse ETL manually
+      description: Runs an incremental watermark batch from `v_vacancies_full` into ClickHouse `raw_vacancies` and `stg_vacancies`.
+      operationId: triggerEtl
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: ETL run completed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponseBody"
+                $ref: "#/components/schemas/EtlRunResult"
+              example:
+                runId: "44444444-5555-4666-8777-888888888888"
+                extracted: 12
+                loaded: 12
+                rejected: 0
+                status: "success"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/admin/etl/rebuild-mart:
+    post:
+      tags: [OLAP Analytics & ETL]
+      summary: Rebuild dm_skill_demand from stg_vacancies FINAL
+      description: Truncates `dm_skill_demand` and recomputes aggregates from deduplicated `stg_vacancies FINAL`.
+      operationId: rebuildMart
       security:
-      - bearerAuth: []
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Data mart rebuilt
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT or 256-bit hex Device Token
+    deviceIdHeader:
+      type: apiKey
+      in: header
+      name: X-Device-Id
+      description: Pseudonymous client UUID required alongside bearerAuth on device endpoints
+
+  responses:
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseBody"
+          example:
+            timestamp: "2026-11-16T10:15:30Z"
+            status: 400
+            code: "VALIDATION_ERROR"
+            message: "Request validation failed"
+            details:
+              url: "Must be http(s) URL"
+    ValidationOrPolicyError:
+      description: Request validation or database policy violation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseBody"
+          example:
+            timestamp: "2026-11-16T10:15:30Z"
+            status: 400
+            code: "DB_POLICY_VIOLATION"
+            message: "Selector must not contain scripts or URLs"
+            details: {}
+    UnauthorizedError:
+      description: Authentication required or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseBody"
+          example:
+            timestamp: "2026-11-16T10:15:30Z"
+            status: 401
+            code: "UNAUTHORIZED"
+            message: "Authentication required"
+            details: {}
+    ForbiddenError:
+      description: Insufficient permissions for this resource
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseBody"
+          example:
+            timestamp: "2026-11-16T10:15:30Z"
+            status: 403
+            code: "FORBIDDEN"
+            message: "Access denied"
+            details: {}
+    NotFoundError:
+      description: Requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseBody"
+          example:
+            timestamp: "2026-11-16T10:15:30Z"
+            status: 404
+            code: "RESOURCE_NOT_FOUND"
+            message: "Record not found"
+            details: {}
+    ConflictError:
+      description: Resource state conflict or duplicate unique key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseBody"
+          example:
+            timestamp: "2026-11-16T10:15:30Z"
+            status: 409
+            code: "CONFLICT"
+            message: "Removal request already processed"
+            details: {}
+
   schemas:
-    UpsertVacancyRequest:
-      type: object
-      properties:
-        platformId:
-          type: string
-          format: uuid
-        url:
-          type: string
-          maxLength: 2048
-          minLength: 0
-          pattern: ^https?://.*
-        fullPositionName:
-          type: string
-          maxLength: 255
-          minLength: 0
-        companyName:
-          type: string
-          maxLength: 255
-          minLength: 0
-        description:
-          type: string
-        address:
-          type: string
-        positionId:
-          type: string
-          format: uuid
-        regionId:
-          type: string
-          format: uuid
-        countryId:
-          type: string
-          format: uuid
-        cityId:
-          type: string
-          format: uuid
-        salaryFrom:
-          type: number
-          minimum: 0.0
-        salaryTo:
-          type: number
-          minimum: 0.0
-        currencyId:
-          type: string
-          format: uuid
-        levelId:
-          type: string
-          format: uuid
-        workFormatId:
-          type: string
-          format: uuid
-        employmentTypeId:
-          type: string
-          format: uuid
-        skillIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-      required:
-      - platformId
-      - url
     ErrorResponseBody:
       type: object
+      required: [timestamp, status, code, message, details]
       properties:
         timestamp:
           type: string
@@ -744,84 +931,37 @@ components:
         code:
           type: string
           enum:
-          - VALIDATION_ERROR
-          - DB_POLICY_VIOLATION
-          - RESOURCE_NOT_FOUND
-          - CONFLICT
-          - UNAUTHORIZED
-          - FORBIDDEN
-          - INTERNAL_ERROR
+            - VALIDATION_ERROR
+            - DB_POLICY_VIOLATION
+            - RESOURCE_NOT_FOUND
+            - CONFLICT
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - INTERNAL_ERROR
         message:
           type: string
         details:
           type: object
           additionalProperties:
             type: string
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
     IdResponse:
       type: object
       properties:
         id:
           type: string
           format: uuid
-    SubmitSelectorRequest:
-      type: object
-      properties:
-        platformId:
-          type: string
-          format: uuid
-        taskId:
-          type: string
-          format: uuid
-        elementTypeId:
-          type: string
-          format: uuid
-        urlPattern:
-          type: string
-          maxLength: 255
-          minLength: 0
-        kind:
-          type: string
-          pattern: ^(css|xpath)$
-        selectorString:
-          type: string
-          maxLength: 2000
-          minLength: 1
-      required:
-      - elementTypeId
-      - kind
-      - platformId
-      - selectorString
-      - taskId
-    CreateRemovalRequest:
-      type: object
-      properties:
-        targetUrl:
-          type: string
-          maxLength: 2048
-          minLength: 0
-          pattern: ^https?://.*
-        note:
-          type: string
-          maxLength: 2000
-          minLength: 0
-      required:
-      - targetUrl
-    RemovalRequestSubmittedResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        status:
-          type: string
     DeviceRegisterRequest:
       type: object
+      required: [pseudonymousId]
       properties:
         pseudonymousId:
           type: string
           format: uuid
-      required:
-      - pseudonymousId
     DeviceRegisterResponse:
       type: object
       properties:
@@ -833,239 +973,6 @@ components:
           format: uuid
         token:
           type: string
-    ReviewCommentRequest:
-      type: object
-      properties:
-        comment:
-          type: string
-          maxLength: 1000
-          minLength: 0
-    ProcessRemovalRequest:
-      type: object
-      properties:
-        decision:
-          type: string
-          pattern: ^(done|rejected)$
-      required:
-      - decision
-    EtlRunResult:
-      type: object
-      properties:
-        runId:
-          type: string
-          format: uuid
-        extracted:
-          type: integer
-          format: int32
-        loaded:
-          type: integer
-          format: int32
-        rejected:
-          type: integer
-          format: int32
-        status:
-          type: string
-    LoginRequest:
-      type: object
-      properties:
-        username:
-          type: string
-          maxLength: 100
-          minLength: 0
-        password:
-          type: string
-          maxLength: 128
-          minLength: 0
-      required:
-      - password
-      - username
-    AdminLoginResponse:
-      type: object
-      properties:
-        token:
-          type: string
-        adminId:
-          type: string
-          format: uuid
-        username:
-          type: string
-    ChangePasswordRequest:
-      type: object
-      properties:
-        currentPassword:
-          type: string
-          maxLength: 128
-          minLength: 0
-        newPassword:
-          type: string
-          maxLength: 128
-          minLength: 10
-      required:
-      - currentPassword
-      - newPassword
-    UpdatePermissionRequest:
-      type: object
-      properties:
-        permissionStatus:
-          type: string
-          pattern: ^(none|pending|granted)$
-        permissionReference:
-          type: string
-          maxLength: 500
-          minLength: 0
-      required:
-      - permissionStatus
-    Pageable:
-      type: object
-      properties:
-        page:
-          type: integer
-          format: int32
-          minimum: 0
-        size:
-          type: integer
-          format: int32
-          minimum: 1
-        sort:
-          type: array
-          items:
-            type: string
-    PageVacancyFullView:
-      type: object
-      properties:
-        totalElements:
-          type: integer
-          format: int64
-        totalPages:
-          type: integer
-          format: int32
-        size:
-          type: integer
-          format: int32
-        content:
-          type: array
-          items:
-            $ref: "#/components/schemas/VacancyFullView"
-        number:
-          type: integer
-          format: int32
-        numberOfElements:
-          type: integer
-          format: int32
-        pageable:
-          $ref: "#/components/schemas/PageableObject"
-        sort:
-          $ref: "#/components/schemas/SortObject"
-        first:
-          type: boolean
-        last:
-          type: boolean
-        empty:
-          type: boolean
-    PageableObject:
-      type: object
-      properties:
-        offset:
-          type: integer
-          format: int64
-        paged:
-          type: boolean
-        pageNumber:
-          type: integer
-          format: int32
-        pageSize:
-          type: integer
-          format: int32
-        sort:
-          $ref: "#/components/schemas/SortObject"
-        unpaged:
-          type: boolean
-    SortObject:
-      type: object
-      properties:
-        empty:
-          type: boolean
-        sorted:
-          type: boolean
-        unsorted:
-          type: boolean
-    VacancyFullView:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        url:
-          type: string
-        storageLevel:
-          type: string
-        platformCode:
-          type: string
-        fullPositionName:
-          type: string
-        positionName:
-          type: string
-        companyName:
-          type: string
-        cityName:
-          type: string
-        countryName:
-          type: string
-        regionName:
-          type: string
-        salaryFrom:
-          type: number
-        salaryTo:
-          type: number
-        currencyCode:
-          type: string
-        levelName:
-          type: string
-        workFormat:
-          type: string
-        employmentType:
-          type: string
-        description:
-          type: string
-        submissionCount:
-          type: integer
-          format: int32
-        isActive:
-          type: boolean
-        isVerified:
-          type: boolean
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-    SkillSearchDto:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        isVerified:
-          type: boolean
-    SkillHotwordDto:
-      type: object
-      properties:
-        positionId:
-          type: string
-          format: uuid
-        positionName:
-          type: string
-        skillId:
-          type: string
-          format: uuid
-        skillName:
-          type: string
-        vacancyCount:
-          type: integer
-          format: int32
     WhitelistPlatformDto:
       type: object
       properties:
@@ -1077,6 +984,7 @@ components:
           type: string
         permissionStatus:
           type: string
+          enum: [none, pending, granted]
         updatedAt:
           type: string
           format: date-time
@@ -1093,9 +1001,10 @@ components:
         elementTypeCode:
           type: string
         urlPattern:
-          type: string
+          type: ["string", "null"]
         selectorKind:
           type: string
+          enum: [css, xpath]
         selectorString:
           type: string
         version:
@@ -1104,11 +1013,6 @@ components:
         updatedAt:
           type: string
           format: date-time
-    HealthResponse:
-      type: object
-      properties:
-        status:
-          type: string
     BootstrapDictionariesResponse:
       type: object
       properties:
@@ -1159,119 +1063,228 @@ components:
     CityItem:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        countryId:
-          type: string
-          format: uuid
-        name:
-          type: string
+        id: { type: string, format: uuid }
+        countryId: { type: string, format: uuid }
+        name: { type: string }
     CodeNameItem:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        code:
-          type: string
-        name:
-          type: string
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
     CountryItem:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        regionId:
-          type: string
-          format: uuid
-        name:
-          type: string
+        id: { type: string, format: uuid }
+        regionId: { type: string, format: uuid }
+        name: { type: string }
     IdNameItem:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
+        id: { type: string, format: uuid }
+        name: { type: string }
     PlatformItem:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        code:
-          type: string
-        url:
-          type: string
-        permissionStatus:
-          type: string
+        id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        url: { type: string }
+        permissionStatus: { type: string, enum: [none, pending, granted] }
     PositionItem:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        isVerified:
-          type: boolean
+        id: { type: string, format: uuid }
+        name: { type: string }
+        isVerified: { type: boolean }
+    SkillSearchDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        isVerified: { type: boolean }
+    SkillHotwordDto:
+      type: object
+      properties:
+        positionId: { type: string, format: uuid }
+        positionName: { type: string }
+        skillId: { type: string, format: uuid }
+        skillName: { type: string }
+        vacancyCount: { type: integer, format: int32 }
+    UpsertVacancyRequest:
+      type: object
+      required: [platformId, url]
+      properties:
+        platformId: { type: string, format: uuid }
+        url: { type: string, maxLength: 2048, pattern: "^https?://.*" }
+        fullPositionName: { type: string, maxLength: 255 }
+        companyName: { type: string, maxLength: 255 }
+        description: { type: string }
+        address: { type: string }
+        positionId: { type: string, format: uuid }
+        regionId: { type: string, format: uuid }
+        countryId: { type: string, format: uuid }
+        cityId: { type: string, format: uuid }
+        salaryFrom: { type: number, minimum: 0.0 }
+        salaryTo: { type: number, minimum: 0.0 }
+        currencyId: { type: string, format: uuid }
+        levelId: { type: string, format: uuid }
+        workFormatId: { type: string, format: uuid }
+        employmentTypeId: { type: string, format: uuid }
+        skillIds:
+          type: array
+          items: { type: string, format: uuid }
+    VacancyFullView:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string }
+        storageLevel: { type: string, enum: [url_only, full] }
+        platformCode: { type: string }
+        fullPositionName: { type: ["string", "null"] }
+        positionName: { type: ["string", "null"] }
+        companyName: { type: ["string", "null"] }
+        cityName: { type: ["string", "null"] }
+        countryName: { type: ["string", "null"] }
+        regionName: { type: ["string", "null"] }
+        salaryFrom: { type: ["number", "null"] }
+        salaryTo: { type: ["number", "null"] }
+        currencyCode: { type: ["string", "null"] }
+        levelName: { type: ["string", "null"] }
+        workFormat: { type: ["string", "null"] }
+        employmentType: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        submissionCount: { type: integer, format: int32 }
+        isActive: { type: boolean }
+        isVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PageVacancyFullView:
+      type: object
+      properties:
+        totalElements: { type: integer, format: int64 }
+        totalPages: { type: integer, format: int32 }
+        size: { type: integer, format: int32 }
+        content:
+          type: array
+          items: { $ref: "#/components/schemas/VacancyFullView" }
+        number: { type: integer, format: int32 }
+        numberOfElements: { type: integer, format: int32 }
+        first: { type: boolean }
+        last: { type: boolean }
+        empty: { type: boolean }
+    SubmitSelectorRequest:
+      type: object
+      required: [platformId, taskId, elementTypeId, kind, selectorString]
+      properties:
+        platformId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        elementTypeId: { type: string, format: uuid }
+        urlPattern: { type: string, maxLength: 255 }
+        kind: { type: string, pattern: "^(css|xpath)$" }
+        selectorString: { type: string, minLength: 1, maxLength: 2000 }
+    CreateRemovalRequest:
+      type: object
+      required: [targetUrl]
+      properties:
+        targetUrl: { type: string, maxLength: 2048, pattern: "^https?://.*" }
+        note: { type: string, maxLength: 2000 }
+    RemovalRequestSubmittedResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [open] }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, maxLength: 100 }
+        password: { type: string, maxLength: 128 }
+    AdminLoginResponse:
+      type: object
+      properties:
+        token: { type: string }
+        adminId: { type: string, format: uuid }
+        username: { type: string }
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, maxLength: 128 }
+        newPassword: { type: string, minLength: 10, maxLength: 128 }
+    UpdatePermissionRequest:
+      type: object
+      required: [permissionStatus]
+      properties:
+        permissionStatus: { type: string, pattern: "^(none|pending|granted)$" }
+        permissionReference: { type: string, maxLength: 500 }
+    ReviewCommentRequest:
+      type: object
+      properties:
+        comment: { type: string, maxLength: 1000 }
+    ProcessRemovalRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, pattern: "^(done|rejected)$" }
     SelectorReviewQueueItemDto:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        platformCode:
-          type: string
-        taskCode:
-          type: string
-        elementTypeCode:
-          type: string
-        urlPattern:
-          type: string
-        selectorKind:
-          type: string
-        version:
-          type: integer
-          format: int32
-        activeSelectorString:
-          type: string
-        proposedSelectorString:
-          type: string
-        submittedByDeviceId:
-          type: string
-          format: uuid
-        createdAt:
-          type: string
-          format: date-time
+        id: { type: string, format: uuid }
+        platformCode: { type: string }
+        taskCode: { type: string }
+        elementTypeCode: { type: string }
+        urlPattern: { type: ["string", "null"] }
+        selectorKind: { type: string }
+        version: { type: integer, format: int32 }
+        activeSelectorString: { type: ["string", "null"] }
+        proposedSelectorString: { type: string }
+        submittedByDeviceId: { type: ["string", "null"], format: uuid }
+        createdAt: { type: string, format: date-time }
     RemovalRequestDto:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        targetUrl:
-          type: string
-        note:
-          type: string
-        status:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        processedAt:
-          type: string
-          format: date-time
-        processedByAdminId:
-          type: string
-          format: uuid
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT or DeviceToken
+        id: { type: string, format: uuid }
+        targetUrl: { type: string }
+        note: { type: ["string", "null"] }
+        status: { type: string, enum: [open, done, rejected] }
+        createdAt: { type: string, format: date-time }
+        processedAt: { type: ["string", "null"], format: date-time }
+        processedByAdminId: { type: ["string", "null"], format: uuid }
+    EtlRunResult:
+      type: object
+      properties:
+        runId: { type: string, format: uuid }
+        extracted: { type: integer, format: int32 }
+        loaded: { type: integer, format: int32 }
+        rejected: { type: integer, format: int32 }
+        status: { type: string }
+    ClickHouseSkillDemandRow:
+      type: object
+      properties:
+        position_name: { type: string }
+        skill_name: { type: string }
+        total_vacancies: { type: integer }
+        avg_salary_eur: { type: ["number", "null"] }
+        skill_rank: { type: integer }
+    ClickHouseSkillDemandResponse:
+      type: object
+      properties:
+        rows: { type: integer }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ClickHouseSkillDemandRow" }
+    ClickHouseSalaryByCountryRow:
+      type: object
+      properties:
+        country_name: { type: string }
+        vacancies: { type: integer }
+        avg_eur: { type: ["number", "null"] }
+        median_eur: { type: ["number", "null"] }
+    ClickHouseSalaryByCountryResponse:
+      type: object
+      properties:
+        rows: { type: integer }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ClickHouseSalaryByCountryRow" }
